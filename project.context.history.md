@@ -1,0 +1,1843 @@
+# project.context.history.md
+
+## Purpose
+This file stores session continuity, prior decisions, and evidence-backed repository discovery notes that should not bloat the active working context.
+
+## Session history
+
+### Session 001
+- Date: 2026-03-16
+- Route used: setup / workflow hardening
+- Objective: establish Codex skill workflow and create initial local context files
+- Outcome: baseline local context files were created, but they contained setup-era placeholders rather than repo-backed product truth
+- Key decisions:
+  - project-specific truth lives locally in `AGENTS.md` and `project.context.*.md`
+  - one primary skill should be used per phase/session
+  - `.system` under global skills should not be modified
+- Follow-up created:
+  - replace placeholders with real repo truth
+
+### Session 002
+- Date: 2026-03-16
+- Route used: system-analysis
+- Objective: inspect the repo in evidence-first order and replace setup placeholders with confirmed product and architecture truth
+- Outcome:
+  - product/module/runtime truth was captured from the repo
+  - auth was documented as mock-only because Supabase work had not yet been audited into context
+- Key evidence inspected:
+  - `app/page.tsx`
+  - `app/layout.tsx`
+  - `app/dashboard/layout.tsx`
+  - `lib/auth-context.tsx`
+  - `lib/data-context.tsx`
+  - `lib/types.ts`
+  - `lib/mock-data.ts`
+  - `lib/dashboard-selectors.ts`
+  - `app/api/maxwell/route.ts`
+  - `docs/session-handoff.md`
+
+### Session 003
+- Date: 2026-03-18
+- Route used: system-analysis
+- Objective: reconcile the roadmap PDFs against the real repo after the completed Supabase auth/session work and the Gmail fix in Leads
+- Evidence added:
+  - `middleware.ts`
+  - `lib/server/auth/session.ts`
+  - `lib/server/profiles/repository.ts`
+  - `lib/server/supabase/*.ts`
+  - `supabase/migrations/0001_phase_1a_auth_profiles.sql`
+  - `scripts/seed-phase-1a-users.ts`
+  - `QA_AUTH_RUNTIME_CHECKLIST.md`
+  - `components/lead-card.tsx`
+  - `components/lead-detail.tsx`
+  - `tmp_roadmap.txt`
+  - `tmp_recap.txt`
+  - `tmp_faltantes.txt`
+- Confirmed findings:
+  - Supabase auth/session is now real and repo-backed when env is enabled
+  - dashboard protection is enforced in middleware against session/profile/role state
+  - auth context now has a real sign-in/sign-out path with router refresh handling
+  - Gmail compose actions in Leads are implemented
+  - leads/projects/tasks/rewards/users/points still come from `lib/data-context.tsx` seeded by `lib/mock-data.ts`
+  - the repo is now mixed-mode, not fully mock-only and not fully real
+- Roadmap correction decided:
+  - treat auth/session as Phase 1A complete
+  - keep Phase 1 overall as partial because domain persistence is still missing
+  - keep Phase 2 as the next real priority because commercial data is not yet server-backed
+  - treat Phase 3 as partial because contact shortcuts improved, but proximity/location remain missing
+- Artifacts updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+  - `docs/roadmap-reconciled.md`
+
+### Session 004
+- Date: 2026-03-18
+- Route used: system-backend
+- Objective: implement Phase 2A leads/pipeline persistence foundation without reopening auth/session or the Gmail fix
+- Implemented:
+  - `supabase/migrations/0002_phase_2a_leads.sql`
+  - `/api/leads` CRUD endpoints
+  - `lib/server/leads/*` repository/validation/mapping modules
+  - `lib/data-context.tsx` lead loading and mutations through the API in Supabase mode
+  - leads and pipeline pages updated for async persisted mutations
+  - `scripts/seed-phase-2a-leads.ts`
+- Validation outcome:
+  - code paths were reviewed locally
+  - `pnpm.cmd lint` failed because `eslint` is not installed/available in the workspace
+  - `pnpm.cmd exec tsc --noEmit` failed because `tsc` is not installed/available in the workspace
+- Completion status:
+  - implementation complete
+  - runtime validation still pending until migration/seed can be applied and the project has working local tooling
+
+### Session 005
+- Date: 2026-03-18
+- Route used: system-backend
+- Objective: implement Phase 2B persistent commercial follow-up without reopening auth/session, Gmail, or Phase 2A base CRUD
+- Implemented:
+  - `supabase/migrations/0003_phase_2b_lead_activity.sql`
+  - `/api/leads/[leadId]/activity` GET/POST endpoints
+  - `lib/server/leads/activity-*` repository/schema/mapping modules
+  - `lib/leads/activity-serialization.ts`
+  - `lib/data-context.tsx` lead activity loading, note persistence, and cache refresh
+  - `components/lead-detail.tsx` follow-up timeline UI with persistent note composer
+- Confirmed scope boundary:
+  - included notes, activity history, and durable status/update logging for leads
+  - excluded auth/session rewrites, Gmail changes, proximity, payments, rewards, and commercial hand-off
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails on pre-existing workspace issues outside this slice
+  - no new type errors were surfaced from the newly added Phase 2B files in that run
+  - runtime validation remains pending until migration `0003` is applied against the active Supabase project
+- Completion status:
+  - implementation complete
+  - runtime validation pending
+
+### Session 006
+- Date: 2026-03-18
+- Route used: system-backend
+- Objective: implement Phase 2C commercial hand-off foundation without opening project persistence, payments, or delivery flows
+- Implemented:
+  - `supabase/migrations/0004_phase_2c_lead_proposals.sql`
+  - `/api/leads/[leadId]/proposals` GET/POST endpoints
+  - `/api/leads/[leadId]/proposals/[proposalId]` PATCH endpoint
+  - `lib/server/leads/proposal-*` repository/schema/mapping modules
+  - `lib/leads/proposal-serialization.ts`
+  - `lib/data-context.tsx` proposal loading, creation, and status updates
+  - `components/lead-detail.tsx` proposal composer, persisted proposal list, and hand-off readiness state
+- Scope boundary kept:
+  - included persistent proposal records linked to leads and commercial hand-off readiness
+  - excluded real project persistence, explicit project creation, payments, commissions, rewards, and proximity
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on pre-existing workspace issues outside this slice
+  - no new type errors from the newly added Phase 2C files were surfaced in that run
+  - runtime validation for migration `0004` is still pending
+- Completion status:
+  - implementation complete
+  - runtime validation pending
+
+### Session 007
+- Date: 2026-03-18
+- Route used: validation / manual runtime confirmation
+- Objective: confirm whether Phase 2A and 2B worked in the active runtime
+- Outcome:
+  - user confirmed the local flow works after running the app
+  - leads persistence and follow-up persistence should now be treated as runtime-validated in the active local environment
+
+### Session 008
+- Date: 2026-03-18
+- Route used: system-backend
+- Objective: implement Phase 2D explicit `lead -> proposal -> project` conversion without opening tasks, payments, or broader delivery persistence
+- Implemented:
+  - wired existing `0005_phase_2d_projects.sql`, `/api/projects`, `/api/projects/[projectId]`, and `/api/leads/[leadId]/proposals/[proposalId]/project`
+  - `lib/data-context.tsx` now loads persisted projects in Supabase mode, merges them with `mockProjects`, converts `handoff_ready` proposals into projects, and persists status updates for real UUID-backed projects
+  - `components/lead-detail.tsx` now exposes `Crear proyecto` on `handoff_ready`, shows linked project state, and surfaces `project_created` activity text
+  - `lib/types.ts` and `lib/server/supabase/database.types.ts` now include `project_created` and project source-link fields
+- Scope boundary kept:
+  - included durable project creation from a commercial hand-off proposal and persisted status updates for those real projects
+  - excluded task persistence, generic project CRUD, payments, commissions, rewards, and proximity
+- Validation outcome:
+  - technical validation still shows only pre-existing workspace TypeScript errors outside this slice
+  - migration `0005_phase_2d_projects.sql` was applied to the linked Supabase project
+  - runtime validation for project conversion is still pending in the app
+- Completion status:
+  - implementation complete
+  - runtime validation pending
+
+### Session 009
+- Date: 2026-03-18
+- Route used: system-backend
+- Objective: implement Phase 2E task persistence foundation on top of the real lead-to-project bridge without opening subtasks, comments, or wider delivery planning
+- Implemented:
+  - `supabase/migrations/0006_phase_2e_tasks.sql`
+  - `/api/tasks` GET/POST endpoint
+  - `/api/tasks/[taskId]` PATCH endpoint
+  - `lib/server/tasks/*` repository/schema/mapping modules
+  - `lib/tasks/serialization.ts`
+  - `lib/data-context.tsx` task loading, create, and update persistence for real UUID-backed projects/tasks with mock fallback preserved
+  - `app/dashboard/tasks/page.tsx` task creation entry point plus persisted status/progress updates
+  - `components/task-form-dialog.tsx` task creation/edit flow now wired to async persistence
+- Scope boundary kept:
+  - included durable task records linked to persisted projects and persisted task status/progress updates
+  - excluded subtasks, comments/history, broader project CRUD, payments, rewards, and proximity
+- Validation outcome:
+  - technical validation still shows only pre-existing workspace TypeScript errors outside this slice
+  - migration `0006_phase_2e_tasks.sql` was applied to the linked Supabase project
+  - runtime validation for persisted tasks is still pending in the app
+- Completion status:
+  - implementation complete
+  - runtime validation pending
+
+### Session 010
+- Date: 2026-03-18
+- Route used: system-testing
+- Objective: validate the last pending Phase 2E runtime behavior for `/dashboard/projects` using the linked Supabase project
+- Evidence gathered:
+  - queried the linked Supabase project with the configured local environment
+  - confirmed persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`
+  - confirmed persisted task `25d532a6-ce53-46db-96b1-8a519768e03b` linked to that project with status `review`
+  - replayed the same progress/status derivation logic used by `/dashboard/projects`
+- Validation outcome:
+  - persisted project status `in_progress` plus persisted task status `review` derives to display status `review`
+  - persisted task set derives to `85%` progress
+  - the pending 2E `/dashboard/projects` reflection check should now be treated as validated against live persisted data
+- Completion status:
+  - Phase 2E runtime validation closed
+  - no application code change was required in this pass
+
+### Session 011
+- Date: 2026-03-18
+- Route used: system-analysis -> system-backend -> system-frontend
+- Objective: implement the next delivery slice after 2E by making real projects editable in `/dashboard/projects` without reopening project creation, tasks history, or Phase 3
+- Implemented:
+  - widened `PATCH /api/projects/[projectId]` from status-only to bounded project metadata updates
+  - `lib/server/projects/schema.ts` now validates project update payloads for budget, PM, team, dates, description, and optional status
+  - `lib/server/projects/mappers.ts` now maps those fields into `projects` table updates
+  - `lib/data-context.tsx` now persists real-project updates through `/api/projects/[projectId]` instead of leaving them local-only
+  - `components/project-form-dialog.tsx` now supports editing persisted project delivery metadata and correctly clearing PM, description, and dates
+  - `app/dashboard/projects/page.tsx` now exposes project edit from the detail dialog, resolves PM display from `pmId`, and disables direct project creation in that surface
+- Scope boundary kept:
+  - included persisted editing for project delivery management fields on existing UUID-backed projects
+  - excluded new project creation outside commercial hand-off, project comments/history, subtasks, payments, rewards, and Phase 3 proximity work
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on pre-existing workspace issues outside this slice (`profiles`, `supabase`, `middleware`, seed scripts)
+  - no new TypeScript errors from the changed project-management files were surfaced in that run
+- Completion status:
+  - implementation complete
+  - runtime validation still pending
+
+### Session 012
+- Date: 2026-03-18
+- Route used: system-testing
+- Objective: validate the new persisted project-management slice in the local app runtime
+- Evidence gathered:
+  - used the live local Next dev server at `http://127.0.0.1:3000`
+  - created a valid Supabase SSR session for `ana@noon.app`
+  - patched project `2f39ac50-1bce-4364-9133-1317160d8a5a` through the app route `PATCH /api/projects/[projectId]`
+  - validated persisted fields: `budget`, `pmId`, `teamIds`, `startDate`, `endDate`, `description`
+  - verified the updated values through `/api/projects`
+  - restored the original project values after the runtime check
+- Validation outcome:
+  - the post-2E project edit slice is runtime-validated in the active local environment
+  - the app route and persisted readback both behaved as expected
+- Completion status:
+  - runtime validation closed for the persisted `/dashboard/projects` management slice
+
+### Session 013
+- Date: 2026-03-18
+- Route used: system-testing -> system-docs
+- Objective: validate the next post-2E delivery slice for persisted task activity/comments in the local app runtime and update local context
+- Implemented before validation:
+  - `supabase/migrations/0007_phase_2f_task_activity.sql`
+  - `/api/tasks/[taskId]/activity` GET/POST endpoint
+  - `lib/server/tasks/activity-*` repository/schema/mapping modules
+  - `lib/tasks/activity-serialization.ts`
+  - `lib/data-context.tsx` task activity loading and note persistence with mixed-mode fallback
+  - `app/dashboard/tasks/page.tsx` persisted notes plus activity history inside task detail
+- Evidence gathered:
+  - pushed migration `0007_phase_2f_task_activity.sql` to the linked Supabase project
+  - used the live local Next dev server at `http://127.0.0.1:3000`
+  - created valid Supabase SSR sessions for `ana@noon.app`, `pedro@noon.app`, and `laura@noon.app`
+  - confirmed live task `25d532a6-ce53-46db-96b1-8a519768e03b` remained linked to persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`
+  - patched `actualHours` from `8` to `9` and then restored it to `8` through `PATCH /api/tasks/[taskId]`
+  - created a persisted task note through `POST /api/tasks/[taskId]/activity` as `ana@noon.app`
+  - verified persisted task activity through `GET /api/tasks/[taskId]/activity`
+  - confirmed assigned developer `pedro@noon.app` could read and create task activity on that task
+  - confirmed unrelated developer `laura@noon.app` could not read or write that task activity because RLS filtered the task out and the route returned `Task not found.`
+- Validation outcome:
+  - the persisted task-activity/comments slice is runtime-validated in the active local environment
+  - the existing task update path remained stable after the slice was added
+  - negative permission behavior is enforced, but the observed denial surface is `404` from RLS visibility rather than the route's explicit `403` branch
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the persisted `/dashboard/tasks` task-activity slice
+
+### Session 014
+- Date: 2026-03-18
+- Route used: system-backend -> system-frontend -> system-docs
+- Objective: implement the next delivery slice after persisted task activity by showing a read-only project-side timeline in `/dashboard/projects` using existing task activity data
+- Implemented:
+  - `lib/types.ts` now defines `ProjectTaskActivity` as the UI/data contract for project-level rollups over task activity
+  - `lib/data-context.tsx` now exposes `getProjectActivity(projectId)` that aggregates existing per-task activity, enriches each entry with task title, and sorts by recency
+  - `app/dashboard/projects/page.tsx` now passes that project activity contract into the project detail dialog
+  - `app/dashboard/projects/page.tsx` now renders a PM/admin-only `Historial de actividad` section with loading, empty, error, and populated states
+  - the project detail rollup remains read-only and does not add any migration, table, endpoint, or permission change
+- Scope boundary kept:
+  - included task title, actor, timestamp, and note ordered by recency inside project detail
+  - excluded `project_activities`, project-native comments, `/api/projects/[projectId]/activity`, permission expansion for developers, subtasks, payments, Maxwell, and Phase 3
+- Validation outcome:
+  - runtime validation is still pending for this slice
+  - attempted local static validation, but the current shell could not resolve repo-local `eslint`, `tsc`, or `git`
+  - code review of the changed files was completed manually in-session after patching
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - implementation complete
+  - runtime validation pending
+
+### Session 015
+- Date: 2026-03-18
+- Route used: system-testing -> system-docs
+- Objective: runtime-validate the new project-side task-activity rollup in `/dashboard/projects`
+- Evidence gathered:
+  - used the live local Next dev server at `http://127.0.0.1:3000`
+  - created valid Supabase SSR sessions for `ana@noon.app`, `pedro@noon.app`, and `laura@noon.app`
+  - confirmed persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a` was visible to PM `ana@noon.app`
+  - confirmed persisted task `25d532a6-ce53-46db-96b1-8a519768e03b` remained the only real task under that project for this slice
+  - confirmed `GET /api/tasks/[taskId]/activity` still returned the two persisted validation notes for that task and that the project-side aggregation sorted them by recency
+  - confirmed a no-op `PATCH /api/projects/[projectId]` with the current persisted values still returned `200`, so the rollup slice did not regress the existing project edit path
+  - in the live browser runtime as `ana@noon.app`, opened the real project detail in `/dashboard/projects` and observed `Historial de actividad` with task title, actor, timestamp, and note matching the persisted task activity
+  - in the live browser runtime, validated the rollup loading state by delaying `/api/tasks/[taskId]/activity` responses and observing skeletons
+  - in the live browser runtime, validated the rollup empty state by overriding task-activity responses to `{ data: [] }`
+  - in the live browser runtime, validated the rollup error state by overriding task-activity responses to `500` and observing the retry affordance
+  - `pedro@noon.app` and `laura@noon.app` did not see the project activity panel in `/dashboard/projects`, but the developer runtime still surfaced mock-filtered project cards instead of the validated real project detail
+- Validation outcome:
+  - the project-side task-activity rollup is runtime-validated for the intended PM/admin first-cut path
+  - loading, empty, and error UI states were validated through browser-side fault injection without changing server contracts
+  - the pre-existing mixed-mode risk remains visible on developer project boards, so negative visibility evidence for developers is indirect rather than a real-project detail check
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the project-side task-activity rollup slice
+
+### Session 016
+- Date: 2026-03-18
+- Route used: system-backend -> system-frontend -> system-testing
+- Objective: align developer project visibility in `/dashboard/projects` with real persisted project/task visibility without reopening Phase 2E/2F or Phase 3
+- Implemented:
+  - `supabase/migrations/0008_phase_2g_project_visibility_alignment.sql`
+  - `supabase/migrations/0009_phase_2g_tasks_rls_recursion_fix.sql`
+  - `app/api/projects/route.ts` now limits `GET /api/projects` to delivery roles (`admin`, `pm`, `developer`)
+  - `lib/data-context.tsx` now tracks persisted projects separately from mixed-mode project state and exposes `projectBoardProjects` so developers in Supabase mode do not inherit `mockProjects` on `/dashboard/projects`
+  - `app/dashboard/projects/page.tsx` now consumes `projectBoardProjects` for list, kanban, stats, empty state, and detail selection
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on pre-existing workspace issues in `profiles`, `supabase`, `middleware`, and seed scripts
+  - pushing `0008` first exposed a real RLS recursion between `projects` and `tasks`; `0009` was added and pushed as the bounded corrective migration
+  - runtime validation against the linked Supabase project confirmed:
+    - `ana@noon.app` can read persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`
+    - `pedro@noon.app` can now also read that same project and its assigned persisted task `25d532a6-ce53-46db-96b1-8a519768e03b`
+    - `laura@noon.app` sees zero visible projects and zero visible tasks for that project
+  - direct live browser revalidation of the updated `/dashboard/projects` board is still pending
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - implementation complete
+  - runtime validation complete at the RLS/API contract layer
+  - browser-level board validation pending
+
+### Session 017
+- Date: 2026-03-18
+- Route used: system-testing -> system-docs
+- Objective: close the remaining browser-level validation for the developer project-visibility slice in `/dashboard/projects`
+- Evidence gathered:
+  - launched local Edge in headless DevTools mode against the live app runtime at `http://127.0.0.1:3000`
+  - signed in through the real login UI as `ana@noon.app`, `pedro@noon.app`, and `laura@noon.app`
+  - confirmed the persisted target project name is `Propuesta - Finance Group MX`
+  - as `ana@noon.app`, confirmed the mixed PM board still shows the real project and that opening its detail still exposes the PM/admin `Historial de actividad` panel
+  - as `pedro@noon.app`, confirmed `/dashboard/projects` shows only one project card for `Propuesta - Finance Group MX`, that the detail dialog opens, and that the PM/admin `Historial de actividad` panel is absent
+  - as `laura@noon.app`, confirmed `/dashboard/projects` shows zero visible projects across the board columns
+- Validation outcome:
+  - the developer visibility alignment slice is now runtime-validated end-to-end in the browser
+  - list/kanban/detail are aligned for the validated real project path
+  - the PM/admin rollup remained stable while developer visibility was tightened
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation fully closed for the developer project visibility alignment slice
+
+### Session 018
+- Date: 2026-03-18
+- Route used: system-frontend -> system-testing -> system-docs
+- Objective: align developer task visibility in `/dashboard/tasks` and the delivery summary on `/dashboard` with the same persisted truth already established for developer project visibility
+- Implemented:
+  - `lib/data-context.tsx` now tracks `persistedTasks` separately from mixed-mode `tasks` and exposes `taskBoardTasks`
+  - `app/dashboard/tasks/page.tsx` now consumes `taskBoardTasks` plus `projectBoardProjects` for developer-visible task list, stats, detail selection, and project-name lookup
+  - `app/dashboard/page.tsx` now computes delivery summary from `projectBoardProjects` and `taskBoardTasks`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on pre-existing workspace issues in `profiles`, `supabase`, `middleware`, and seed scripts
+  - live browser runtime confirmed:
+    - `pedro@noon.app` now sees only one persisted task in `/dashboard/tasks`, under `Propuesta - Finance Group MX`
+    - `pedro@noon.app` no longer sees mock tasks from `EduLearn LMS Platform` or `HealthTech Telemedicina`
+    - `laura@noon.app` now sees an empty `/dashboard/tasks` board
+    - the delivery summary on `/dashboard` no longer counts mock pending/in-progress tasks for developers
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the developer task visibility alignment slice
+
+### Session 019
+- Date: 2026-03-18
+- Route used: system-frontend -> system-testing -> system-docs
+- Objective: align developer delivery reporting in `/dashboard/reports` with the same visible project/task truth already used by `/dashboard`, `/dashboard/projects`, and `/dashboard/tasks`
+- Implemented:
+  - `app/dashboard/reports/page.tsx` now consumes `projectBoardProjects` and `taskBoardTasks` from `useData()` instead of raw mixed-mode `projects` and `tasks`
+- Validation outcome:
+  - live browser runtime confirmed that `pedro@noon.app` now sees `0` active projects and `0` completed tasks in `/dashboard/reports`
+  - live browser runtime confirmed that `laura@noon.app` also sees `0` active projects and `0` completed tasks in `/dashboard/reports`
+  - these KPIs no longer reflect prior mock delivery contamination for developers
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the developer delivery reporting alignment slice
+
+### Session 020
+- Date: 2026-03-18
+- Route used: system-analysis -> system-frontend -> system-testing -> system-docs
+- Objective: align analytics realism in `/dashboard/reports` without reopening the already-closed visibility alignment slices
+- Implemented:
+  - `lib/data-context.tsx` now exposes `persistedProjects` and `persistedTasks` so reports can consume persisted delivery truth directly in Supabase mode without a broader refactor
+  - `lib/dashboard-selectors.ts` no longer hardcodes the monthly `Sep/Oct/Nov/Dic/Ene/Feb` reporting series and now derives a real 6-month lead trend from visible lead `createdAt`
+  - `lib/dashboard-selectors.ts` now marks whether a real recent lead trend exists so the UI can render an honest empty state instead of synthetic points
+  - `app/dashboard/reports/page.tsx` now uses role-appropriate persisted delivery inputs in Supabase mode, keeps monthly revenue/ventas explicitly disabled until a real close-date source exists, and renders explicit empty states for `Ventas`, `Pipeline`, `Fuentes`, and `Proyectos` when visible real data is insufficient
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on pre-existing workspace issues in `profiles`, `supabase`, `middleware`, and seed scripts
+  - no new TypeScript failures were surfaced in the changed reports files
+  - browser-level runtime validation was executed against `http://127.0.0.1:3000` through headless Edge + CDP automation using real Supabase login for `ana@noon.app`, `pedro@noon.app`, and `laura@noon.app`
+  - `pedro@noon.app` and `laura@noon.app` both show honest empty states for `Ventas`, `Pipeline`, and `Fuentes`, and no longer see demo monthly series presented as real data
+  - `ana@noon.app` and `pedro@noon.app` both show the persisted `Revision` project-status chart in the `Proyectos` tab
+  - `laura@noon.app` shows the explicit `Sin proyectos visibles` empty state in the `Proyectos` tab
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the reports analytics realism slice
+
+### Session 021
+- Date: 2026-03-18
+- Route used: system-backend -> system-testing -> system-docs
+- Objective: close the commercial lead assignment slice by making proposal send lock the lead, enabling explicit release as `sin respuesta`, enabling claim by another seller, and proving the original seller can no longer keep mutating the lead without reclaiming it
+- Implemented:
+  - `supabase/migrations/0010_phase_2h_lead_locking.sql`
+    - `assignment_status`, `locked_by_proposal_id`, `locked_at`, `released_at`
+    - proposal-status trigger that locks the lead on `sent|accepted|handoff_ready`
+    - RPCs `release_lead_as_no_response` and `claim_released_lead`
+    - widened lead/proposal/activity select visibility for released leads
+  - `supabase/migrations/0011_phase_2h_lead_assignment_policy_fix.sql`
+    - tightened `leads_update_sales_scope` and `leads_delete_sales_scope` so a plain seller can no longer keep editing or deleting a released/claimed lead only because they originally created it
+  - `/api/leads/[leadId]/release` and `/api/leads/[leadId]/claim` now expose explicit workflow actions with `404/409` semantics
+  - `/api/leads/[leadId]` now performs route-level ownership checks for plain sales users and returns explicit `403` instead of bubbling an ambiguous persistence failure
+  - `lib/data-context.tsx`, `components/lead-detail.tsx`, `components/lead-card.tsx`, and `/dashboard/leads` now surface assignment state and keep the selected lead synchronized after release/claim
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on pre-existing workspace issues in `supabase`, `middleware`, and seed scripts
+  - remote migrations `0010` and `0011` were applied to the linked Supabase project with `npx.cmd supabase db push --yes`
+  - runtime validation was executed against `http://127.0.0.1:3000` through real app routes plus real Supabase SSR sessions using `juan@noon.app` and a temporary sales user `qa.sales2@noon.app`
+  - proposal send locked the persisted test lead
+  - unrelated sales could not see that lead before release
+  - explicit release exposed the lead to the second seller
+  - the second seller could claim the released lead
+  - the original seller then received an explicit `403` when attempting to mutate the claimed lead without reclaiming it
+  - the validation script now cleans up its temporary QA leads automatically after each run
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the commercial lead locking/release/claim slice
+
+### Session 022
+- Date: 2026-03-18
+- Route used: system-backend -> system-frontend -> system-docs
+- Objective: implement Phase 2I manual lead follow-up scheduling without reopening WhatsApp, proximity, reminders, or broader commercial automation
+- Implemented:
+  - `supabase/migrations/0012_phase_2i_lead_follow_up.sql`
+    - adds nullable `next_follow_up_at` to `public.leads`
+    - adds an index for scheduled follow-up lookups
+    - refreshes `collect_lead_update_fields()` so update activity records `nextFollowUpAt`
+  - `lib/server/leads/schema.ts`, `lib/server/leads/mappers.ts`, `lib/server/leads/repository.ts`, `lib/server/supabase/database.types.ts`, `lib/leads/serialization.ts`, `lib/types.ts`, and `lib/data-context.tsx`
+    - now carry `nextFollowUpAt` through the lead persistence contract
+    - allow explicit follow-up clearing through `null`
+  - `lib/leads/follow-up.ts`
+    - centralizes follow-up state derivation plus datetime formatting/parsing helpers
+  - `components/lead-detail.tsx`
+    - now lets sales schedule, reprogram, and clear the next follow-up datetime
+    - surfaces scheduled/today/overdue state in detail
+    - routes the existing `Agendar` CTA into the real follow-up flow
+  - `components/lead-card.tsx`
+    - now shows follow-up state and scheduled datetime when present
+- Scope boundary kept:
+  - included manual persisted follow-up scheduling on leads plus visible state in list/detail
+  - excluded WhatsApp, geolocation/radius, notifications/reminders, Google Calendar, Maxwell, and broader reporting changes
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - one new type error introduced during implementation (`nextFollowUpAt: null` on lead clear) was fixed in-session
+  - runtime validation is still pending until migration `0012` is pushed and the live app flow is exercised against the linked Supabase project
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - implementation complete
+  - runtime validation pending
+
+### Session 023
+- Date: 2026-03-18
+- Route used: system-testing
+- Objective: validate Phase 2I manual lead follow-up scheduling against the linked Supabase project and the local app runtime
+- Evidence gathered:
+  - pushed migration `0012_phase_2i_lead_follow_up.sql` to the linked Supabase project with `npx.cmd supabase db push --yes`
+  - created and ran `tmp_validate_lead_follow_up.mjs` against `http://127.0.0.1:3000` using a real Supabase SSR session for `juan@noon.app`
+  - confirmed a persisted QA lead could be created, then updated through `PATCH /api/leads/[leadId]` with `nextFollowUpAt`
+  - confirmed the same lead reread through `GET /api/leads` preserved the scheduled datetime after reload
+  - confirmed the same lead could be rescheduled, reread, then cleared back to `null`
+  - confirmed `GET /api/leads/[leadId]/activity` reflected `updated` entries whose `changedFields` include `nextFollowUpAt`
+  - attempted browser-level validation through temporary headless Edge + CDP automation in `tmp_validate_lead_follow_up_browser.mjs`, but the harness timed out before yielding stable DOM evidence
+  - cleaned temporary browser-validation QA leads from Supabase after the failed CDP attempt
+- Validation outcome:
+  - app-route runtime validation is complete for the persisted follow-up scheduling contract
+  - browser-level validation of the visible follow-up state in `/dashboard/leads` is still pending because the temporary CDP harness was not reliable enough to use as closing evidence
+- Completion status:
+  - partial runtime closure
+  - contract/persistence evidence complete
+  - browser-level UI evidence pending
+
+### Session 024
+- Date: 2026-03-18
+- Route used: system-testing -> system-docs
+- Objective: close the remaining browser-level runtime evidence for Phase 2I manual lead follow-up scheduling and update local context accordingly
+- Evidence gathered:
+  - reused the live local Next dev server at `http://127.0.0.1:3000` and the active Edge DevTools endpoint at `http://127.0.0.1:9222`
+  - repaired `tmp_validate_lead_follow_up_browser.mjs` so it now creates a fresh CDP page, waits on real DOM conditions instead of fixed sleeps, closes its sockets/page target cleanly, and deletes QA leads even on failure
+  - created three persisted QA leads as `juan@noon.app` covering the visible follow-up states `scheduled`, `due_today`, and `overdue`
+  - confirmed in `/dashboard/leads` that the three lead cards rendered `Seguimiento programado`, `Vence hoy`, and `Atrasado`
+  - opened lead detail for each QA lead and confirmed the same follow-up state was rendered in the detail surface
+  - reloaded the browser page and confirmed both card and detail continued to show the same persisted follow-up state for each validated case
+  - cleaned the QA leads after the browser validation completed
+- Validation outcome:
+  - Phase 2I now has browser-level runtime validation in addition to the earlier app-route contract evidence
+  - the prior failure was confirmed to be harness instability rather than a demonstrated product defect
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for Phase 2I manual lead follow-up scheduling
+
+### Session 025
+- Date: 2026-03-18
+- Route used: system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: align the delivery-facing user directory for `/dashboard/projects` and `/dashboard/tasks` with real `user_profiles` data without reopening settings, earnings, rewards, or broader user management
+- Implemented:
+  - `app/api/users/delivery/route.ts`
+    - new read-only delivery directory route guarded to `admin|pm|developer`
+  - `lib/server/profiles/repository.ts`
+    - new `listDeliveryUsers()` helper over active `user_profiles` rows for `admin|pm|developer`
+  - `lib/server/profiles/types.ts`
+    - delivery-directory contract for backend route output
+  - `lib/types.ts`
+    - shared client-facing `DeliveryUser` contract
+  - `lib/data-context.tsx`
+    - now loads `deliveryUsers` from `/api/users/delivery` in Supabase mode for delivery-capable roles
+    - keeps global `users` mock-backed so settings/earnings/rewards remain out of scope
+  - `app/dashboard/projects/page.tsx`
+    - now resolves PM and team-member display from `deliveryUsers`
+  - `components/project-form-dialog.tsx`
+    - now uses `deliveryUsers` for PM and developer selection
+  - `components/task-form-dialog.tsx`
+    - now uses `deliveryUsers` for developer assignee selection
+- Validation outcome:
+  - route/runtime validation against the live app + Supabase confirmed:
+    - `admin@noon.app`, `ana@noon.app`, and `pedro@noon.app` can read `GET /api/users/delivery`
+    - `juan@noon.app` receives `403`
+    - the route returns only delivery roles plus both legacy-compatible `id` and real `profileId`
+  - browser-level validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `/dashboard/projects` fetches `/api/users/delivery`
+    - the project edit PM selector renders names from the delivery directory
+    - `/dashboard/tasks` fetches `/api/users/delivery`
+    - the task create assignee selector renders developer names from the delivery directory
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for delivery user directory alignment in `/dashboard/projects` and `/dashboard/tasks`
+
+### Session 026
+- Date: 2026-03-18
+- Route used: system-analysis -> system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: align `/dashboard/settings` with real `user_profiles` data without opening user CRUD, earnings, rewards, or points
+- Implemented:
+  - `app/api/users/admin/route.ts`
+    - new admin-only read route for the settings user directory
+  - `lib/server/profiles/repository.ts`
+    - new `listAdminDirectoryUsers()` helper over all app roles from `user_profiles`
+  - `lib/server/profiles/types.ts`
+    - admin-directory backend contract
+  - `lib/types.ts`
+    - shared client-facing `SettingsUser` contract
+  - `lib/users/admin-directory-serialization.ts`
+    - deserializes `createdAt` and `lastLoginAt` for the settings directory
+  - `lib/data-context.tsx`
+    - now loads `settingsUsers` from `/api/users/admin` in `supabase` mode for `admin`
+    - keeps global `users` mock-backed for demo-only settings cards plus earnings/rewards continuity
+  - `lib/dashboard-selectors.ts`
+    - now exposes a dedicated settings-directory row model with real `Estado`, `Ultimo acceso`, and `Fecha Registro`
+  - `app/dashboard/settings/page.tsx`
+    - now renders the real read-only user directory in `supabase` mode
+    - hides fake `Nuevo Usuario`, edit, and delete affordances in `supabase` mode
+    - keeps the demo role switcher only in mock mode and shows an honest read-only message in `supabase`
+- Validation outcome:
+  - route/runtime validation against the live app + Supabase confirmed:
+    - `admin@noon.app` can read `GET /api/users/admin`
+    - `juan@noon.app` receives `403`
+    - the route returns the expected admin-directory fields across all app roles
+  - browser-level validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `/dashboard/settings` fetches `/api/users/admin`
+    - the `Usuarios` tab renders the real profile directory with `Estado`, `Ultimo acceso`, and `Fecha Registro`
+    - the `Usuarios` tab no longer shows `Balance`, `Puntos`, or `Nuevo Usuario` in `supabase` mode
+    - the `Roles y Permisos` tab no longer presents the demo role switcher in `supabase` mode
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for settings user directory alignment in `/dashboard/settings`
+
+### Session 027
+- Date: 2026-03-18
+- Route used: system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: align personal stats realism on `/dashboard`, `/dashboard/earnings`, and `/dashboard/rewards` without opening real commissions/payments/points persistence, withdrawals, reward redemption, or broader finance work
+- Implemented:
+  - `lib/dashboard-selectors.ts`
+    - new shared personal-stats availability model for `mock` vs `supabase`
+  - `app/dashboard/page.tsx`
+    - dashboard header now renders honest unavailable-state copy instead of fake balance/points in `supabase`
+  - `components/app-sidebar.tsx`
+    - user dropdown now renders honest unavailable-state labels instead of fake balance/points in `supabase`
+  - `app/dashboard/earnings/page.tsx`
+    - keeps demo finance behavior in `mock`
+    - replaces balance/commissions/transactions/withdraw UI with honest unavailable states and disabled actions in `supabase`
+  - `app/dashboard/rewards/page.tsx`
+    - keeps demo rewards behavior in `mock`
+    - replaces points/store/history/redeem UI with honest unavailable states and disabled actions in `supabase`
+  - `tmp_validate_personal_stats_browser.mjs`
+    - browser validation harness for the `supabase` path plus an intended `mock` path
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` returned only the same pre-existing workspace errors in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `/dashboard` no longer shows fake balance/points in the header for `ana@noon.app`
+    - the sidebar dropdown no longer shows fake balance/points in `supabase`
+    - `/dashboard/earnings` shows honest unavailable states without demo finance content in `supabase`
+    - `/dashboard/rewards` shows honest unavailable states without demo points/store/history content in `supabase`
+  - attempted runtime validation of the `mock` fallback required a second local Next dev instance with `NOON_ENABLE_SUPABASE_AUTH=false`, but that second instance could not start in the same workspace because Next 16 could not acquire `.next/dev/lock`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - partial
+  - implementation complete
+  - `supabase` path browser-validated
+  - `mock` runtime fallback still pending validation evidence
+
+### Session 028
+- Date: 2026-03-19
+- Route used: system-testing -> system-docs
+- Objective: close the remaining runtime validation debt for the `mock` fallback of personal stats realism alignment after restarting the local app in mock mode
+- Implemented:
+  - `tmp_validate_personal_stats_browser.mjs`
+    - now accepts `REAL_BASE_URL` and `MOCK_BASE_URL` overrides
+    - mock validation now navigates through in-app links instead of full page reloads so the mock auth state is preserved
+- Validation outcome:
+  - browser-level validation against `http://127.0.0.1:3000` with `NOON_ENABLE_SUPABASE_AUTH=false` confirmed:
+    - `/dashboard` kept the demo balance/points values
+    - the sidebar dropdown kept the demo balance/points labels
+    - `/dashboard/earnings` kept the demo finance content
+    - `/dashboard/rewards` kept the demo rewards content
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for personal stats realism alignment on `/dashboard`, `/dashboard/earnings`, and `/dashboard/rewards`
+
+### Session 029
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-testing -> system-docs
+- Objective: close the next bounded delivery slice by removing PM/admin mock delivery bleed-through from `/dashboard`, `/dashboard/projects`, and `/dashboard/tasks` in `supabase` without opening broader planning, finance, or Phase 3 work
+- Implemented:
+  - `lib/data-context.tsx`
+    - `projectBoardProjects` and `taskBoardTasks` now resolve from `persistedProjects` and `persistedTasks` for all `supabase` roles, instead of keeping the persisted-only board source only for `developer`
+  - `tmp_validate_delivery_workspace_realism_browser.mjs`
+    - browser runtime harness added to validate persisted-only delivery KPIs and board surfaces against the live app
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `/dashboard` delivery KPI cards aligned to persisted-only `/api/projects` + `/api/tasks`
+    - `ana@noon.app` no longer sees mock project cards in `/dashboard/projects`
+    - `ana@noon.app` no longer sees mock task cards in `/dashboard/tasks`
+    - the validated PM board currently exposes `1` visible persisted project and `1` visible persisted task in the linked Supabase dataset
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for PM/admin delivery workspace realism alignment on `/dashboard`, `/dashboard/projects`, and `/dashboard/tasks`
+
+### Session 030
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-testing -> system-docs
+- Objective: close the next bounded dashboard slice by removing fake month-over-month and monthly KPI copy from `/dashboard` in `supabase` without opening reports, finance persistence, or broader commercial analytics work
+- Implemented:
+  - `lib/dashboard-selectors.ts`
+    - new dashboard KPI copy model for `mock` vs `supabase`
+  - `app/dashboard/page.tsx`
+    - sales and delivery cards now preserve demo KPI copy in `mock`
+    - sales and delivery cards now render honest visible-total copy in `supabase` instead of fake `+12%`, `+23%`, and unsupported `Este mes` labels
+  - `tmp_validate_dashboard_kpi_realism_browser.mjs`
+    - browser runtime harness added for `/dashboard` KPI honesty in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `/dashboard` now replaces fake month-over-month sales deltas with honest copy in `supabase`
+    - `/dashboard` no longer labels won deals as monthly when only visible totals exist
+    - `/dashboard` no longer labels completed delivery projects as monthly when only visible totals exist
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for dashboard KPI realism alignment on `/dashboard`
+
+### Session 031
+- Date: 2026-03-19
+- Route used: system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/settings` by degrading `General` and `Integraciones` in `supabase` without opening company-settings persistence, integration wiring, user CRUD, or broader admin work
+- Implemented:
+  - `app/dashboard/settings/page.tsx`
+    - `General` now renders the existing company fields as disabled reference values in `supabase`
+    - removes the fake `Guardar cambios` CTA in `supabase` and replaces it with explicit read-only copy
+    - `Integraciones` now renders informational-only status rows in `supabase`
+    - replaces fake `Stripe conectado` and `Conectar` affordances for `Supabase` and `Gmail / SMTP` with honest non-configurable status copy
+    - preserves the existing demo behavior in `mock`
+  - `tmp_validate_settings_realism_browser.mjs`
+    - new Edge + CDP browser harness for `/dashboard/settings` honesty validation in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `/dashboard/settings` `General` as a read-only form in `supabase`
+    - the company inputs and timezone selector are disabled in `supabase`
+    - `/dashboard/settings` no longer shows `Guardar cambios`, `Conectado`, or `Conectar` affordances in `supabase`
+    - `Supabase` is still communicated as the active runtime without claiming in-page configurability
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for settings realism cleanup in `/dashboard/settings`
+
+### Session 032
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/settings` by degrading `Notificaciones` in `supabase` without opening real preference persistence, delivery of notifications, jobs, email/push backend, or broader admin work
+- Implemented:
+  - `app/dashboard/settings/page.tsx`
+    - `Notificaciones` now renders an informational-only description in `supabase`
+    - removes fake notification switches in `supabase`
+    - removes the fake `Guardar preferencias` CTA in `supabase`
+    - reuses the existing notification option labels as non-operational informational rows in `supabase`
+    - preserves the existing demo notification switches and save behavior in `mock`
+  - `tmp_validate_settings_realism_browser.mjs`
+    - extended the existing settings browser harness to validate the `Notificaciones` tab in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `/dashboard/settings` `Notificaciones` as an informational-only tab in `supabase`
+    - the tab no longer renders switches in `supabase`
+    - the tab no longer renders `Guardar preferencias` in `supabase`
+    - the notification categories still render as visible labels without claiming persisted state
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for settings notifications realism cleanup in `/dashboard/settings`
+
+### Session 033
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/leads` by degrading `LeadDetail > IA Asistente` in `supabase` without opening real Maxwell grounding, email send, proposal generation backend, or broader lead workflow changes
+- Implemented:
+  - `components/lead-detail.tsx`
+    - now reads `authMode` and treats `supabase` as a separate UX path for the `IA Asistente` tab
+    - clears any stale simulated generated content in `supabase`
+    - removes simulated `Generar Email`, `Generar Propuesta`, loader, generated preview, and `Enviar al cliente` affordances in `supabase`
+    - replaces the tab with explicit non-operational copy in `supabase`
+    - preserves the existing simulated IA behavior in `mock`
+  - `tmp_validate_lead_ai_realism_browser.mjs`
+    - new Edge + CDP browser harness for lead-detail IA honesty validation in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `juan@noon.app` can open a real lead detail in `/dashboard/leads`
+    - the `IA Asistente` tab now renders an explicit non-operational state in `supabase`
+    - the tab no longer renders simulated generation CTAs or `Enviar al cliente` in `supabase`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for lead-detail IA realism cleanup in `/dashboard/leads`
+
+### Session 034
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/leads` by cleaning up `LeadCard` quick actions in `supabase` without opening real calling, meeting scheduling, proposal generation backend, or broader lead workflow changes
+- Implemented:
+  - `components/lead-card.tsx`
+    - now reads `authMode` and treats `supabase` as a separate quick-actions path
+    - keeps `Abrir en Gmail` as the real direct action in `supabase`
+    - replaces fake direct `Generar propuesta` and `Agendar reunion` dropdown items with honest shortcuts that open the real lead detail
+    - replaces the fake direct `Llamar` affordance with explicit unavailable copy in `supabase`
+    - preserves the existing dropdown labels/behavior in `mock`
+  - `tmp_validate_lead_card_actions_realism_browser.mjs`
+    - new Edge + CDP browser harness for lead-card quick-actions honesty validation in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `juan@noon.app` sees the lead-card dropdown without fake `Generar propuesta` or `Agendar reunion` labels in `supabase`
+    - the dropdown preserves `Abrir en Gmail`
+    - the dropdown shows `Llamar no disponible`
+    - `Abrir detalle para propuesta` opens the real lead detail instead of staying as a no-op
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for lead-card quick actions realism cleanup in `/dashboard/leads`
+
+### Session 035
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in the global dashboard Maxwell surface by degrading misleading workspace-grounded framing in `supabase` without opening real Maxwell grounding, business-context injection, or broader AI product work
+- Implemented:
+  - `components/maxwell-chat.tsx`
+    - now reads `authMode` and treats `supabase` as a separate framing path
+    - keeps the original demo/copilot messaging and suggested prompts in `mock`
+    - replaces the `supabase` subtitle with an explicit general-assistant framing
+    - adds a persistent `Contexto manual requerido` disclosure in `supabase`
+    - replaces lead-aware prompts like `Prioriza mis leads` with generic writing/planning prompts in `supabase`
+    - updates the input placeholder in `supabase` to ask for message or pasted context explicitly
+  - `tmp_validate_maxwell_realism_browser.mjs`
+    - new Edge + CDP browser harness for the global Maxwell honesty framing in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `juan@noon.app` can open the dashboard-mounted Maxwell chat in `supabase`
+    - the chat now identifies itself as a general assistant without automatic workspace grounding
+    - the chat now shows an explicit context-required disclosure in `supabase`
+    - the suggested prompts no longer include `Prioriza mis leads` in `supabase`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for global Maxwell realism cleanup in `/dashboard`
+
+### Session 036
+- Date: 2026-03-19
+- Route used: system-analysis -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/leads` by removing the inert `Llamar` affordance from `LeadDetail > Estado` in `supabase` without opening telephony integrations, backend work, or broader lead workflow changes
+- Implemented:
+  - `components/lead-detail.tsx`
+    - adds a shared `buildPhoneCallUrl()` helper for the detail surface
+    - reuses the same `tel:` wiring for the contact-info phone link and the `Estado` action strip
+    - keeps the existing mock demo behavior intact
+    - renders `Llamar no disponible` only when `supabase` lacks a phone number instead of presenting an enabled no-op
+  - `tmp_validate_lead_detail_actions_browser.mjs`
+    - new Edge + CDP browser harness for the lead-detail `Estado` action strip in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` can open a real lead detail in `/dashboard/leads`
+    - the `Estado` tab now renders `Llamar` as a real `tel:+52 81 5555 1234` action in `supabase`
+    - the same strip still preserves `Abrir en Gmail`
+    - the same strip still preserves the follow-up CTA (`Agendar` in the validated lead)
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for lead-detail action-strip realism cleanup in `/dashboard/leads`
+
+### Session 037
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/reports` by correcting the top won-value KPI wording in `supabase` without opening finance persistence, payments, commissions, or broader reports work
+- Implemented:
+  - `lib/dashboard-selectors.ts`
+    - new `selectReportsRevenueKpiCopy()` helper for runtime-specific KPI wording
+  - `app/dashboard/reports/page.tsx`
+    - preserves demo `Ingresos Totales` / `por venta` wording in `mock`
+    - renders `Valor ganado visible` / `por lead ganado visible` in `supabase`
+    - leaves the underlying won-lead value calculation unchanged
+  - `tmp_validate_reports_kpi_realism_browser.mjs`
+    - new Edge + CDP browser harness for the reports KPI wording in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `/dashboard/reports` without `Ingresos Totales` in `supabase`
+    - the same KPI now renders `Valor ganado visible`
+    - the same average label now renders `por lead ganado visible` instead of `por venta`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for reports KPI wording realism alignment on `/dashboard/reports`
+
+### Session 038
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard` by correcting the sales revenue-style KPI wording in `supabase` without opening finance persistence, payments, commissions, or broader dashboard work
+- Implemented:
+  - `lib/dashboard-selectors.ts`
+    - `selectDashboardKpiCopy()` now includes a runtime-specific title for the sales revenue-style KPI
+  - `app/dashboard/page.tsx`
+    - preserves `Revenue total` in `mock`
+    - renders `Valor ganado visible` in `supabase`
+    - leaves the visible won-lead value calculation unchanged
+  - `tmp_validate_dashboard_revenue_wording_browser.mjs`
+    - new Edge + CDP browser harness for the dashboard sales revenue-style KPI wording in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `/dashboard` without `Revenue total` in `supabase`
+    - the same KPI now renders `Valor ganado visible`
+    - the helper copy still renders `Acumulado visible en leads ganados`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for dashboard sales revenue wording realism on `/dashboard`
+
+### Session 039
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard` by removing day-bounded wording from the home header in `supabase` without opening new daily calculations, backend work, or broader dashboard changes
+- Implemented:
+  - `lib/dashboard-selectors.ts`
+    - `selectDashboardKpiCopy()` now includes a runtime-specific header summary label
+  - `app/dashboard/page.tsx`
+    - preserves `Aqui esta el resumen de hoy` in `mock`
+    - renders `Aqui esta tu resumen visible actual` in `supabase`
+  - `tmp_validate_dashboard_header_wording_browser.mjs`
+    - new Edge + CDP browser harness for the dashboard header wording in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `/dashboard` without `Aqui esta el resumen de hoy` in `supabase`
+    - the header now renders `Aqui esta tu resumen visible actual`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for dashboard temporal wording realism on `/dashboard`
+
+### Session 040
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/projects` by removing the fake `Ver Tareas Detalle` CTA from project detail in `supabase` without inventing project-scoped task navigation or opening backend work
+- Implemented:
+  - `app/dashboard/projects/page.tsx`
+    - `ProjectsPage` now passes `authMode` into `ProjectDetail`
+    - `ProjectDetail` now renders `Ver Tareas Detalle` only in `mock`
+    - `supabase` keeps the real project actions while removing the unwired task-detail CTA
+  - `tmp_validate_projects_detail_actions_browser.mjs`
+    - new Edge + CDP browser harness for project-detail action-strip honesty validation in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` can open a real project detail in `/dashboard/projects`
+    - the detail no longer shows `Ver Tareas Detalle` in `supabase`
+    - the same detail still preserves `Editar Proyecto`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for project-detail action-strip realism cleanup in `/dashboard/projects`
+
+### Session 041
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/tasks` by making the page framing honest for PM/admin in `supabase` without changing real task visibility, filters, or backend behavior
+- Implemented:
+  - `app/dashboard/tasks/page.tsx`
+    - now reads `authMode` from `useAuth()`
+    - keeps `Mis Tareas` and assigned-task copy for developers and demo/mock flows
+    - renders `Tareas del equipo` plus team-visible wording for PM/admin in `supabase`
+    - updates the empty-state description to match the same ownership framing
+  - `tmp_validate_tasks_wording_browser.mjs`
+    - new Edge + CDP browser harness for `/dashboard/tasks` wording validation in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `Tareas del equipo` on `/dashboard/tasks` in `supabase`
+    - `admin@noon.app` no longer sees personal assigned-task framing on that surface
+    - `pedro@noon.app` still sees `Mis Tareas` on the same surface in `supabase`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for task-ownership wording realism cleanup in `/dashboard/tasks`
+
+### Session 042
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in `/dashboard/projects` by removing the fake `Nuevo Proyecto desde Hand-off` header CTA in `supabase` without inventing a new creation flow or reopening hand-off architecture
+- Implemented:
+  - `app/dashboard/projects/page.tsx`
+    - the header CTA `Nuevo Proyecto desde Hand-off` now renders only in `mock`
+    - `supabase` preserves the real board header and tabs while removing the unwired CTA
+  - `tmp_validate_projects_header_cta_browser.mjs`
+    - new Edge + CDP browser harness for `/dashboard/projects` header CTA honesty validation in `supabase`
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `/dashboard/projects` without `Nuevo Proyecto desde Hand-off` in `supabase`
+    - the same header still preserves the real management description
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for projects-header CTA realism cleanup in `/dashboard/projects`
+
+### Session 043
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-frontend -> system-testing -> system-docs
+- Objective: close the next honesty UX micro-slice in the sidebar by aligning the `/dashboard/tasks` label with the already-closed role-aware task-page framing in `supabase`
+- Implemented:
+  - `components/app-sidebar.tsx`
+    - keeps the delivery nav structure intact
+    - now rewrites the `/dashboard/tasks` label to `Tareas del equipo` only for PM/admin in `supabase`
+    - preserves `Mis Tareas` for developers and for demo/mock flows
+  - `tmp_validate_sidebar_tasks_label_browser.mjs`
+    - new Edge + CDP browser harness for the sidebar `/dashboard/tasks` label in `supabase`
+    - corrected to validate admin and developer sessions in separate fresh pages
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees `Tareas del equipo` in the sidebar for `/dashboard/tasks`
+    - `pedro@noon.app` still sees `Mis Tareas` in the same sidebar entry
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for sidebar task-label realism cleanup in `/dashboard/tasks`
+
+### Session 044
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: implement the bounded internal updates feed foundation in `supabase` without opening the broader PDF "Modulo de actualizaciones", notifications delivery, jobs, external integrations, or Maxwell
+- Implemented:
+  - `app/api/updates/route.ts`
+    - new authenticated read-only endpoint for the internal updates feed
+  - `lib/server/updates/schema.ts`
+    - query contract for bounded `limit`
+  - `lib/server/updates/types.ts`
+    - joined row contracts for recent lead/task activity aggregation
+  - `lib/server/updates/repository.ts`
+    - recent feed queries over `lead_activities` and `task_activities`
+  - `lib/server/updates/mappers.ts`
+    - server-side normalization of heterogeneous activity rows into one feed item contract
+  - `lib/server/updates/service.ts`
+    - role-visible domain selection and recency merge logic
+  - `lib/updates/serialization.ts`
+    - wire-to-client deserialization for update items
+  - `lib/types.ts`
+    - new shared `UpdateFeedItem` contract
+  - `app/dashboard/updates/page.tsx`
+    - new internal updates feed surface with honest loading, empty, error, and mock-unavailable states
+  - `components/app-sidebar.tsx`
+    - new first-level `Actualizaciones` navigation entry
+- Scope boundary kept:
+  - included only existing durable `lead_activities` and `task_activities`
+  - excluded website URL review, generated improvement audits, prototype credits, hosting upsell flow, notifications push/email, cron/jobs, new persistence, and Maxwell work
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `admin@noon.app` sees mixed `Ventas` + `Delivery` updates in `/dashboard/updates`
+    - `juan@noon.app` sees only `Ventas`
+    - `pedro@noon.app` sees only `Delivery`
+    - the sidebar exposes `Actualizaciones` from `/dashboard`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the internal updates feed foundation in `/dashboard/updates`
+
+### Session 045
+- Date: 2026-03-19
+- Route used: system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: strengthen the new delivery side of `/dashboard/updates` by adding durable task events for status and actual-hours changes without opening project events, notifications, jobs, or Maxwell
+- Implemented:
+  - `supabase/migrations/0013_phase_2j_task_activity_events.sql`
+    - extends `task_activity_type` with `status_changed` and `actual_hours_updated`
+    - adds `public.log_task_activity(...)`
+    - adds an `after update` trigger on `public.tasks` to persist durable task delivery events
+  - `lib/server/supabase/database.types.ts`
+    - updated generated task-activity enum coverage for the new durable event types
+  - `lib/types.ts`
+    - widened client task-activity contracts to carry the new event types and optional metadata
+  - `lib/tasks/activity-copy.ts`
+    - new shared copy helper for task activity rendering across delivery surfaces
+  - `lib/data-context.tsx`
+    - now carries task-activity metadata through project rollups so non-note delivery events remain renderable
+  - `lib/server/updates/mappers.ts`
+    - now normalizes `status_changed` and `actual_hours_updated` into honest `Delivery` feed rows
+  - `app/dashboard/tasks/page.tsx`
+    - now renders explicit history copy for note, status-change, and actual-hours events
+    - refreshes task activity after persisted status/hours updates
+  - `app/dashboard/projects/page.tsx`
+    - now renders project rollup entries safely when task activity is not just a note body
+  - `tmp_validate_task_delivery_events_browser.mjs`
+    - new Edge + CDP browser harness for real task delivery event validation in `supabase`
+- Scope boundary kept:
+  - included only persisted task `status` and `actualHours` changes as new durable delivery events
+  - excluded project-level events, notifications push/email, jobs/cron, Maxwell, payments, and the broader PDF updates module
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - `npx.cmd supabase db push --yes` applied migration `0013_phase_2j_task_activity_events.sql` to the linked Supabase project
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - developer `pedro@noon.app` updated persisted task `25d532a6-ce53-46db-96b1-8a519768e03b`
+    - changing `status` from `done` to `review` created a durable `status_changed` event
+    - changing `actualHours` from `11` to `12` created a durable `actual_hours_updated` event
+    - `/dashboard/tasks` rendered both events in the task-detail history
+    - `/dashboard/updates` rendered the same events in the `Delivery` feed
+    - the validation restored the original task values afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the task delivery events foundation in `/dashboard/tasks` and `/dashboard/updates`
+
+### Session 046
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: implement durable project status events for `/dashboard/projects` and `/dashboard/updates`, while aligning `sales_manager` visibility in the updates feed without opening general delivery-route access
+- Implemented:
+  - `supabase/migrations/0014_phase_2k_project_status_events.sql`
+    - adds `project_activity_type`
+    - adds `public.project_activities`
+    - adds `public.log_project_activity(...)`
+    - adds trigger-backed durable `status_changed` events on `public.projects`
+  - `supabase/migrations/0015_phase_2k_project_activity_metadata_fix.sql`
+    - adds `projectName` to trigger-written metadata for project status events
+  - `supabase/migrations/0016_phase_2k_project_activity_policy_fix.sql`
+    - fixes `project_activities` select policy so manager-level visibility does not get blocked by `projects` RLS
+  - `app/api/projects/[projectId]/activity/route.ts`
+    - new read-only combined project activity endpoint
+  - `lib/server/projects/activity-*`
+    - new repository/types/mappers for durable project activity and project-scoped task activity
+  - `lib/projects/activity-serialization.ts`
+    - new wire deserializer for combined project detail activity
+  - `lib/projects/activity-copy.ts`
+    - new copy helper for project status activity
+  - `lib/server/updates/types.ts`
+    - adds recent project activity row contract
+  - `lib/server/updates/repository.ts`
+    - adds recent `project_activities` query
+  - `lib/server/updates/mappers.ts`
+    - maps project status events into `Delivery` feed rows
+    - falls back to metadata `projectName` when the embedded project relation is intentionally unavailable
+  - `lib/server/updates/service.ts`
+    - now selects update sources by role, not just by coarse domain
+    - `sales_manager` now sees sales activity plus project-level delivery events, but not task-level delivery events
+    - `sales_manager` project-event links stay on `/dashboard/updates` so the feed does not imply new delivery-route access
+  - `lib/data-context.tsx`
+    - now reads real project detail activity from `/api/projects/[projectId]/activity` in `supabase`
+  - `app/dashboard/projects/page.tsx`
+    - now renders source-aware mixed project + task activity in project detail
+  - `tmp_validate_project_status_events_browser.mjs`
+    - new Edge + CDP browser harness for the full project status event flow
+- Scope boundary kept:
+  - included only durable `project.status` changes
+  - excluded project field-change activity for PM/team/dates/budget/description
+  - excluded general delivery-route access expansion for `sales_manager`
+  - excluded notifications, jobs, Maxwell, payments, and the broader PDF updates module
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - `npx.cmd supabase db push --yes` applied migrations `0014`, `0015`, and `0016` to the linked Supabase project
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - admin `admin@noon.app` updated persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a` from `in_progress` to `review`
+    - `project_activities` recorded durable event `87a1878a-e805-4f80-9c2a-913487600308`
+    - `/dashboard/projects` rendered the project status event in the detail timeline
+    - `sales_manager` `maria@noon.app` saw the same event in `/dashboard/updates`
+    - for `sales_manager`, the feed item intentionally used `href=/dashboard/updates`
+    - the validation restored the project status to `in_progress`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the project status events foundation in `/dashboard/projects` and `/dashboard/updates`
+
+### Session 047
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-backend -> system-testing -> system-docs
+- Objective: extend `project_activities` with durable PM, team, and schedule events without turning the project timeline into a generic changelog or opening broader delivery-route access
+- Implemented:
+  - `supabase/migrations/0017_phase_2l_project_field_activity_events.sql`
+    - extends `project_activity_type` with `pm_changed`, `team_changed`, and `schedule_changed`
+    - normalizes legacy team arrays inside the trigger so reorder-only writes do not emit false activity
+    - snapshots PM names, team names, and schedule values into metadata for readable downstream rendering
+  - `lib/types.ts`
+    - extends `ProjectActivityType` with the new project-field event types
+  - `lib/server/supabase/database.types.ts`
+    - extends the generated database enum/type coverage for the new `project_activity_type` values
+  - `lib/projects/activity-copy.ts`
+    - now renders project-aware copy for PM, team, and schedule changes
+  - `lib/projects/activity-serialization.ts`
+    - now preserves the real discriminated `project_activity` type instead of collapsing every project event to `status_changed`
+  - `lib/server/updates/mappers.ts`
+    - now renders project-field events in `/dashboard/updates` using the same project activity copy helpers
+    - still falls back to metadata `projectName` when the embedded project relation is unavailable
+  - `tmp_validate_project_field_events_browser.mjs`
+    - new Edge + CDP browser harness for project field activity validation in `supabase`
+- Scope boundary kept:
+  - included only `pm_changed`, `team_changed`, and `schedule_changed`
+  - excluded `budget_changed`, `description_updated`, `clientName`, `name`, notifications, jobs, Maxwell, and broader delivery-route access expansion
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - `npx.cmd supabase db push --yes` applied migration `0017_phase_2l_project_field_activity_events.sql` to the linked Supabase project
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - admin `admin@noon.app` updated persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a` with `pmId=4`, `teamIds=['5','6']`, `startDate=2026-03-24`, and `endDate=2026-04-07`
+    - `project_activities` recorded durable events `10a0a000-3704-4aec-a015-cb04545d1bf1` (`pm_changed`), `4666cc98-a699-4e1a-bdb9-daaeaba25efa` (`team_changed`), and `5304b9aa-f4a5-4dba-9d59-8dae9427fd89` (`schedule_changed`)
+    - `/dashboard/projects` rendered those events in the project detail timeline with project-aware copy
+    - `sales_manager` `maria@noon.app` could see the same project-field events in `/dashboard/updates`
+    - the validation restored `pmId`, `teamIds`, `startDate`, and `endDate` to their original persisted values afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the project field activity events foundation in `/dashboard/projects` and `/dashboard/updates`
+
+### Session 048
+- Date: 2026-03-19
+- Route used: system-analysis -> system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: implement an internal per-user notifications inbox in `supabase` without merging it into `Actualizaciones` or opening push/email/cron scope
+- Implemented:
+  - `supabase/migrations/0018_phase_2m_internal_notifications.sql`
+    - adds `public.user_notifications`
+    - adds per-recipient/per-source-event dedupe
+    - adds RLS so each authenticated profile can only read and mark its own notifications
+    - adds trigger-backed fan-out from selected `lead_activities`, `task_activities`, and `project_activities`
+  - `lib/server/supabase/database.types.ts`
+    - extends generated table coverage with `user_notifications`
+  - `lib/types.ts`
+    - adds shared client notification contracts
+  - `lib/server/notifications/*`
+    - adds schema, repository, service, and mappers for inbox reads and mark-as-read mutation
+  - `lib/notifications/serialization.ts`
+    - adds the notification wire contract
+  - `lib/notifications/client-events.ts`
+    - adds a small client event constant so the sidebar badge can refresh after read-state changes
+  - `app/api/notifications/route.ts`
+    - new authenticated inbox endpoint with unread count
+  - `app/api/notifications/[notificationId]/read/route.ts`
+    - new authenticated per-item mark-as-read endpoint
+  - `app/dashboard/notifications/page.tsx`
+    - new in-app notifications inbox with honest loading, empty, error, and mock-unavailable states
+    - supports `Marcar como leida`
+  - `components/app-sidebar.tsx`
+    - adds a separate `Notificaciones` workspace entry
+    - shows an unread badge in `supabase`
+- Scope boundary kept:
+  - included only in-app per-user notifications from selected durable lead/task/project events
+  - excluded push/email, cron/jobs, advanced preferences, Maxwell, and the PDF website-review/hosting updates flow
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - `npx.cmd supabase db push --yes` applied migration `0018_phase_2m_internal_notifications.sql` to the linked Supabase project
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - the PM inbox baseline for `ana@noon.app` was cleared before validation so the check only measured this slice
+    - admin `admin@noon.app` changed persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a` `pmId` from `null` to `4`
+    - developer `pedro@noon.app` changed persisted task `25d532a6-ce53-46db-96b1-8a519768e03b` from `done` to `review` and from `11` to `12` actual hours
+    - `/dashboard/notifications` rendered `3 sin leer` for `ana@noon.app`
+    - the sidebar rendered unread badge `3` on `Notificaciones`
+    - one browser `Marcar como leida` action succeeded
+    - after inbox cleanup and reload, `/dashboard/notifications` returned to `0 sin leer` and the sidebar badge disappeared
+    - the browser harness restored `project.pmId`, `task.status`, and `task.actualHours` to their original persisted values afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the internal notifications foundation in `/dashboard/notifications`
+
+### Session 049
+- Date: 2026-03-19
+- Route used: system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: close the read-only sales-to-delivery traceability slice so commercial surfaces can explain `lead -> proposal -> project` without broadening `/api/projects` access to sales roles
+- Implemented:
+  - `lib/types.ts`
+    - extends `LeadProposal` with optional `linkedProject`
+    - extends `Project` with `sourceLeadName` and `sourceProposalTitle`
+  - `lib/leads/proposal-serialization.ts`
+    - now carries `linkedProject` through the client wire contract
+  - `lib/projects/serialization.ts`
+    - now carries `sourceLeadName` and `sourceProposalTitle` through the client wire contract
+  - `lib/server/projects/types.ts`
+    - adds joined lineage shape for `source_lead` and `source_proposal`
+  - `lib/server/projects/repository.ts`
+    - now enriches project reads with joined commercial lineage
+    - adds explicit `listProjectsByProposalIds(...)` for proposal-side lineage reads
+  - `lib/server/projects/mappers.ts`
+    - now maps `sourceLeadName` and `sourceProposalTitle` into project wires
+  - `lib/server/leads/proposal-types.ts`
+    - adjusts `linked_project` typing to the real reverse-embed array shape returned by Supabase
+  - `lib/server/leads/proposal-mappers.ts`
+    - now maps `linkedProject`
+    - accepts an explicit linked-project override so route handlers can enrich proposals without depending only on fragile reverse embedding
+  - `lib/server/leads/proposal-lineage.ts`
+    - new helper that resolves a proposal-linked project from durable `lead_activities.project_created` metadata when the direct project relation is unavailable in the current commercial scope
+  - `app/api/leads/[leadId]/proposals/route.ts`
+    - now enriches each proposal with `linkedProject` via explicit project lookup by `source_proposal_id`
+    - falls back to `lead_activities.project_created` metadata when necessary instead of returning a false empty lineage state
+  - `app/api/leads/[leadId]/proposals/[proposalId]/route.ts`
+    - now preserves `linkedProject` on proposal status updates so the commercial client cache does not drop lineage after a status mutation
+  - `components/lead-detail.tsx`
+    - removes the old dependency on `projects` list for proposal linkage
+    - adds a read-only `Hand-off a delivery` card in the `Propuesta` tab
+    - shows route-honest CTA/gating: `Ir a proyectos` only when the role can open `/dashboard/projects`, otherwise `Visible en delivery para roles con acceso`
+  - `app/dashboard/projects/page.tsx`
+    - adds a read-only `Origen comercial` card in project detail
+    - shows lead/proposal labels, compact references, and route-honest `Ir a leads` gating
+  - `lib/data-context.tsx`
+    - keeps proposal caches synchronized with `linkedProject` after real project creation so commercial UI does not wait for a refetch
+  - `tmp_validate_handoff_lineage_browser.mjs`
+    - new Edge + CDP browser harness for the lineage slice
+    - validates admin lead detail, sales_manager lead detail, admin project detail, and PM project detail sequentially to avoid cookie cross-contamination in DevTools
+- Scope boundary kept:
+  - included only read-only lineage exposure over already-persisted `lead`, `proposal`, `project`, and `task` relationships
+  - excluded new tables, migrations, push/email, Maxwell, payments, and any broadening of `/api/projects` or delivery-route access for sales roles
+- Notable implementation correction:
+  - the first proposal-side implementation relied on a reverse Supabase embed from `lead_proposals` to `projects`, but runtime validation showed `linkedProject` still arriving as `null` for the commercial scope
+  - the final implementation switched to explicit project lookup by `source_proposal_id` plus a durable `lead_activities.project_created` fallback so the commercial read model stays real without inventing new permissions
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `GET /api/leads/4ea5d9e7-b1e1-492a-b551-0744717768b5/proposals` returns proposal `3c1588cb-12e1-4050-bef6-e141374e8bdc` with linked project `2f39ac50-1bce-4364-9133-1317160d8a5a`
+    - admin `admin@noon.app` sees `Hand-off a delivery` plus `Ir a proyectos` in lead detail
+    - `sales_manager` `maria@noon.app` sees the same linked project with the honest `Visible en delivery para roles con acceso` notice instead of a delivery-route CTA
+    - admin sees `Origen comercial` with real lead/proposal names plus `Ir a leads` in persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`
+    - PM `ana@noon.app` sees the same origin card with honest route gating and no sales deep link
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the sales-to-delivery traceability foundation in `components/lead-detail.tsx` and `/dashboard/projects`
+
+### Session 050
+- Date: 2026-03-19
+- Route used: system-frontend -> system-backend -> system-testing -> system-docs
+- Objective: implement query-param based deep links for dashboard entity dialogs so updates, notifications, and lineage CTAs can land on exact lead/project context instead of generic workspace routes
+- Implemented:
+  - `lib/dashboard-navigation.ts`
+    - new shared helpers for `leadId` and `projectId` deep-link construction and cleanup
+  - `app/dashboard/leads/page.tsx`
+    - now reads `leadId` from `searchParams`
+    - opens the lead detail dialog automatically when the lead is visible
+    - clears `leadId` via `router.replace(...)` on dialog close or when the selected lead disappears
+  - `app/dashboard/projects/page.tsx`
+    - now reads `projectId` from `searchParams`
+    - opens the project detail dialog automatically when the project is visible
+    - clears `projectId` via `router.replace(...)` on dialog close or when the selected project disappears
+    - now deep-links `Ir a leads` to `/dashboard/leads?leadId=...`
+  - `components/lead-detail.tsx`
+    - now deep-links `Ir a proyectos` to `/dashboard/projects?projectId=...`
+  - `lib/server/updates/mappers.ts`
+    - lead updates now deep-link to `/dashboard/leads?leadId=...`
+    - admin/delivery project updates now deep-link to `/dashboard/projects?projectId=...`
+    - `sales_manager` project updates intentionally still stay on `/dashboard/updates`
+  - `lib/server/notifications/repository.ts`
+    - adds batch lookup helpers that resolve `source_event_id` to `lead_id` / `project_id`
+  - `lib/server/notifications/service.ts`
+    - now resolves deep links server-side for lead/project notifications without changing the persisted notification rows
+    - preserves generic hrefs when the principal cannot open the destination route
+  - `lib/server/notifications/mappers.ts`
+    - now accepts an href override
+  - `tmp_validate_dashboard_entity_deeplinks_browser.mjs`
+    - new Edge + CDP browser harness for deep-link hrefs and query-param dialog behavior
+- Scope boundary kept:
+  - included only `leadId` and `projectId`
+  - excluded `taskId`, dynamic entity pages, permission changes, migrations, and route expansion
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - admin `admin@noon.app` could open `/dashboard/leads?leadId=4ea5d9e7-b1e1-492a-b551-0744717768b5` and `/dashboard/projects?projectId=2f39ac50-1bce-4364-9133-1317160d8a5a`
+    - closing each dialog cleaned the URL back to `/dashboard/leads` and `/dashboard/projects`
+    - `/api/updates` returned lead/project deep links for accessible roles, while `sales_manager` project events stayed on `/dashboard/updates`
+    - `/api/notifications` returned a commercial lead deep link and a PM project deep link
+    - lineage CTAs now point to exact project/lead ids
+    - the harness temporarily changed proposal `3c1588cb-12e1-4050-bef6-e141374e8bdc` from `handoff_ready` to `accepted` to force a fresh commercial lead notification and restored it to `handoff_ready` afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the dashboard entity deep-link foundation in `/dashboard/leads`, `/dashboard/projects`, `/dashboard/updates`, and `/dashboard/notifications`
+
+### Session 051
+- Date: 2026-03-19
+- Route used: system-frontend -> system-testing -> system-docs
+- Objective: implement task query-param deep links so delivery updates and notifications can land on exact task context instead of the generic tasks workspace
+- Implemented:
+  - `lib/dashboard-navigation.ts`
+    - adds `buildTaskDetailHref(taskId, searchParams?)`
+  - `app/dashboard/tasks/page.tsx`
+    - now reads `taskId` from `searchParams`
+    - opens the task detail dialog automatically when the task is visible
+    - clears `taskId` via `router.replace(...)` on dialog close or when the selected task disappears
+    - now resolves selected task state against `visibleTasks`, not raw `taskBoardTasks`, so developer deep links cannot reopen hidden tasks
+  - `lib/server/updates/mappers.ts`
+    - task activity updates now deep-link to `/dashboard/tasks?taskId=...`
+  - `lib/server/notifications/repository.ts`
+    - adds batched resolution from `task_activity.source_event_id` to `task_id`
+  - `lib/server/notifications/service.ts`
+    - now resolves task notification deep links server-side without rewriting the persisted notification rows
+    - only upgrades those hrefs when the principal can actually open `/dashboard/tasks`
+  - `tmp_validate_task_detail_deeplinks_browser.mjs`
+    - new Edge + CDP browser harness for task deep-link hrefs and query-param dialog behavior
+- Scope boundary kept:
+  - included only `taskId`
+  - excluded dynamic entity pages, permission changes, migrations, and task-detail redesign
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - admin `admin@noon.app` updated persisted task `25d532a6-ce53-46db-96b1-8a519768e03b` from `done` to `review` and from `11` to `12` actual hours to force fresh durable task activity
+    - developer `pedro@noon.app` then received `/api/updates` and `/api/notifications` items with href `/dashboard/tasks?taskId=25d532a6-ce53-46db-96b1-8a519768e03b`
+    - developer `pedro@noon.app` could open `/dashboard/tasks?taskId=25d532a6-ce53-46db-96b1-8a519768e03b` and the task detail dialog opened automatically
+    - closing that dialog cleaned the URL back to `/dashboard/tasks`
+    - the harness restored task `status` to `done` and `actualHours` to `11` afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the task detail deep-link foundation in `/dashboard/tasks`, `/dashboard/updates`, and `/dashboard/notifications`
+
+### Session 052
+- Date: 2026-03-19
+- Route used: system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: align `sales_manager` with read-only project access in `supabase` so project updates/notifications/lineage can land on real project detail without opening the tasks workspace
+- Implemented:
+  - `supabase/migrations/0019_phase_2n_sales_manager_project_read_alignment.sql`
+    - extends `projects_select_delivery_scope` so `sales_manager` can read persisted projects
+  - `lib/auth-context.tsx` and `lib/server/auth/policy.ts`
+    - now treat `/dashboard/projects` as a bounded route-access level distinct from `/dashboard/tasks`
+    - allow `sales_manager` to open `/dashboard/projects` without opening `/dashboard/tasks`
+  - `app/api/projects/route.ts`
+    - now allows `sales_manager` to read persisted projects
+  - `app/api/projects/[projectId]/activity/route.ts`
+    - now allows `sales_manager` to read project activity
+  - `app/api/projects/[projectId]/route.ts`
+    - no longer allows `sales_manager` to mutate projects
+  - `app/api/users/delivery/route.ts`
+    - now allows `sales_manager` to read the delivery directory needed for project detail names
+  - `lib/data-context.tsx`
+    - now loads `deliveryUsers` for `sales_manager` in `supabase`
+  - `lib/server/updates/service.ts`
+    - no longer downgrades `sales_manager` project update hrefs to `/dashboard/updates`
+  - `components/app-sidebar.tsx`
+    - now exposes `Proyectos` to `sales_manager` without exposing `/dashboard/tasks`
+  - `app/dashboard/projects/page.tsx`
+    - now renders `sales_manager` access as explicit `Solo lectura`
+    - keeps task-derived progress/task-count UI honest when the role cannot open `/dashboard/tasks`
+    - continues to hide edit/status actions from non-managing roles
+  - `tmp_validate_sales_manager_project_read_access_browser.mjs`
+    - new Edge + CDP browser harness for read-only project access, task-route denial, and project deep-link upgrades
+- Scope boundary kept:
+  - included only read-only access to `/dashboard/projects` for `sales_manager`
+  - excluded `/dashboard/tasks`, new delivery mutations, and broader delivery-route access expansion
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - `npx.cmd supabase db push --yes` applied migration `0019_phase_2n_sales_manager_project_read_alignment.sql` to the linked Supabase project
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `sales_manager` `maria@noon.app` can read persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a` through `GET /api/projects`
+    - `sales_manager` `maria@noon.app` can also read `GET /api/projects/[projectId]/activity`
+    - `sales_manager` project updates and notifications now deep-link to `/dashboard/projects?projectId=2f39ac50-1bce-4364-9133-1317160d8a5a`
+    - `sales_manager` can open `/dashboard/projects?projectId=2f39ac50-1bce-4364-9133-1317160d8a5a`, sees `Solo lectura`, and does not see `Editar Proyecto`
+    - `sales_manager` remains blocked from `PATCH /api/projects/[projectId]` with `403`
+    - browser validation also confirmed `sales_manager` is still redirected away from `/dashboard/tasks`
+    - the harness restored the project `status` to `in_progress` after generating the validation event
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the sales_manager delivery read-access alignment slice in `/dashboard/projects`, `/dashboard/updates`, and `/dashboard/notifications`
+
+### Session 053
+- Date: 2026-03-19
+- Route used: system-frontend -> system-testing -> system-docs
+- Objective: make the `sales_manager` project detail more useful in read-only mode without exposing task aggregates or expanding delivery access
+- Implemented:
+  - `app/dashboard/projects/page.tsx`
+    - adds compact formatting helpers for visible summary dates and team labels
+    - adds a read-only `Resumen para seguimiento comercial` block when the role can read projects but cannot open `/dashboard/tasks`
+    - builds that summary only from persisted project fields plus the latest visible `project_activity`
+    - keeps the latest-movement panel honest with explicit `loading`, `error`, and `empty` handling
+  - `tmp_validate_project_commercial_summary_browser.mjs`
+    - adds Edge + CDP browser validation for the `sales_manager` commercial summary block
+- Scope boundary kept:
+  - included only frontend read-only summary improvements inside `/dashboard/projects`
+  - excluded task aggregates, task-route access, permission changes, backend changes, and migrations
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser-level runtime validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `sales_manager` `maria@noon.app` can open `/dashboard/projects?projectId=2f39ac50-1bce-4364-9133-1317160d8a5a`
+    - the dialog renders `Resumen para seguimiento comercial`
+    - the summary shows `Estado actual`, `PM asignado`, `Equipo asignado`, `Calendario visible`, and `Ultimo movimiento visible`
+    - the same detail still renders `Solo lectura`
+    - the summary does not expose task-derived substitutes such as `0/0` or task totals
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the project commercial summary alignment slice in `/dashboard/projects`
+
+### Session 054
+- Date: 2026-03-19
+- Route used: system-backend -> system-testing -> system-docs
+- Objective: implement the backend foundation for user wallet balances and lead-linked prototype credit consumption without wiring the real IA / `v0` generation flow
+- Implemented:
+  - `supabase/migrations/0020_phase_2o_wallet_prototype_credits_foundation.sql`
+    - adds enums `wallet_entry_type`, `wallet_bucket`, `prototype_stage`, and `prototype_workspace_status`
+    - adds tables `prototype_credit_settings`, `user_wallets`, `user_wallet_entries`, and `prototype_workspaces`
+    - adds `ensure_current_user_wallet()` for lazy wallet creation
+    - adds `request_lead_prototype(uuid)` as the atomic debit + workspace-creation path
+  - `lib/server/leads/permissions.ts`
+    - extracts sales lead ownership enforcement so lead prototype routes and lead mutation routes share the same ownership rule
+  - `app/api/wallet/route.ts`
+    - adds authenticated wallet read with recent ledger history
+  - `app/api/leads/[leadId]/prototype/route.ts`
+    - adds `GET` for the current lead-linked prototype workspace state
+    - adds `POST` to consume credits and create a `pending_generation` workspace for that lead
+  - `lib/server/wallet/*`
+    - adds schema, repository, mappers, service, and wire serialization for wallet balances and entries
+  - `lib/server/prototypes/*`
+    - adds repository, mappers, service, and wire serialization for prototype workspaces
+  - `lib/server/supabase/database.types.ts`
+    - now includes the new wallet/prototype tables, enums, and RPC functions
+  - `lib/types.ts`
+    - now includes wallet-entry, wallet-summary, and prototype-workspace domain types
+- Scope boundary kept:
+  - included only backend foundation for wallet balances, ledger entries, configured prototype request cost, and lead-linked prototype workspace creation
+  - excluded `/dashboard/credits`, lead-detail UI wiring, `v0` integration, monthly payouts, Stripe, and automated periodic credit grants
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - `npx.cmd supabase db push --yes` applied `0020_phase_2o_wallet_prototype_credits_foundation.sql` to the linked Supabase project
+  - route-level validation through `tmp_validate_wallet_prototype_backend.mjs` confirmed:
+    - seller `juan@noon.app` could create a temporary lead
+    - `GET /api/wallet` returned the configured prototype request cost and seeded balances
+    - `POST /api/leads/:leadId/prototype` consumed free credits before earned credits
+    - the debit created a durable `prototype_workspace` in `pending_generation`
+    - the wallet ledger recorded two `prototype_request_debit` entries for that lead
+    - a duplicate request on the same lead returned `409`
+    - the harness restored settings, balances, entries, workspace, and lead state afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - backend foundation validated for wallet and prototype credits
+  - frontend surface and user-facing workflow remain open
+
+### Session 055
+- Date: 2026-03-19
+- Route used: system-frontend -> system-testing -> system-docs
+- Objective: implement the first real wallet UI and lead-side prototype request UX over the existing Supabase wallet/prototype backend, without wiring IA / `v0`
+- Implemented:
+  - `app/dashboard/credits/page.tsx`
+    - adds the authenticated wallet surface with honest `loading`, `empty`, `error`, and mock-unavailable states
+    - shows `Saldo disponible`, `Creditos gratis`, `Saldo propio`, configured prototype cost, and durable wallet ledger history
+  - `components/lead-prototype-card.tsx`
+    - adds the lead-side `Prototipo comercial` card in the `Propuesta` tab
+    - reads `/api/wallet` plus `/api/leads/:leadId/prototype` locally
+    - shows configured cost, current balance, insufficient-credit state, explicit confirmation, and honest `pending_generation` status after spend
+  - `components/lead-detail.tsx`
+    - now mounts the prototype card at the top of the proposal tab
+  - `components/app-sidebar.tsx`
+    - now exposes `/dashboard/credits` under `Finanzas`
+  - `tmp_validate_wallet_credits_frontend_browser.mjs`
+    - adds Edge + CDP browser validation for wallet UI, lead detail prototype request, and cleanup/restoration
+- Scope boundary kept:
+  - included only the wallet surface and the sales-side request flow from lead detail
+  - excluded real `v0` generation, developer continuation, monthly payouts/liquidations, Stripe, and automated recurring credit grants
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser validation through `tmp_validate_wallet_credits_frontend_browser.mjs` confirmed:
+    - `juan@noon.app` could open `/dashboard/credits` and see the seeded wallet breakdown `free=4`, `earned=9`, `total=13`, and `cost=10`
+    - the sidebar exposed `Creditos`
+    - `/dashboard/leads?leadId=<tempLeadId>` opened the lead detail dialog and the `Propuesta` tab rendered `Prototipo comercial`
+    - confirming `Solicitar prototipo` consumed credits through the real backend path and moved the UI to `Solicitud registrada` / `Pendiente de generacion`
+    - revisiting `/dashboard/credits` showed the reduced balances and durable ledger history linked to the temporary lead
+    - the harness restored settings, balances, entries, workspace, and lead state afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - wallet and prototype credits frontend foundation validated in `supabase`
+  - real IA / `v0` generation remains open and out of scope for this slice
+
+### Session 056
+- Date: 2026-03-19
+- Route used: system-backend -> system-testing -> system-docs
+- Objective: implement the commercial read model for visible `prototype_workspaces` before opening a dedicated frontend surface
+- Implemented:
+  - `app/api/prototypes/route.ts`
+    - adds `GET /api/prototypes`
+    - supports `limit` and optional `leadId`
+    - limits access to `admin`, `sales_manager`, and `sales`
+  - `lib/server/prototypes/schema.ts`
+    - adds query validation for `limit` and optional `leadId`
+  - `lib/server/prototypes/repository.ts`
+    - adds the enriched list query over `prototype_workspaces`
+    - joins `leads`, `projects`, and `user_profiles` server-side for names
+  - `lib/server/prototypes/service.ts`
+    - adds `listVisiblePrototypeWorkspaces(...)`
+    - keeps filtered reads tied to the same commercial lead-visibility rule when `leadId` is supplied
+  - `lib/server/prototypes/mappers.ts`
+    - adds wire mapping for the enriched list item shape
+  - `lib/server/prototypes/types.ts`
+    - adds the row-with-relations type for the new query
+  - `lib/prototypes/serialization.ts`
+    - now includes `PrototypeWorkspaceListItemWire` plus deserialization support
+  - `lib/types.ts`
+    - now includes `PrototypeWorkspaceListItem`
+  - `tmp_validate_prototype_workspaces_backend.mjs`
+    - adds route-level validation for sales visibility, `leadId` filtering, sales-manager visibility, and developer denial
+- Scope boundary kept:
+  - included only the backend list/read contract for visible `prototype_workspaces`
+  - excluded `/dashboard/prototypes`, sidebar wiring, lead-detail CTA upgrades, project-detail prototype references, and any IA / `v0` integration
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - route-level validation through `tmp_validate_prototype_workspaces_backend.mjs` confirmed:
+    - seller `juan@noon.app` could create a temporary lead and consume credits to create a temporary `prototype_workspace`
+    - `GET /api/prototypes?limit=10` returned the enriched workspace with `leadName`, `requestedByName`, `currentStage='sales'`, and `status='pending_generation'`
+    - `GET /api/prototypes?leadId=<tempLeadId>&limit=10` returned exactly one workspace for that lead
+    - `sales_manager` `maria@noon.app` could read the same filtered workspace
+    - `developer` `pedro@noon.app` received `403`
+    - the harness restored settings, balances, entries, workspace, and lead state afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - prototype workspace visibility backend foundation validated in `supabase`
+  - dedicated workspace frontend surface remains open
+
+### Session 057
+- Date: 2026-03-19
+- Route used: system-frontend -> system-testing -> system-docs
+- Objective: implement the first real frontend surface for visible `prototype_workspaces` and wire it back from lead detail
+- Implemented:
+  - `app/dashboard/prototypes/page.tsx`
+    - adds the commercial workspace surface over `GET /api/prototypes`
+    - supports optional `leadId` filtering through the route query
+    - renders honest `loading`, `empty`, `error`, and mock-unavailable states
+    - shows lead, requester, stage, status, optional project linkage, and timestamps without pretending the generated prototype content exists
+  - `components/app-sidebar.tsx`
+    - now exposes `Prototipos` under `Ventas`
+  - `components/lead-prototype-card.tsx`
+    - now exposes `Ver workspace` when a visible prototype workspace already exists
+    - keeps `Ir a proyecto` gated on real project linkage plus route access
+  - `lib/auth-context.tsx`
+  - `lib/server/auth/policy.ts`
+    - now treat `/dashboard/prototypes` as a sales-access route
+  - `lib/dashboard-navigation.ts`
+    - now includes `buildPrototypeWorkspaceHref(...)`
+  - `tmp_validate_prototype_workspaces_frontend_browser.mjs`
+    - adds Edge + CDP browser validation for the prototypes surface, sidebar link, lead-detail CTA, and filtered route
+- Scope boundary kept:
+  - included only the workspace surface and navigation wiring
+  - excluded preview/editor behavior, developer-side continuation, real `v0` generation, and any new credit-consumption rules
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser validation through `tmp_validate_prototype_workspaces_frontend_browser.mjs` confirmed:
+    - `juan@noon.app` could open `/dashboard/prototypes` and see the temporary workspace with `Pendiente de generacion`, `Etapa comercial`, and `Sin proyecto vinculado`
+    - the sidebar exposed `Prototipos`
+    - `/dashboard/leads?leadId=<tempLeadId>` opened the lead detail dialog, the `Propuesta` tab rendered `Ver workspace`, and that CTA navigated to `/dashboard/prototypes?leadId=<tempLeadId>`
+    - the filtered route rendered `Filtrado por lead` and the same workspace metadata
+    - `sales_manager` `maria@noon.app` could open the same filtered workspace route in the browser
+    - the harness restored settings, balances, entries, workspace, and lead state afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - prototype workspace visibility and commercial handoff frontend foundation validated in `supabase`
+  - real generated prototype content and delivery-side continuation remain open
+
+### Session 058
+- Date: 2026-03-20
+- Route used: system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: expose linked `prototype_workspaces` inside delivery project detail without opening preview/editor or real IA continuation
+- Implemented:
+  - `lib/types.ts`
+    - extends `Project` with optional prototype-workspace linkage fields
+  - `lib/projects/serialization.ts`
+    - extends `ProjectWire` and `deserializeProject(...)` with prototype-workspace fields
+  - `lib/server/projects/types.ts`
+    - extends `ProjectRowWithLineage` to carry attached prototype workspace rows
+  - `lib/server/prototypes/repository.ts`
+    - adds `listPrototypeWorkspacesByProjectIds(...)` for robust server-side enrichment by `project_id`
+  - `lib/server/projects/repository.ts`
+    - removes the fragile reverse nested join for project/workspace requester composition
+    - now enriches projects server-side by fetching visible prototype workspaces by project id and attaching them deterministically
+  - `lib/server/projects/mappers.ts`
+    - maps the newest linked prototype workspace into the project wire
+  - `app/dashboard/projects/page.tsx`
+    - adds the read-only `Workspace de prototipo` card in project detail for `admin|pm|developer`
+    - keeps the card honest: no preview, no editor, no continuation CTA, and requester fallback `Usuario no visible` when the requester profile is not visible through the current read path
+  - `tmp_validate_project_prototype_workspace_browser.mjs`
+    - adds Edge + CDP browser validation for the project-detail prototype card and the negative path for `sales_manager`
+- Scope boundary kept:
+  - included only delivery-side visibility of an already-linked workspace in project detail
+  - excluded global delivery prototypes route, continuation mutation, extra credit consumption, real `v0` integration, and any preview/editor affordance
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - browser validation through `tmp_validate_project_prototype_workspace_browser.mjs` confirmed:
+    - a temporary lead and `prototype_workspace` could be created through the real sales-side wallet/prototype flow
+    - the harness could temporarily link that workspace to persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`
+    - `ana@noon.app` could open `/dashboard/projects?projectId=2f39ac50-1bce-4364-9133-1317160d8a5a` and see the `Workspace de prototipo` card with `Pendiente de generacion` and `Etapa comercial`
+    - `sales_manager` `maria@noon.app` did not see that delivery-side card in the same project detail
+    - the harness restored settings, balances, entries, workspace, and lead state afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - delivery-side prototype workspace continuation foundation validated in `supabase`
+  - real prototype generation and developer-side continuation actions remain open
+
+### Session 059
+- Date: 2026-03-20
+- Route used: system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: implement the bounded delivery-side handoff mutation for linked `prototype_workspaces`
+- Implemented:
+  - `supabase/migrations/0021_phase_2p_prototype_delivery_handoff.sql`
+    - adds `handoff_prototype_workspace_to_delivery(uuid)` as a `security definer` RPC
+    - enforces `admin|pm`, requires `project_id`, requires `current_stage='sales'`, requires `status='pending_generation'`
+    - changes only `current_stage` to `delivery` and leaves `status` untouched
+  - `lib/server/supabase/database.types.ts`
+    - now includes the typed RPC contract for the prototype handoff function
+  - `lib/server/prototypes/types.ts`
+    - now exposes the RPC return type alias for handoff
+  - `lib/server/prototypes/repository.ts`
+    - adds `getPrototypeWorkspaceById(...)`
+    - adds `handoffPrototypeWorkspaceToDelivery(...)`
+  - `lib/server/prototypes/schema.ts`
+    - now exposes route-param validation for `prototypeWorkspaceId`
+  - `lib/server/prototypes/service.ts`
+    - adds `handoffVisiblePrototypeWorkspaceToDelivery(...)`
+    - maps RPC failures into explicit `404`, `403`, and `409` API semantics
+  - `app/api/prototypes/[prototypeWorkspaceId]/handoff/route.ts`
+    - adds the POST handoff endpoint for delivery-side project use
+  - `lib/data-context.tsx`
+    - now exposes `refreshProjects()` so the project board can re-read persisted project linkage after handoff
+  - `app/dashboard/projects/page.tsx`
+    - adds `Tomar en delivery` only for `admin|pm` when the linked workspace remains `sales` + `pending_generation`
+    - adds explicit confirmation copy clarifying that the operational handoff changes stage only and does not imply real IA continuation
+    - refreshes persisted projects after success so the dialog re-renders from server truth
+  - `tmp_validate_prototype_delivery_handoff_browser.mjs`
+    - adds Edge + CDP browser validation for the PM handoff flow, negative developer path, and commercial reflection path
+- Scope boundary kept:
+  - included only the stage handoff mutation and UI reflection
+  - excluded status changes, preview/editor behavior, credits changes, real `v0` continuation, and updates/notifications fan-out
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the same pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - `npx.cmd supabase db push --yes` applied `0021_phase_2p_prototype_delivery_handoff.sql`
+  - browser validation through `tmp_validate_prototype_delivery_handoff_browser.mjs` confirmed:
+    - a temporary lead and `prototype_workspace` could be created through the real sales-side wallet/prototype flow
+    - the harness could temporarily link that workspace to persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`
+    - `ana@noon.app` could open the project detail, use `Tomar en delivery`, and then see `Etapa delivery`
+    - the same workspace kept `status='pending_generation'` after the mutation
+    - `pedro@noon.app` received `403` on the handoff endpoint
+    - `sales_manager` `maria@noon.app` could only see the reflected `Etapa delivery` state in `/dashboard/prototypes?leadId=<tempLeadId>`
+    - the harness restored settings, balances, entries, workspace, and lead state afterward
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - prototype delivery handoff mutation validated in `supabase`
+  - real prototype generation and continuation behavior remain open
+
+## Historical decisions
+- Decision: keep `project.context.core.md` concise and operational
+  - Why: day-to-day sessions need short trusted context
+  - Impact: deeper architecture/risk truth belongs in `project.context.full.md`
+- Decision: separate confirmed truth from hypotheses and recommendations
+  - Why: this repo is evolving from demo-first to hybrid real/mock and can be overstated in either direction
+  - Impact: future sessions should preserve evidence strength instead of flattening everything into "facts"
+- Decision: do not automatically advance to Phase 3 proximity work while Phase 2 commercial persistence is still open
+  - Why: the PDFs and the repo both indicate that real commercial flow is the blocker before higher-order seller enhancements
+  - Impact: future implementation should start with leads/pipeline persistence, not geospatial polish
+
+## Deferred work log
+- Item: implement a real commercial persistence slice for leads/pipeline
+  - Reason deferred: this session corrected scope and roadmap first
+  - Risk level: high
+  - Recommended next route: system-backend
+- Item: decide ownership/RLS strategy for leads and future commercial entities
+  - Reason deferred: requires explicit contract design before migration work
+  - Risk level: medium
+  - Recommended next route: system-architecture or system-backend
+- Item: audit Maxwell against the updated mixed real/mock state
+  - Reason deferred: honesty framing is now closed, but real grounding and business-context injection are still out of scope until a bounded Maxwell slice is chosen
+  - Risk level: medium
+  - Recommended next route: system-analysis
+
+## Notes for future sessions
+- Treat Session 002 as historically useful but stale on auth reality.
+- Treat Session 004 as the current repo-backed implementation baseline for leads persistence.
+- If future code adds real persistence for leads/projects/tasks, update the corrected roadmap immediately so the next phase choice stays accurate.
