@@ -34,6 +34,8 @@ import {
   CheckCircle2,
   ArrowDownToLine,
   Lock,
+  ExternalLink,
+  AlertCircle,
 } from 'lucide-react'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { toast } from 'sonner'
@@ -59,6 +61,13 @@ interface LedgerEntry {
   metadata: Record<string, unknown>
   created_at: string
   actor_profile?: { full_name: string | null } | null
+}
+
+interface ConnectStatus {
+  status: 'none' | 'pending' | 'active' | 'restricted'
+  accountId: string | null
+  chargesEnabled?: boolean
+  detailsSubmitted?: boolean
 }
 
 interface WithdrawalRequest {
@@ -109,6 +118,10 @@ export default function EarningsPage() {
   const [withdrawNotes, setWithdrawNotes] = useState('')
   const [withdrawing, setWithdrawing] = useState(false)
 
+  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null)
+  const [connectLoading, setConnectLoading] = useState(false)
+  const [connectInitiating, setConnectInitiating] = useState(false)
+
   const loadData = () => {
     if (!isSupabase) return
     setLoading(true)
@@ -129,7 +142,37 @@ export default function EarningsPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadData() }, [isSupabase]) // eslint-disable-line react-hooks/exhaustive-deps
+  const loadConnectStatus = () => {
+    if (!isSupabase) return
+    setConnectLoading(true)
+    fetch('/api/connect/status')
+      .then((r) => r.json())
+      .then((json) => { if (json.data) setConnectStatus(json.data) })
+      .catch(() => {})
+      .finally(() => setConnectLoading(false))
+  }
+
+  const handleStartOnboarding = async () => {
+    setConnectInitiating(true)
+    try {
+      const res = await fetch('/api/connect/onboard', { method: 'POST' })
+      const json = await res.json()
+      if (res.ok && json.data?.url) {
+        window.location.href = json.data.url
+      } else {
+        toast.error(json.error ?? 'Error al iniciar configuración')
+      }
+    } catch {
+      toast.error('Error de red')
+    } finally {
+      setConnectInitiating(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+    loadConnectStatus()
+  }, [isSupabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount)
@@ -199,6 +242,48 @@ export default function EarningsPage() {
           Solicitar retiro
         </Button>
       </div>
+
+      {/* Stripe Connect card */}
+      {!connectLoading && connectStatus && (
+        <Card className={connectStatus.status === 'active' ? 'border-emerald-200 bg-emerald-50/40' : 'border-yellow-200 bg-yellow-50/40'}>
+          <CardContent className="flex flex-col gap-3 pt-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              {connectStatus.status === 'active' ? (
+                <CheckCircle2 className="size-5 text-emerald-600 mt-0.5 shrink-0" />
+              ) : (
+                <AlertCircle className="size-5 text-yellow-600 mt-0.5 shrink-0" />
+              )}
+              <div>
+                <p className="font-medium text-sm">
+                  {connectStatus.status === 'active' && 'Cuenta de retiro activa (Stripe Connect)'}
+                  {connectStatus.status === 'pending' && 'Configura tu cuenta de retiro'}
+                  {connectStatus.status === 'restricted' && 'Cuenta con restricciones — completa la verificación'}
+                  {connectStatus.status === 'none' && 'Configura tu cuenta de retiro'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {connectStatus.status === 'active'
+                    ? 'Puedes recibir pagos. Los retiros se procesan el primer día hábil de cada mes.'
+                    : 'Completa el onboarding de Stripe para recibir pagos directamente en tu cuenta.'}
+                </p>
+              </div>
+            </div>
+            {connectStatus.status !== 'active' && (
+              <Button
+                size="sm"
+                variant={connectStatus.status === 'none' || connectStatus.status === 'pending' ? 'default' : 'outline'}
+                onClick={handleStartOnboarding}
+                disabled={connectInitiating}
+                className="shrink-0"
+              >
+                {connectInitiating
+                  ? <Loader2 className="size-4 mr-2 animate-spin" />
+                  : <ExternalLink className="size-4 mr-2" />}
+                {connectStatus.status === 'none' ? 'Configurar cuenta' : 'Continuar configuración'}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16">

@@ -218,6 +218,99 @@ async function handleCheckoutSessionCompleted(
   }
 }
 
+async function handleAccountUpdated(
+  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  account: Stripe.Account,
+) {
+  const profileId = account.metadata?.noon_profile_id
+  if (!profileId) return
+
+  const status = account.charges_enabled ? 'active' : account.details_submitted ? 'restricted' : 'pending'
+  await client
+    .from('user_profiles' as never)
+    .update({ stripe_connect_status: status } as never)
+    .eq('stripe_connect_account_id', account.id)
+
+  console.log('[webhook] account.updated — profileId:', profileId, 'status:', status)
+}
+
+async function handleTransferPaid(
+  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  transfer: Stripe.Transfer,
+) {
+  await client
+    .from('payouts' as never)
+    .update({ status: 'completed', updated_at: new Date().toISOString() } as never)
+    .eq('external_reference', transfer.id)
+
+  // Also mark payout_batch as completed if all payouts in batch are done
+  const { data: payout } = await client
+    .from('payouts' as never)
+    .select('batch_id')
+    .eq('external_reference', transfer.id)
+    .maybeSingle() as { data: { batch_id: string } | null }
+
+  if (payout?.batch_id) {
+    const { data: pending } = await client
+      .from('payouts' as never)
+      .select('id')
+      .eq('batch_id', payout.batch_id)
+      .neq('status', 'completed') as { data: { id: string }[] | null }
+
+    if (!pending || pending.length === 0) {
+      await client
+        .from('payout_batches' as never)
+        .update({ status: 'completed', updated_at: new Date().toISOString() } as never)
+        .eq('id', payout.batch_id)
+    }
+  }
+}
+
+async function handleTransferReversed(
+  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  transfer: Stripe.Transfer,
+) {
+  const now = new Date().toISOString()
+
+  const { data: payoutRow } = await client
+    .from('payouts' as never)
+    .select('id, profile_id, amount, currency, batch_id')
+    .eq('external_reference', transfer.id)
+    .maybeSingle() as { data: { id: string; profile_id: string; amount: number; currency: string; batch_id: string } | null }
+
+  if (!payoutRow) return
+
+  await client
+    .from('payouts' as never)
+    .update({ status: 'failed', updated_at: now } as never)
+    .eq('id', payoutRow.id)
+
+  // Re-credit wallet
+  await client
+    .from('wallet_accounts' as never)
+    .update({
+      available_to_withdraw: payoutRow.amount,
+      updated_at: now,
+    } as never)
+    .eq('profile_id', payoutRow.profile_id)
+
+  await client.from('wallet_ledger_entries' as never).insert({
+    profile_id: payoutRow.profile_id,
+    amount: payoutRow.amount,
+    currency: payoutRow.currency,
+    entry_type: 'payout_reversal',
+    balance_bucket: 'available_to_withdraw',
+    status: 'confirmed',
+    reference_type: 'payout',
+    reference_id: payoutRow.id,
+    actor_profile_id: null,
+    metadata: { transferId: transfer.id },
+    created_at: now,
+  } as never)
+
+  console.log('[webhook] transfer.reversed — payoutId:', payoutRow.id, 'amount re-credited')
+}
+
 async function handlePaymentIntentFailed(
   client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
   paymentIntent: Stripe.PaymentIntent,
@@ -289,6 +382,15 @@ export async function POST(request: Request) {
         break
       case 'charge.refunded':
         await handleChargeRefunded(client, event.data.object as Stripe.Charge)
+        break
+      case 'account.updated':
+        await handleAccountUpdated(client, event.data.object as Stripe.Account)
+        break
+      case 'transfer.paid':
+        await handleTransferPaid(client, event.data.object as Stripe.Transfer)
+        break
+      case 'transfer.reversed':
+        await handleTransferReversed(client, event.data.object as Stripe.Transfer)
         break
     }
   } catch (err) {
