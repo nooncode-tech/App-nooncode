@@ -297,6 +297,27 @@ export interface WalletSummary {
   totalAvailable: number
   prototypeRequestCost?: number
   entries: WalletEntry[]
+  monetaryWallet?: {
+    availableToSpend: number
+    availableToWithdraw: number
+    pending: number
+    locked: number
+    currency: string
+  }
+  monetaryLedger?: Array<{
+    id: string
+    amount: number
+    currency: string
+    entryType: string
+    balanceBucket: string
+    status: 'confirmed' | 'pending' | 'reversed'
+    referenceType: string | null
+    referenceId: string | null
+    actorId: string | null
+    actorName: string
+    metadata: Record<string, unknown>
+    createdAt: Date
+  }>
 }
 
 export interface PrototypeWorkspace {

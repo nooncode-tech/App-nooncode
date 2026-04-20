@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { Coins, CircleOff, History, Sparkles, Wallet } from 'lucide-react'
+import { ArrowDownToLine, Coins, CircleOff, History, Lock, Sparkles, Timer, Wallet } from 'lucide-react'
 import { useAuth, canAccessDashboardPath } from '@/lib/auth-context'
 import type { WalletSummary, WalletEntry } from '@/lib/types'
 import { deserializeWalletSummary, type WalletSummaryWire } from '@/lib/wallet/serialization'
@@ -46,6 +46,38 @@ function bucketLabel(bucket: WalletEntry['bucket']): string {
 
 function deltaLabel(value: number): string {
   return `${value > 0 ? '+' : ''}${value}`
+}
+
+function formatUSD(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  }).format(value)
+}
+
+function monetaryEntryTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    deposit: 'Depósito',
+    earnings_distribution: 'Distribución de ganancias',
+    service_debit: 'Débito por servicio',
+    withdrawal_request: 'Solicitud de retiro',
+    withdrawal_confirmed: 'Retiro confirmado',
+    manual_adjustment: 'Ajuste manual',
+    balance_locked: 'Saldo bloqueado',
+    balance_unlocked: 'Saldo liberado',
+  }
+  return labels[type] ?? type
+}
+
+function balanceBucketLabel(bucket: string): string {
+  const labels: Record<string, string> = {
+    available_to_spend: 'Disponible para usar',
+    available_to_withdraw: 'Disponible para retirar',
+    pending: 'Pendiente',
+    locked: 'Bloqueado',
+  }
+  return labels[bucket] ?? bucket
 }
 
 export default function CreditsPage() {
@@ -215,6 +247,126 @@ export default function CreditsPage() {
               </CardContent>
             </Card>
           </div>
+
+          {wallet?.monetaryWallet && (
+            <>
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold">Wallet monetaria</h2>
+                <p className="text-sm text-muted-foreground">
+                  Saldo real en USD. Fuente de verdad para pagos, ganancias y retiros.
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card className="bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                      Disponible para usar
+                    </CardTitle>
+                    <Sparkles className="size-4 text-emerald-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                      {formatUSD(wallet.monetaryWallet.availableToSpend)}
+                    </div>
+                    <p className="text-xs text-emerald-600/70 mt-1">Para prototipos y servicios internos</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Disponible para retirar</CardTitle>
+                    <ArrowDownToLine className="size-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {formatUSD(wallet.monetaryWallet.availableToWithdraw)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Retirable a banco o Binance</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Pendiente</CardTitle>
+                    <Timer className="size-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {formatUSD(wallet.monetaryWallet.pending)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Confirmación en progreso</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Bloqueado</CardTitle>
+                    <Lock className="size-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {formatUSD(wallet.monetaryWallet.locked)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">En validación por admin/PM</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Ledger monetario</CardTitle>
+                  <CardDescription>
+                    Historial auditable de movimientos en USD. Cada entrada es permanente e irreversible.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!wallet.monetaryLedger || wallet.monetaryLedger.length === 0 ? (
+                    <Empty className="border-0 px-0 py-12">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <History className="size-5" />
+                        </EmptyMedia>
+                        <EmptyTitle>Sin movimientos monetarios</EmptyTitle>
+                        <EmptyDescription>
+                          Los pagos, ganancias y retiros aparecerán aquí cuando existan movimientos reales.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    <div className="space-y-3">
+                      {wallet.monetaryLedger.map((entry) => (
+                        <div key={entry.id} className="rounded-xl border p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="outline">{monetaryEntryTypeLabel(entry.entryType)}</Badge>
+                                <Badge variant="secondary">{balanceBucketLabel(entry.balanceBucket)}</Badge>
+                                {entry.status !== 'confirmed' && (
+                                  <Badge variant={entry.status === 'reversed' ? 'destructive' : 'outline'}>
+                                    {entry.status === 'reversed' ? 'Revertido' : 'Pendiente'}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {entry.actorName} · {formatEntryDate(entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt))}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-lg font-semibold ${entry.amount < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {entry.amount > 0 ? '+' : ''}{formatUSD(entry.amount)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{entry.currency}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
 
           <Card>
             <CardHeader>

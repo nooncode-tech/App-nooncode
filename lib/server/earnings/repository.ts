@@ -1,85 +1,80 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/server/supabase/database.types'
+import type { WalletAccountRow, WalletLedgerEntryRowWithActor } from '@/lib/server/wallet/types'
 
 type DatabaseClient = SupabaseClient<Database>
 
-const earningSelect = `
-  id,
-  actor_id,
-  actor_role,
-  earning_type,
-  amount,
-  currency,
-  lead_id,
-  proposal_id,
-  payment_id,
-  status,
-  credited_at,
-  paid_out_at,
-  notes,
-  created_at,
-  lead:leads!earnings_ledger_lead_id_fkey(name, company),
-  proposal:lead_proposals!earnings_ledger_proposal_id_fkey(title, amount)
-`
-
-export async function listEarningsForActor(
-  client: DatabaseClient,
-  actorId: string,
-) {
-  const { data, error } = await client
-    .from('earnings_ledger')
-    .select(earningSelect)
-    .eq('actor_id', actorId)
-    .order('credited_at', { ascending: false })
-
-  if (error) throw new Error(`Failed to list earnings: ${error.message}`)
-
-  return data ?? []
+export interface EarningsSummary {
+  totalEarned: number
+  availableToWithdraw: number
+  pending: number
+  locked: number
 }
 
-export async function listAllEarnings(client: DatabaseClient) {
-  const { data, error } = await client
-    .from('earnings_ledger')
-    .select(earningSelect)
-    .order('credited_at', { ascending: false })
-
-  if (error) throw new Error(`Failed to list all earnings: ${error.message}`)
-
-  return data ?? []
-}
-
-export async function getEarningsSummaryForActor(
+export async function getEarningsSummary(
   client: DatabaseClient,
-  actorId: string,
-) {
+  profileId: string,
+): Promise<EarningsSummary> {
   const { data, error } = await client
-    .from('earnings_ledger')
-    .select('amount, status, earning_type')
-    .eq('actor_id', actorId)
+    .from('wallet_accounts' as never)
+    .select('available_to_withdraw, pending, locked')
+    .eq('profile_id', profileId)
+    .maybeSingle()
 
   if (error) throw new Error(`Failed to get earnings summary: ${error.message}`)
 
-  const rows = data ?? []
+  const row = data as Pick<WalletAccountRow, 'available_to_withdraw' | 'pending' | 'locked'> | null
 
-  const totalCredited = rows
-    .filter((r) => r.status === 'credited' || r.status === 'paid_out')
-    .reduce((sum, r) => sum + Number(r.amount), 0)
+  const availableToWithdraw = Number(row?.available_to_withdraw ?? 0)
+  const pending = Number(row?.pending ?? 0)
+  const locked = Number(row?.locked ?? 0)
 
-  const pendingPayout = rows
-    .filter((r) => r.status === 'credited')
-    .reduce((sum, r) => sum + Number(r.amount), 0)
+  return {
+    totalEarned: availableToWithdraw + pending + locked,
+    availableToWithdraw,
+    pending,
+    locked,
+  }
+}
 
-  const paidOut = rows
-    .filter((r) => r.status === 'paid_out')
-    .reduce((sum, r) => sum + Number(r.amount), 0)
+export async function listEarningsHistory(
+  client: DatabaseClient,
+  profileId: string,
+  limit = 50,
+): Promise<WalletLedgerEntryRowWithActor[]> {
+  const { data, error } = await client
+    .from('wallet_ledger_entries' as never)
+    .select(`
+      id, profile_id, amount, currency, entry_type, balance_bucket,
+      status, reference_type, reference_id, actor_profile_id, metadata, created_at,
+      actor_profile:user_profiles!wallet_ledger_entries_actor_profile_id_fkey(full_name)
+    `)
+    .eq('profile_id', profileId)
+    .eq('entry_type', 'earnings_distribution')
+    .order('created_at', { ascending: false })
+    .limit(limit)
 
-  const activationTotal = rows
-    .filter((r) => r.earning_type === 'activation')
-    .reduce((sum, r) => sum + Number(r.amount), 0)
+  if (error) throw new Error(`Failed to list earnings history: ${error.message}`)
 
-  const monthlyTotal = rows
-    .filter((r) => r.earning_type === 'monthly')
-    .reduce((sum, r) => sum + Number(r.amount), 0)
+  return (data ?? []) as unknown as WalletLedgerEntryRowWithActor[]
+}
 
-  return { totalCredited, pendingPayout, paidOut, activationTotal, monthlyTotal }
+export async function listAllEarningsHistory(
+  client: DatabaseClient,
+  limit = 100,
+): Promise<WalletLedgerEntryRowWithActor[]> {
+  const { data, error } = await client
+    .from('wallet_ledger_entries' as never)
+    .select(`
+      id, profile_id, amount, currency, entry_type, balance_bucket,
+      status, reference_type, reference_id, actor_profile_id, metadata, created_at,
+      actor_profile:user_profiles!wallet_ledger_entries_actor_profile_id_fkey(full_name)
+    `)
+    .eq('entry_type', 'earnings_distribution')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw new Error(`Failed to list all earnings history: ${error.message}`)
+
+  return (data ?? []) as unknown as WalletLedgerEntryRowWithActor[]
 }

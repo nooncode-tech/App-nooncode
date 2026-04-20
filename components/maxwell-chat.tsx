@@ -95,7 +95,7 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: 
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+      <ScrollArea className="flex-1 min-h-0 p-4" ref={scrollRef}>
         <div className="space-y-4">
           {isSupabaseMode && (
             <Alert className="border-dashed bg-muted/40">

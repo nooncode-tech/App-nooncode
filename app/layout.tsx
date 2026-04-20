@@ -73,7 +73,7 @@ export default async function RootLayout({
 
   return (
     <html lang="es">
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
         <AuthProvider authMode={authMode} initialUser={initialUser}>
           {children}
           <Toaster position="top-right" richColors />
