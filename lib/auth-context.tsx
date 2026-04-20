@@ -38,6 +38,7 @@ const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
   { prefix: '/dashboard/leads', access: 'sales' },
   { prefix: '/dashboard/pipeline', access: 'sales' },
   { prefix: '/dashboard/prototypes', access: 'sales' },
+  { prefix: '/dashboard/web-analysis', access: 'sales' },
   { prefix: '/dashboard/projects', access: 'projects' },
   { prefix: '/dashboard/tasks', access: 'delivery' },
 ]

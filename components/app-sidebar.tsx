@@ -20,6 +20,7 @@ import {
   LogOut,
   ChevronDown,
   BarChart3,
+  Globe,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -59,6 +60,7 @@ const salesNavItems = [
   { title: 'Leads', href: '/dashboard/leads', icon: Users },
   { title: 'Pipeline', href: '/dashboard/pipeline', icon: Kanban },
   { title: 'Prototipos', href: '/dashboard/prototypes', icon: Blocks },
+  { title: 'Análisis Web', href: '/dashboard/web-analysis', icon: Globe },
 ]
 
 const deliveryNavItems = [
