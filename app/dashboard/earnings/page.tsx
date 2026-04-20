@@ -298,7 +298,7 @@ export default function EarningsPage() {
                         <TableRow key={entry.id}>
                           <TableCell>
                             <Badge variant="outline" className="bg-blue-500/10 text-blue-600">
-                              {earningTypeLabel[earningType] ?? earningType || '—'}
+                              {(earningTypeLabel[earningType] ?? earningType) || '—'}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-sm capitalize">{channel || '—'}</TableCell>
