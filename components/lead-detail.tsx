@@ -113,6 +113,13 @@ const proposalStatusConfig: Record<ProposalStatus, { label: string; color: strin
   handoff_ready: { label: 'Lista para hand-off', color: 'bg-primary/10 text-primary' },
 }
 
+const paymentStatusConfig: Record<string, { label: string; color: string }> = {
+  pending:   { label: 'Pago pendiente',   color: 'bg-yellow-500/10 text-yellow-700' },
+  succeeded: { label: 'Pagado',           color: 'bg-emerald-500/10 text-emerald-700' },
+  failed:    { label: 'Pago fallido',     color: 'bg-red-500/10 text-red-700' },
+  refunded:  { label: 'Reembolsado',      color: 'bg-slate-500/10 text-slate-500' },
+}
+
 const reviewStatusConfig: Record<ProposalReviewStatus, { label: string; color: string }> = {
   pending_review: { label: 'Pendiente revisión', color: 'bg-yellow-500/10 text-yellow-700' },
   approved:       { label: 'Aprobada',           color: 'bg-emerald-500/10 text-emerald-700' },
@@ -1281,6 +1288,11 @@ Total: 8 semanas
                             {isSupabaseMode && (
                               <Badge variant="outline" className={reviewCfg.color}>
                                 {reviewCfg.label}
+                              </Badge>
+                            )}
+                            {proposal.paymentStatus && paymentStatusConfig[proposal.paymentStatus] && (
+                              <Badge variant="outline" className={paymentStatusConfig[proposal.paymentStatus].color}>
+                                {paymentStatusConfig[proposal.paymentStatus].label}
                               </Badge>
                             )}
                           </>

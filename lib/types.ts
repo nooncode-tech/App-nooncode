@@ -102,6 +102,7 @@ export interface LeadActivity {
 
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'handoff_ready'
 export type ProposalReviewStatus = 'pending_review' | 'approved' | 'rejected' | 'expired' | 'cancelled'
+export type ProposalPaymentStatus = 'pending' | 'succeeded' | 'failed' | 'refunded'
 
 export interface LeadProposal {
   id: string
@@ -112,6 +113,8 @@ export interface LeadProposal {
   currency: string
   status: ProposalStatus
   reviewStatus: ProposalReviewStatus
+  paymentStatus: ProposalPaymentStatus | null
+  paidAt: Date | null
   versionNumber: number
   isSpecialCase: boolean
   supersededBy: string | null

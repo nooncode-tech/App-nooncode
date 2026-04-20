@@ -15,6 +15,7 @@ export interface LeadProposalLifecycleFields {
   is_special_case: boolean
   reviewer_id: string | null
   reviewed_at: string | null
+  // payment_status and paid_at already exist on LeadProposalRow (via database.types)
 }
 
 export interface LeadProposalRowWithLinkedProject extends LeadProposalRow, LeadProposalLifecycleFields {

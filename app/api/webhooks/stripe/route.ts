@@ -164,12 +164,49 @@ async function handleCheckoutSessionCompleted(
     const { error: earningsError } = await client.from('earnings_ledger').insert(earningRows)
     if (earningsError) throw new Error(`Failed to insert earnings: ${earningsError.message}`)
     console.log('[webhook] earnings inserted successfully')
+
+    // ── Credit monetary wallet (wallet_accounts + wallet_ledger_entries) ──────
+    // For each actor with a real user ID, also credit their pending bucket
+    const creditedAt = new Date().toISOString()
+    for (const row of earningRows) {
+      if (!row.actor_id) continue // skip Noon's share
+
+      // Upsert wallet_accounts and increment pending
+      await client
+        .from('wallet_accounts' as never)
+        .upsert({ profile_id: row.actor_id, pending: row.amount }, { onConflict: 'profile_id' })
+
+      // If account already exists, add to pending via update
+      await client
+        .from('wallet_accounts' as never)
+        .update({ pending: row.amount, updated_at: creditedAt } as never)
+        .eq('profile_id', row.actor_id)
+
+      await client.from('wallet_ledger_entries' as never).insert({
+        profile_id: row.actor_id,
+        amount: row.amount,
+        currency: row.currency,
+        entry_type: 'earnings_distribution',
+        balance_bucket: 'pending',
+        status: 'confirmed',
+        reference_type: 'payment',
+        reference_id: payment.id,
+        actor_profile_id: null,
+        metadata: {
+          earningType: 'activation',
+          channel: leadOrigin ?? 'unknown',
+          notes: row.notes,
+          paymentId: payment.id,
+        },
+        created_at: creditedAt,
+      } as never)
+    }
+    console.log('[webhook] wallet_accounts credited successfully')
   } else {
     console.log('[webhook] no earning rows to insert')
   }
 
   // ── Award points ────────────────────────────────────────────────────────────
-  // Seller gets 50 pts on every confirmed payment (outbound or inbound)
   if (sellerId) {
     await client.from('points_ledger').insert({
       actor_id: sellerId,

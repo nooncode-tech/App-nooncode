@@ -1,4 +1,4 @@
-import type { LeadProposal, ProjectStatus, ProposalReviewStatus } from '@/lib/types'
+import type { LeadProposal, ProposalPaymentStatus, ProjectStatus, ProposalReviewStatus } from '@/lib/types'
 
 export interface LeadProposalWire {
   id: string
@@ -9,6 +9,8 @@ export interface LeadProposalWire {
   currency: string
   status: LeadProposal['status']
   reviewStatus: ProposalReviewStatus
+  paymentStatus: ProposalPaymentStatus | null
+  paidAt: string | null
   versionNumber: number
   isSpecialCase: boolean
   supersededBy: string | null
@@ -39,6 +41,8 @@ export function deserializeLeadProposal(proposal: LeadProposalWire): LeadProposa
     currency: proposal.currency,
     status: proposal.status,
     reviewStatus: proposal.reviewStatus,
+    paymentStatus: proposal.paymentStatus ?? null,
+    paidAt: proposal.paidAt ? new Date(proposal.paidAt) : null,
     versionNumber: proposal.versionNumber,
     isSpecialCase: proposal.isSpecialCase,
     supersededBy: proposal.supersededBy,

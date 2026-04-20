@@ -220,6 +220,8 @@ function createMockLeadProposal(
     currency: input.currency,
     status: input.status,
     reviewStatus: 'pending_review',
+    paymentStatus: null,
+    paidAt: null,
     versionNumber: 1,
     isSpecialCase: false,
     supersededBy: null,

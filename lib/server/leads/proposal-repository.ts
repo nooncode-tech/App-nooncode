@@ -28,6 +28,8 @@ const leadProposalSelect = `
   is_special_case,
   reviewer_id,
   reviewed_at,
+  payment_status,
+  paid_at,
   created_at,
   updated_at,
   linked_project:projects!projects_source_proposal_id_fkey(id, name, status, created_at)

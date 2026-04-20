@@ -58,6 +58,8 @@ export function mapLeadProposalRowToWire(
     expiresAt: row.expires_at ?? null,
     reviewedAt: row.reviewed_at ?? null,
     reviewerId: row.reviewer_id ?? null,
+    paymentStatus: (row.payment_status as import('@/lib/types').ProposalPaymentStatus | null) ?? null,
+    paidAt: row.paid_at ?? null,
     linkedProject: mapLinkedProjectToWire(linkedProject),
   }
 }
