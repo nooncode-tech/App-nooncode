@@ -701,6 +701,30 @@ Total: 8 semanas
     }
   }
 
+  const handleStartPayment = async (proposal: LeadProposal) => {
+    try {
+      const res = await fetch('/api/payments/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalId: proposal.id,
+          leadId: lead.id,
+          projectId: proposal.linkedProject?.id ?? null,
+          clientName: lead.name,
+          clientEmail: lead.email || null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error ?? 'No se pudo iniciar el pago')
+        return
+      }
+      window.location.href = json.data.url
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al iniciar el pago')
+    }
+  }
+
   const handleReleaseLead = async () => {
     setIsMutatingAssignment(true)
 
@@ -1322,6 +1346,23 @@ Total: 8 semanas
                         <FolderKanban className="size-4" />
                         Proyecto creado: {proposal.linkedProject.name}
                       </div>
+                    )}
+
+                    {/* Botón de pago */}
+                    {isSupabaseMode &&
+                      proposal.reviewStatus === 'approved' &&
+                      ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
+                      proposal.paymentStatus !== 'succeeded' && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="default"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => handleStartPayment(proposal)}
+                      >
+                        <CreditCard className="size-3.5 mr-1.5" />
+                        Pagar propuesta
+                      </Button>
                     )}
 
                     {/* Revisión admin/pm */}
