@@ -48,6 +48,7 @@ export interface Lead {
   name: string
   email: string
   phone?: string
+  whatsapp?: string
   company?: string
   source: LeadSource
   status: LeadStatus

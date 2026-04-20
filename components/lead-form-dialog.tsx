@@ -34,6 +34,7 @@ interface LeadFormDialogProps {
     name: string
     email: string
     phone?: string
+    whatsapp?: string
     company?: string
     source: LeadSource
     value: number
@@ -56,6 +57,7 @@ interface LeadFormState {
   name: string
   email: string
   phone: string
+  whatsapp: string
   company: string
   source: LeadSourceInput
   value: string
@@ -70,6 +72,7 @@ function createEmptyFormData(): LeadFormState {
     name: '',
     email: '',
     phone: '',
+    whatsapp: '',
     company: '',
     source: 'website',
     value: '',
@@ -113,6 +116,7 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
     name: editLead?.name || '',
     email: editLead?.email || '',
     phone: editLead?.phone || '',
+    whatsapp: editLead?.whatsapp || '',
     company: editLead?.company || '',
     source: editLead?.source || 'website',
     value: editLead?.value?.toString() || '',
@@ -153,6 +157,7 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
         name: formData.name,
         email: formData.email,
         phone: formData.phone || undefined,
+        whatsapp: formData.whatsapp || undefined,
         company: formData.company || undefined,
         source: formData.source,
         value: Number.parseFloat(formData.value) || 0,
@@ -235,12 +240,35 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="whatsapp">WhatsApp</Label>
+              <Input
+                id="whatsapp"
+                value={formData.whatsapp}
+                onChange={(e) => setFormData((prev) => ({ ...prev, whatsapp: e.target.value }))}
+                placeholder="+52 55 1234 5678"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
               <Label htmlFor="company">Empresa</Label>
               <Input
                 id="company"
                 value={formData.company}
                 onChange={(e) => setFormData((prev) => ({ ...prev, company: e.target.value }))}
                 placeholder="Empresa SA"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="value">Valor estimado ($)</Label>
+              <Input
+                id="value"
+                type="number"
+                value={formData.value}
+                onChange={(e) => setFormData((prev) => ({ ...prev, value: e.target.value }))}
+                placeholder="10000"
+                min="0"
               />
             </div>
           </div>
@@ -263,17 +291,6 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="value">Valor estimado ($)</Label>
-              <Input
-                id="value"
-                type="number"
-                value={formData.value}
-                onChange={(e) => setFormData((prev) => ({ ...prev, value: e.target.value }))}
-                placeholder="10000"
-                min="0"
-              />
             </div>
           </div>
 

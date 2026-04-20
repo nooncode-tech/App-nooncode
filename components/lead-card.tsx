@@ -176,6 +176,18 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
                 {lead.phone}
               </span>
             )}
+            {lead.whatsapp && (
+              <a
+                href={`https://wa.me/${lead.whatsapp.replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-green-600 hover:text-green-700"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MessageSquare className="size-3" />
+                WA
+              </a>
+            )}
           </div>
 
           {/* Tags */}

@@ -5,6 +5,7 @@ export interface LeadWire {
   name: string
   email: string
   phone: string | null
+  whatsapp: string | null
   company: string | null
   source: Lead['source']
   status: Lead['status']
@@ -33,6 +34,7 @@ export function deserializeLead(lead: LeadWire): Lead {
     name: lead.name,
     email: lead.email,
     phone: lead.phone ?? undefined,
+    whatsapp: lead.whatsapp ?? undefined,
     company: lead.company ?? undefined,
     source: lead.source,
     status: lead.status,

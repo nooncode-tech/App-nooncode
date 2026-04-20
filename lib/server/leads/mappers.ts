@@ -8,6 +8,7 @@ export function mapLeadRowToWire(row: LeadRowWithProfiles): LeadWire {
     name: row.name,
     email: row.email,
     phone: row.phone,
+    whatsapp: row.whatsapp,
     company: row.company,
     source: row.source,
     status: row.status,
@@ -39,6 +40,7 @@ export function mapCreateLeadInputToInsert(
     name: input.name,
     email: input.email,
     phone: input.phone ?? null,
+    whatsapp: input.whatsapp ?? null,
     company: input.company ?? null,
     source: input.source,
     status: input.status,
@@ -63,6 +65,7 @@ export function mapUpdateLeadInputToUpdate(input: UpdateLeadInput): LeadUpdate {
   if (input.name !== undefined) update.name = input.name
   if (input.email !== undefined) update.email = input.email
   if (input.phone !== undefined) update.phone = input.phone ?? null
+  if (input.whatsapp !== undefined) update.whatsapp = input.whatsapp ?? null
   if (input.company !== undefined) update.company = input.company ?? null
   if (input.source !== undefined) update.source = input.source
   if (input.status !== undefined) update.status = input.status

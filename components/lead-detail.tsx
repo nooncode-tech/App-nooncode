@@ -334,7 +334,7 @@ function buildPhoneCallUrl(phone: string): string {
 
 function buildWhatsAppUrl(phone: string): string {
   const digits = phone.replace(/\D/g, '')
-  return `https://web.whatsapp.com/send?phone=${digits}`
+  return `https://wa.me/${digits}`
 }
 
 export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
@@ -376,7 +376,8 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const hasValidEmail = isValidLeadEmail(lead.email)
   const gmailComposeUrl = hasValidEmail ? buildGmailComposeUrl(lead.email) : null
   const phoneCallUrl = lead.phone?.trim() ? buildPhoneCallUrl(lead.phone) : null
-  const whatsAppUrl = lead.phone?.trim() ? buildWhatsAppUrl(lead.phone) : null
+  const whatsAppContact = (lead.whatsapp?.trim() || lead.phone?.trim()) ?? null
+  const whatsAppUrl = whatsAppContact ? buildWhatsAppUrl(whatsAppContact) : null
   const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
   const followUpState = getLeadFollowUpState(lead.nextFollowUpAt)
   const followUpInfo = followUpState ? followUpStateConfig[followUpState] : null
@@ -946,6 +947,14 @@ Total: 8 semanas
             <Phone className="size-4 text-muted-foreground" />
             <a href={buildPhoneCallUrl(lead.phone)} className="text-primary hover:underline">
               {lead.phone}
+            </a>
+          </div>
+        )}
+        {lead.whatsapp && (
+          <div className="flex items-center gap-2 text-sm">
+            <MessageSquare className="size-4 text-green-600" />
+            <a href={buildWhatsAppUrl(lead.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">
+              {lead.whatsapp}
             </a>
           </div>
         )}
