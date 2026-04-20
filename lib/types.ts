@@ -101,6 +101,7 @@ export interface LeadActivity {
 }
 
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'handoff_ready'
+export type ProposalReviewStatus = 'pending_review' | 'approved' | 'rejected' | 'expired' | 'cancelled'
 
 export interface LeadProposal {
   id: string
@@ -110,11 +111,19 @@ export interface LeadProposal {
   amount: number
   currency: string
   status: ProposalStatus
+  reviewStatus: ProposalReviewStatus
+  versionNumber: number
+  isSpecialCase: boolean
+  supersededBy: string | null
   createdAt: Date
   updatedAt: Date
   sentAt?: Date
   acceptedAt?: Date
   handoffReadyAt?: Date
+  firstOpenedAt?: Date
+  expiresAt?: Date
+  reviewedAt?: Date
+  reviewerId?: string
   linkedProject?: {
     id: string
     name: string

@@ -20,6 +20,14 @@ const leadProposalSelect = `
   sent_at,
   accepted_at,
   handoff_ready_at,
+  review_status,
+  first_opened_at,
+  expires_at,
+  version_number,
+  superseded_by,
+  is_special_case,
+  reviewer_id,
+  reviewed_at,
   created_at,
   updated_at,
   linked_project:projects!projects_source_proposal_id_fkey(id, name, status, created_at)
@@ -39,7 +47,7 @@ export async function listLeadProposals(
     throw new Error(`Failed to list lead proposals: ${error.message}`)
   }
 
-  return (data ?? []) as LeadProposalRowWithLinkedProject[]
+  return (data ?? []) as unknown as LeadProposalRowWithLinkedProject[]
 }
 
 export async function createLeadProposal(
@@ -56,7 +64,7 @@ export async function createLeadProposal(
     throw new Error(`Failed to create lead proposal: ${error?.message ?? 'No proposal returned.'}`)
   }
 
-  return data as LeadProposalRowWithLinkedProject
+  return data as unknown as LeadProposalRowWithLinkedProject
 }
 
 export async function getLeadProposalById(
@@ -73,7 +81,31 @@ export async function getLeadProposalById(
     throw new Error(`Failed to load lead proposal: ${error.message}`)
   }
 
-  return (data ?? null) as LeadProposalRowWithLinkedProject | null
+  return (data ?? null) as unknown as LeadProposalRowWithLinkedProject | null
+}
+
+export async function markProposalFirstOpened(
+  client: DatabaseClient,
+  proposalId: string
+): Promise<LeadProposalRowWithLinkedProject> {
+  const { data, error } = await client
+    .from('lead_proposals')
+    .update({ first_opened_at: new Date().toISOString() } as never)
+    .eq('id', proposalId)
+    .is('first_opened_at', null)
+    .select(leadProposalSelect)
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to mark proposal opened: ${error.message}`)
+
+  // If data is null, first_opened_at was already set — re-fetch
+  if (!data) {
+    const existing = await getLeadProposalById(client, proposalId)
+    if (!existing) throw new Error('Proposal not found')
+    return existing
+  }
+
+  return data as unknown as LeadProposalRowWithLinkedProject
 }
 
 export async function updateLeadProposalById(
@@ -92,5 +124,5 @@ export async function updateLeadProposalById(
     throw new Error(`Failed to update lead proposal: ${error?.message ?? 'No proposal returned.'}`)
   }
 
-  return data as LeadProposalRowWithLinkedProject
+  return data as unknown as LeadProposalRowWithLinkedProject
 }

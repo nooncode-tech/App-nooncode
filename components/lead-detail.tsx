@@ -18,6 +18,7 @@ import type {
   LeadProposal,
   LeadStatus,
   ProjectStatus,
+  ProposalReviewStatus,
   ProposalStatus,
 } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -60,6 +61,9 @@ import {
   UserPlus,
   MapPin,
   CreditCard,
+  ShieldCheck,
+  ShieldX,
+  Timer,
 } from 'lucide-react'
 
 interface LeadDetailProps {
@@ -107,6 +111,22 @@ const proposalStatusConfig: Record<ProposalStatus, { label: string; color: strin
   accepted: { label: 'Aceptada', color: 'bg-emerald-500/10 text-emerald-700' },
   rejected: { label: 'Rechazada', color: 'bg-red-500/10 text-red-700' },
   handoff_ready: { label: 'Lista para hand-off', color: 'bg-primary/10 text-primary' },
+}
+
+const reviewStatusConfig: Record<ProposalReviewStatus, { label: string; color: string }> = {
+  pending_review: { label: 'Pendiente revisión', color: 'bg-yellow-500/10 text-yellow-700' },
+  approved:       { label: 'Aprobada',           color: 'bg-emerald-500/10 text-emerald-700' },
+  rejected:       { label: 'Rechazada',          color: 'bg-red-500/10 text-red-700' },
+  expired:        { label: 'Expirada',           color: 'bg-slate-500/10 text-slate-500' },
+  cancelled:      { label: 'Cancelada',          color: 'bg-slate-500/10 text-slate-500' },
+}
+
+function getVigenciaLabel(expiresAt: Date | undefined, firstOpenedAt: Date | undefined): string | null {
+  if (!firstOpenedAt || !expiresAt) return null
+  const msLeft = expiresAt.getTime() - Date.now()
+  if (msLeft <= 0) return 'Expirada'
+  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24))
+  return `Vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}`
 }
 
 const projectStatusLabels: Record<ProjectStatus, string> = {
@@ -640,6 +660,37 @@ Total: 8 semanas
       void getLeadActivity(lead.id).then(setActivities).catch(() => {})
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la propuesta')
+    }
+  }
+
+  const handleReviewProposal = async (proposalId: string, action: 'approve' | 'reject' | 'cancel') => {
+    try {
+      const res = await fetch(`/api/proposals/${proposalId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error ?? 'No se pudo revisar la propuesta')
+        return
+      }
+      const updated: LeadProposal = {
+        ...json.data,
+        createdAt: new Date(json.data.createdAt),
+        updatedAt: new Date(json.data.updatedAt),
+        sentAt: json.data.sentAt ? new Date(json.data.sentAt) : undefined,
+        acceptedAt: json.data.acceptedAt ? new Date(json.data.acceptedAt) : undefined,
+        handoffReadyAt: json.data.handoffReadyAt ? new Date(json.data.handoffReadyAt) : undefined,
+        firstOpenedAt: json.data.firstOpenedAt ? new Date(json.data.firstOpenedAt) : undefined,
+        expiresAt: json.data.expiresAt ? new Date(json.data.expiresAt) : undefined,
+        reviewedAt: json.data.reviewedAt ? new Date(json.data.reviewedAt) : undefined,
+      }
+      setProposals((prev) => prev.map((p) => (p.id === proposalId ? updated : p)))
+      const labels = { approve: 'aprobada', reject: 'rechazada', cancel: 'cancelada' }
+      toast.success(`Propuesta ${labels[action]}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al revisar propuesta')
     }
   }
 
@@ -1201,25 +1252,54 @@ Total: 8 semanas
               </div>
             ) : (
               <div className="space-y-3">
-                {proposals.map((proposal) => (
+                {proposals.map((proposal) => {
+                  const vigencia = getVigenciaLabel(proposal.expiresAt, proposal.firstOpenedAt)
+                  const isReviewable = isSupabaseMode &&
+                    (user?.role === 'admin' || user?.role === 'pm') &&
+                    (proposal.reviewStatus === 'pending_review' || proposal.reviewStatus === 'approved') &&
+                    !proposal.linkedProject
+                  const reviewCfg = reviewStatusConfig[proposal.reviewStatus ?? 'pending_review']
+                  return (
                   <div key={proposal.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium">{proposal.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          {proposal.currency} ${proposal.amount.toLocaleString()} - {proposal.createdAt.toLocaleDateString('es-MX')}
+                          {proposal.currency} ${proposal.amount.toLocaleString()} · v{proposal.versionNumber} · {proposal.createdAt.toLocaleDateString('es-MX')}
                         </p>
                       </div>
-                      {proposal.linkedProject ? (
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700">
-                          Convertida
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className={proposalStatusConfig[proposal.status].color}>
-                          {proposalStatusConfig[proposal.status].label}
-                        </Badge>
-                      )}
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {proposal.linkedProject ? (
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700">
+                            Convertida
+                          </Badge>
+                        ) : (
+                          <>
+                            <Badge variant="outline" className={proposalStatusConfig[proposal.status].color}>
+                              {proposalStatusConfig[proposal.status].label}
+                            </Badge>
+                            {isSupabaseMode && (
+                              <Badge variant="outline" className={reviewCfg.color}>
+                                {reviewCfg.label}
+                              </Badge>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Vigencia countdown */}
+                    {vigencia && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Timer className="size-3.5" />
+                        {vigencia}
+                        {proposal.expiresAt && (
+                          <span className="text-muted-foreground/60">
+                            · Vence {proposal.expiresAt.toLocaleDateString('es-MX')}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     <p className="text-sm whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
                       {proposal.body}
@@ -1229,6 +1309,43 @@ Total: 8 semanas
                       <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
                         <FolderKanban className="size-4" />
                         Proyecto creado: {proposal.linkedProject.name}
+                      </div>
+                    )}
+
+                    {/* Revisión admin/pm */}
+                    {isReviewable && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {proposal.reviewStatus === 'pending_review' && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="default"
+                            onClick={() => handleReviewProposal(proposal.id, 'approve')}
+                          >
+                            <ShieldCheck className="size-3.5 mr-1.5" />
+                            Aprobar
+                          </Button>
+                        )}
+                        {proposal.reviewStatus !== 'cancelled' && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleReviewProposal(proposal.id, 'reject')}
+                          >
+                            <ShieldX className="size-3.5 mr-1.5" />
+                            Rechazar
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground"
+                          onClick={() => handleReviewProposal(proposal.id, 'cancel')}
+                        >
+                          Cancelar propuesta
+                        </Button>
                       </div>
                     )}
 
@@ -1303,7 +1420,8 @@ Total: 8 semanas
                       </Button>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
