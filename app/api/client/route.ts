@@ -5,6 +5,13 @@ import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { createClientToken, listClientTokensForProject } from '@/lib/server/client-portal/repository'
 
+const updateSchema = z.object({
+  tokenId: z.string().uuid(),
+  latestUpdateText: z.string().min(1).max(500),
+  latestUpdateDate: z.string().datetime().optional(),
+  latestUpdateNextStep: z.string().max(300).optional(),
+})
+
 const createSchema = z.object({
   projectId: z.string().uuid(),
   leadId: z.string().uuid().nullable().optional(),
@@ -30,6 +37,29 @@ export async function POST(request: Request) {
     )
 
     return NextResponse.json({ data: token }, { status: 201 })
+  } catch (err) {
+    return toErrorResponse(err)
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    await requireRole(['admin', 'pm'])
+    const body = updateSchema.parse(await request.json())
+    const client = await createSupabaseServerClient()
+
+    const { error } = await client
+      .from('client_access_tokens')
+      .update({
+        latest_update_text: body.latestUpdateText,
+        latest_update_date: body.latestUpdateDate ?? new Date().toISOString(),
+        latest_update_next_step: body.latestUpdateNextStep ?? null,
+      } as never)
+      .eq('id', body.tokenId)
+
+    if (error) throw new Error(error.message)
+
+    return NextResponse.json({ success: true })
   } catch (err) {
     return toErrorResponse(err)
   }

@@ -43,6 +43,9 @@ import { cn } from '@/lib/utils'
 import { formatProjectActivityBody, formatProjectActivityTitle } from '@/lib/projects/activity-copy'
 import { formatTaskActivityBody, formatTaskActivityTitle } from '@/lib/tasks/activity-copy'
 import { toast } from 'sonner'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Blocks,
   FolderKanban,
@@ -59,7 +62,103 @@ import {
   Link2,
   Copy,
   CheckCheck,
+  Sparkles,
 } from 'lucide-react'
+
+function UpdateClientPortalButton({ projectId }: { projectId: string }) {
+  const [open, setOpen] = useState(false)
+  const [tokenId, setTokenId] = useState<string | null>(null)
+  const [updateText, setUpdateText] = useState('')
+  const [nextStep, setNextStep] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleOpen = async () => {
+    const res = await fetch(`/api/client?projectId=${projectId}`)
+    const json = await res.json()
+    const tokens: Array<{ id: string }> = json.data ?? []
+    if (tokens.length === 0) {
+      toast.error('Genera primero un enlace de cliente para este proyecto')
+      return
+    }
+    setTokenId(tokens[0].id)
+    setOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (!tokenId || !updateText.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/client', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokenId,
+          latestUpdateText: updateText.trim(),
+          latestUpdateDate: new Date().toISOString(),
+          latestUpdateNextStep: nextStep.trim() || undefined,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Portal del cliente actualizado')
+        setOpen(false)
+        setUpdateText('')
+        setNextStep('')
+      } else {
+        const json = await res.json()
+        toast.error(json.error ?? 'Error al actualizar')
+      }
+    } catch {
+      toast.error('Error de red')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" onClick={handleOpen}>
+        <Sparkles className="size-4 mr-2" />
+        Actualizar portal
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Actualizar portal del cliente</DialogTitle>
+            <DialogDescription>
+              El cliente verá esta actualización en su portal de seguimiento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Resumen del avance</Label>
+              <Textarea
+                value={updateText}
+                onChange={(e) => setUpdateText(e.target.value)}
+                placeholder="Ej: Completamos el diseño de pantallas y empezamos el desarrollo del backend..."
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Siguiente paso (opcional)</Label>
+              <Input
+                value={nextStep}
+                onChange={(e) => setNextStep(e.target.value)}
+                placeholder="Ej: Revisión de prototipo el viernes"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving || !updateText.trim()}>
+              {saving && <Loader2 className="size-4 mr-2 animate-spin" />}
+              Guardar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
 
 function ClientTokenButton({ projectId, leadId }: { projectId: string; leadId: string | null }) {
   const [generating, setGenerating] = useState(false)
@@ -994,7 +1093,10 @@ function ProjectDetail({
             Editar Proyecto
           </Button>
           {authMode === 'supabase' && (
-            <ClientTokenButton projectId={project.id} leadId={project.sourceLeadId ?? null} />
+            <>
+              <ClientTokenButton projectId={project.id} leadId={project.sourceLeadId ?? null} />
+              <UpdateClientPortalButton projectId={project.id} />
+            </>
           )}
           {project.status !== 'completed' && (
             <>
