@@ -21,16 +21,22 @@ interface MaxwellChatProps {
   onClose?: () => void
   isExpanded?: boolean
   onToggleExpand?: () => void
+  leadId?: string
+  leadName?: string
+  channel?: string
 }
 
-export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: MaxwellChatProps) {
+export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand, leadId, leadName, channel }: MaxwellChatProps) {
   const { authMode } = useAuth()
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const isSupabaseMode = authMode === 'supabase'
 
   const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({ api: '/api/maxwell' }),
+    transport: new DefaultChatTransport({
+      api: '/api/maxwell',
+      body: { leadId, leadName, channel },
+    }),
   })
 
   const isLoading = status === 'streaming' || status === 'submitted'
@@ -49,10 +55,17 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: 
     setInput('')
   }
 
-  const suggestedPrompts = isSupabaseMode
+  const suggestedPrompts = leadId
+    ? [
+        'Genera una propuesta para este lead',
+        'Calcula el precio del proyecto',
+        '¿Qué tipo de proyecto es este?',
+        'Ayúdame a estructurar el alcance',
+      ]
+    : isSupabaseMode
     ? [
         'Ayudame a redactar un email comercial',
-        'Mejora este mensaje para un cliente',
+        'Calcula el precio de un proyecto',
         'Dame una estructura de propuesta',
         'Ayudame a preparar una reunion',
       ]
@@ -116,8 +129,10 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: 
               </div>
               <h4 className="font-semibold mb-2">Hola, soy Maxwell</h4>
               <p className="text-sm text-muted-foreground mb-6 max-w-[280px]">
-                {isSupabaseMode
-                  ? 'Puedo ayudarte como asistente general para redactar, estructurar ideas y revisar texto si me compartes el contexto necesario.'
+                {leadId
+                  ? `Estoy listo para ayudarte con "${leadName ?? 'este lead'}". Puedo calcular precios, generar la propuesta y guardarla directamente en el sistema.`
+                  : isSupabaseMode
+                  ? 'Puedo calcular precios con la tabla oficial de Noon, generar propuestas y ayudarte a estructurar el alcance de cualquier proyecto.'
                   : 'Tu asistente de ventas con IA. Puedo ayudarte a redactar emails, crear propuestas y mas.'}
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
