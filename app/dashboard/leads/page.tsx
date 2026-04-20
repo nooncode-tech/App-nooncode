@@ -11,6 +11,7 @@ import {
   selectLeadList,
   selectLeadsSummary,
   getRadiusKmForWonLeads,
+  haversineKm,
   type LeadSortOption,
   type LeadStatusFilter,
 } from '@/lib/dashboard-selectors'
@@ -346,15 +347,22 @@ export default function LeadsPage() {
             </div>
           </Card>
         ) : (
-          filteredLeads.map((lead) => (
-            <LeadCard
-              key={lead.id}
-              lead={lead}
-              onClick={() => handleOpenLead(lead)}
-              onStatusChange={handleStatusChange}
-              onDelete={() => setLeadToDelete(lead)}
-            />
-          ))
+          filteredLeads.map((lead) => {
+            const distanceKm =
+              proximityEnabled && vendorLocation && lead.latitude != null && lead.longitude != null
+                ? haversineKm(vendorLocation.lat, vendorLocation.lng, lead.latitude, lead.longitude)
+                : undefined
+            return (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                onClick={() => handleOpenLead(lead)}
+                onStatusChange={handleStatusChange}
+                onDelete={() => setLeadToDelete(lead)}
+                distanceKm={distanceKm}
+              />
+            )
+          })
         )}
       </div>
 

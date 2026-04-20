@@ -27,6 +27,7 @@ import {
   FileText,
   Calendar,
   Trash2,
+  MapPin,
 } from 'lucide-react'
 
 interface LeadCardProps {
@@ -34,6 +35,7 @@ interface LeadCardProps {
   onClick: () => void
   onStatusChange: (leadId: string, newStatus: LeadStatus) => void
   onDelete?: () => void
+  distanceKm?: number
 }
 
 const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
@@ -84,7 +86,7 @@ function buildGmailComposeUrl(email: string): string {
   return `https://mail.google.com/mail/?${params.toString()}`
 }
 
-export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardProps) {
+export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }: LeadCardProps) {
   const { authMode, user } = useAuth()
   const statusInfo = statusConfig[lead.status]
   const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
@@ -210,6 +212,14 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
                 <Calendar className="size-3" />
                 {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}
               </span>
+            </div>
+          )}
+          {distanceKm !== undefined && (
+            <div className="mt-1 flex items-center gap-1 text-xs text-sky-600">
+              <MapPin className="size-3" />
+              {distanceKm < 1
+                ? `${Math.round(distanceKm * 1000)} m`
+                : `${distanceKm.toFixed(1)} km`}
             </div>
           )}
         </div>
