@@ -170,6 +170,7 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
         latitude: geoCoords?.latitude,
         longitude: geoCoords?.longitude,
         leadOrigin: formData.leadOrigin,
+        autoFollowupEnabled: true,
       }
 
       if (editLead) {

@@ -90,6 +90,7 @@ export const mockLeads: Lead[] = [
     tags: ['mobile', 'high-value', 'tech'],
     createdAt: new Date('2024-12-01'),
     updatedAt: new Date('2024-12-01'),
+    autoFollowupEnabled: true,
   },
   {
     id: 'l2',
@@ -108,6 +109,7 @@ export const mockLeads: Lead[] = [
     createdAt: new Date('2024-11-28'),
     updatedAt: new Date('2024-12-02'),
     lastContactedAt: new Date('2024-12-02'),
+    autoFollowupEnabled: true,
   },
   {
     id: 'l3',
@@ -125,6 +127,7 @@ export const mockLeads: Lead[] = [
     createdAt: new Date('2024-11-20'),
     updatedAt: new Date('2024-12-03'),
     lastContactedAt: new Date('2024-12-03'),
+    autoFollowupEnabled: true,
   },
   {
     id: 'l4',
@@ -143,6 +146,7 @@ export const mockLeads: Lead[] = [
     createdAt: new Date('2024-11-15'),
     updatedAt: new Date('2024-12-04'),
     lastContactedAt: new Date('2024-12-04'),
+    autoFollowupEnabled: true,
   },
   {
     id: 'l5',
@@ -160,6 +164,7 @@ export const mockLeads: Lead[] = [
     createdAt: new Date('2024-11-10'),
     updatedAt: new Date('2024-12-05'),
     lastContactedAt: new Date('2024-12-05'),
+    autoFollowupEnabled: true,
   },
   {
     id: 'l6',
@@ -177,6 +182,7 @@ export const mockLeads: Lead[] = [
     createdAt: new Date('2024-10-20'),
     updatedAt: new Date('2024-11-30'),
     lastContactedAt: new Date('2024-11-30'),
+    autoFollowupEnabled: true,
   },
   {
     id: 'l7',
@@ -194,6 +200,7 @@ export const mockLeads: Lead[] = [
     createdAt: new Date('2024-10-15'),
     updatedAt: new Date('2024-11-20'),
     lastContactedAt: new Date('2024-11-20'),
+    autoFollowupEnabled: true,
   },
 ]
 
