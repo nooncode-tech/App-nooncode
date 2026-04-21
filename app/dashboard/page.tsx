@@ -305,38 +305,34 @@ export default function DashboardPage() {
       )}
 
       {/* Quick Actions */}
-      <div>
-        <Card>
-          <CardHeader>
-            <CardTitle>Acciones rapidas</CardTitle>
-            <CardDescription>Accede rapidamente a las funciones mas usadas</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
+      <Card>
+        <CardHeader className="pb-0">
+          <CardTitle>Acciones rapidas</CardTitle>
+          <CardDescription>Accede rapidamente a las funciones mas usadas</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0 mt-2">
+          <div className="divide-y">
             {canAccessSales(user.role) && (
               <>
                 <Link
                   href="/dashboard/leads"
-                  className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/40 transition-colors"
                 >
-                  <div className="size-10 rounded-lg bg-chart-1/10 flex items-center justify-center">
-                    <Users className="size-5 text-chart-1" />
-                  </div>
+                  <Users className="size-4 text-muted-foreground shrink-0" />
                   <div className="flex-1">
-                    <p className="font-medium">Ver leads</p>
-                    <p className="text-sm text-muted-foreground">{sales.openLeads} leads activos</p>
+                    <p className="text-sm font-medium">Ver leads</p>
+                    <p className="text-xs text-muted-foreground">{sales.openLeads} leads activos</p>
                   </div>
                   <ArrowUpRight className="size-4 text-muted-foreground" />
                 </Link>
                 <Link
                   href="/dashboard/pipeline"
-                  className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/40 transition-colors"
                 >
-                  <div className="size-10 rounded-lg bg-chart-2/10 flex items-center justify-center">
-                    <TrendingUp className="size-5 text-chart-2" />
-                  </div>
+                  <TrendingUp className="size-4 text-muted-foreground shrink-0" />
                   <div className="flex-1">
-                    <p className="font-medium">Pipeline de ventas</p>
-                    <p className="text-sm text-muted-foreground">Vista kanban</p>
+                    <p className="text-sm font-medium">Pipeline de ventas</p>
+                    <p className="text-xs text-muted-foreground">Vista kanban</p>
                   </div>
                   <ArrowUpRight className="size-4 text-muted-foreground" />
                 </Link>
@@ -346,35 +342,31 @@ export default function DashboardPage() {
               <>
                 <Link
                   href="/dashboard/projects"
-                  className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/40 transition-colors"
                 >
-                  <div className="size-10 rounded-lg bg-chart-3/10 flex items-center justify-center">
-                    <FolderKanban className="size-5 text-chart-3" />
-                  </div>
+                  <FolderKanban className="size-4 text-muted-foreground shrink-0" />
                   <div className="flex-1">
-                    <p className="font-medium">Proyectos</p>
-                    <p className="text-sm text-muted-foreground">{delivery.activeProjects} activos</p>
+                    <p className="text-sm font-medium">Proyectos</p>
+                    <p className="text-xs text-muted-foreground">{delivery.activeProjects} activos</p>
                   </div>
                   <ArrowUpRight className="size-4 text-muted-foreground" />
                 </Link>
                 <Link
                   href="/dashboard/tasks"
-                  className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/40 transition-colors"
                 >
-                  <div className="size-10 rounded-lg bg-chart-4/10 flex items-center justify-center">
-                    <CheckCircle2 className="size-5 text-chart-4" />
-                  </div>
+                  <CheckCircle2 className="size-4 text-muted-foreground shrink-0" />
                   <div className="flex-1">
-                    <p className="font-medium">Mis tareas</p>
-                    <p className="text-sm text-muted-foreground">{delivery.actionableTasks} pendientes</p>
+                    <p className="text-sm font-medium">Mis tareas</p>
+                    <p className="text-xs text-muted-foreground">{delivery.actionableTasks} pendientes</p>
                   </div>
                   <ArrowUpRight className="size-4 text-muted-foreground" />
                 </Link>
               </>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

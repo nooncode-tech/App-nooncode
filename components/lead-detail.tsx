@@ -834,7 +834,7 @@ Total: 8 semanas
         </div>
       </div>
 
-      <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+      <div className="rounded-lg border bg-muted/15 p-4 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -1062,7 +1062,7 @@ Total: 8 semanas
           </Card>
 
           {isSupabaseMode && (
-            <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+            <div className="flex items-center justify-between border-t pt-3">
               <div>
                 <p className="text-sm font-medium">Seguimiento automático</p>
                 <p className="text-xs text-muted-foreground">
@@ -1123,17 +1123,17 @@ Total: 8 semanas
                 Aun no hay actividad registrada para este lead.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="divide-y">
                 {activities.map((activity) => (
-                  <div key={activity.id} className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                  <div key={activity.id} className="py-3 space-y-1.5">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium">{formatActivityTitle(activity)}</p>
                         <p className="text-xs text-muted-foreground">
-                          {activity.actorName} - {activity.createdAt.toLocaleString('es-MX')}
+                          {activity.actorName} · {activity.createdAt.toLocaleString('es-MX')}
                         </p>
                       </div>
-                      <Badge variant="secondary" className="capitalize">
+                      <Badge variant="secondary" className="capitalize shrink-0">
                         {activity.type === 'note_added' ? 'Nota' : activity.type.replaceAll('_', ' ')}
                       </Badge>
                     </div>

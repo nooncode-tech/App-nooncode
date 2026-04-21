@@ -154,9 +154,11 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Badge variant="outline" className={assignmentInfo.color}>
-                {assignmentInfo.label}
-              </Badge>
+              {lead.assignmentStatus !== 'owned' && (
+                <Badge variant="outline" className={assignmentInfo.color}>
+                  {assignmentInfo.label}
+                </Badge>
+              )}
               <Badge variant="outline" className={statusInfo.color}>
                 {statusInfo.label}
               </Badge>
