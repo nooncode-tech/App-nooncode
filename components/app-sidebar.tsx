@@ -203,7 +203,7 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-white/[0.05]">
+    <Sidebar collapsible="icon" className="border-r-0">
       {/* ── Wordmark + Toggle ── */}
       <SidebarHeader className="px-4 pt-4 pb-3 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:items-center">
         {/* Expanded: logo left + trigger right */}

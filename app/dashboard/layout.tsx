@@ -54,11 +54,9 @@ export default function DashboardLayout({
     <DataProvider>
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="overflow-auto">
           <CommandPalette />
-          <main className="flex-1 overflow-auto">
-            {children}
-          </main>
+          {children}
         </SidebarInset>
         <MaxwellFab />
       </SidebarProvider>
