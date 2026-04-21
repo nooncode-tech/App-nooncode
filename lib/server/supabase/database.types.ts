@@ -374,6 +374,7 @@ export type Database = {
           updated_at: string
           value: number
           whatsapp: string | null
+          auto_followup_enabled: boolean
         }
         Insert: {
           assigned_to?: string | null
@@ -403,6 +404,7 @@ export type Database = {
           updated_at?: string
           value?: number
           whatsapp?: string | null
+          auto_followup_enabled?: boolean
         }
         Update: {
           assigned_to?: string | null
@@ -432,6 +434,7 @@ export type Database = {
           updated_at?: string
           value?: number
           whatsapp?: string | null
+          auto_followup_enabled?: boolean
         }
         Relationships: [
           {

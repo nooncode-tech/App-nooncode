@@ -29,6 +29,7 @@ export function mapLeadRowToWire(row: LeadRowWithProfiles): LeadWire {
     updatedAt: row.updated_at,
     lastContactedAt: row.last_contacted_at,
     nextFollowUpAt: row.next_follow_up_at,
+    autoFollowupEnabled: row.auto_followup_enabled,
   }
 }
 
@@ -83,6 +84,7 @@ export function mapUpdateLeadInputToUpdate(input: UpdateLeadInput): LeadUpdate {
   if (input.locationText !== undefined) update.location_text = input.locationText ?? null
   if (input.latitude !== undefined) update.latitude = input.latitude ?? null
   if (input.longitude !== undefined) update.longitude = input.longitude ?? null
+  if (input.autoFollowupEnabled !== undefined) update.auto_followup_enabled = input.autoFollowupEnabled
 
   return update
 }

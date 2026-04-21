@@ -32,6 +32,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LeadPrototypeCard } from '@/components/lead-prototype-card'
 import { MaxwellChat } from '@/components/maxwell-chat'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -1059,6 +1060,28 @@ Total: 8 semanas
               </div>
             </CardContent>
           </Card>
+
+          {isSupabaseMode && (
+            <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+              <div>
+                <p className="text-sm font-medium">Seguimiento automático</p>
+                <p className="text-xs text-muted-foreground">
+                  Maxwell genera un mensaje cuando vence el seguimiento
+                </p>
+              </div>
+              <Switch
+                checked={lead.autoFollowupEnabled}
+                onCheckedChange={async (checked) => {
+                  try {
+                    await updateLead(lead.id, { autoFollowupEnabled: checked })
+                  } catch {
+                    // ignore
+                  }
+                }}
+                disabled={isReleasedLeadPendingClaim}
+              />
+            </div>
+          )}
 
           <div className="space-y-3">
             <label className="text-sm font-medium">Registrar nota de seguimiento</label>

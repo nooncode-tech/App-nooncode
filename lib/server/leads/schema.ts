@@ -82,6 +82,7 @@ export const updateLeadSchema = z
     locationText: baseLeadShape.locationText,
     latitude: baseLeadShape.latitude,
     longitude: baseLeadShape.longitude,
+    autoFollowupEnabled: z.boolean().optional(),
     // lead_origin is intentionally excluded from updates — immutable after creation
   })
   .refine((payload) => Object.keys(payload).length > 0, {

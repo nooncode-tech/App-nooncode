@@ -69,6 +69,7 @@ export interface Lead {
   updatedAt: Date
   lastContactedAt?: Date
   nextFollowUpAt?: Date
+  autoFollowupEnabled: boolean
 }
 
 export interface LeadDraft extends Omit<
