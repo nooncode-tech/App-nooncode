@@ -90,9 +90,9 @@ function NavGroup({
   badgeMap?: Record<string, number>
 }) {
   return (
-    <div className="px-3 mb-1">
+    <div className="px-3 mb-1 group-data-[collapsible=icon]:px-1.5">
       {label && (
-        <div className="flex items-center gap-2 mb-1 px-2 py-1.5">
+        <div className="flex items-center gap-2 mb-1 px-2 py-1.5 group-data-[collapsible=icon]:hidden">
           {color && <span className="size-1.5 rounded-full shrink-0" style={{ background: color }} />}
           <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/25">
             {label}
@@ -110,25 +110,27 @@ function NavGroup({
             <Link
               key={item.href}
               href={item.href}
+              title={item.title}
               className={[
-                'group flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative',
+                'group/link flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative',
+                'group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:justify-center',
                 isActive
                   ? 'bg-white/[0.09] text-white'
                   : 'text-white/45 hover:text-white/80 hover:bg-white/[0.05]',
               ].join(' ')}
             >
               {isActive && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-primary rounded-full" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
               )}
               <item.icon
                 className={[
                   'size-4 shrink-0 transition-colors',
-                  isActive ? 'text-white' : 'text-white/35 group-hover:text-white/60',
+                  isActive ? 'text-white' : 'text-white/35 group-hover/link:text-white/60',
                 ].join(' ')}
               />
-              <span className="flex-1 truncate">{item.title}</span>
+              <span className="flex-1 truncate group-data-[collapsible=icon]:hidden">{item.title}</span>
               {badge != null && badge > 0 && (
-                <span className="ml-auto text-[10px] font-semibold bg-primary/80 text-white px-1.5 py-0.5 rounded-full leading-none tabular-nums">
+                <span className="ml-auto text-[10px] font-semibold bg-primary/80 text-white px-1.5 py-0.5 rounded-full leading-none tabular-nums group-data-[collapsible=icon]:hidden">
                   {badge > 99 ? '99+' : badge}
                 </span>
               )}
@@ -200,16 +202,16 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar className="border-r-0">
+    <Sidebar collapsible="icon" className="border-r-0">
       {/* ── Wordmark ── */}
-      <SidebarHeader className="px-5 py-5 pb-4">
+      <SidebarHeader className="px-4 py-5 pb-4">
         <Link href="/dashboard" className="flex items-center gap-3 group">
-          {/* Logo mark */}
-          <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(18,0,197,0.5)] group-hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
+          {/* Logo mark — always visible */}
+          <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(18,0,197,0.4)] group-hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
             <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
           </div>
-          {/* Text mark */}
-          <div className="flex flex-col leading-none">
+          {/* Text mark — hidden when collapsed */}
+          <div className="flex flex-col leading-none group-data-[collapsible=icon]:hidden">
             <span className="text-[17px] font-black tracking-[-0.04em] text-white">noon</span>
             <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/25 mt-0.5">platform</span>
           </div>
@@ -240,8 +242,8 @@ export function AppSidebar() {
 
       {/* ── User footer ── */}
       <SidebarFooter className="p-3 border-t border-white/[0.06]">
-        {/* Balance strip */}
-        <div className="flex items-center gap-2 px-2 py-2 mb-1">
+        {/* Balance strip — hidden when collapsed */}
+        <div className="flex items-center gap-2 px-2 py-2 mb-1 group-data-[collapsible=icon]:hidden">
           <Zap className="size-3.5 text-white/20 shrink-0" />
           <span className="text-[11px] text-white/30 flex-1 tabular-nums truncate">
             {personalStats.balanceValueLabel}
@@ -257,11 +259,11 @@ export function AppSidebar() {
                   {getInitials(user.name)}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                 <p className="text-[13px] font-medium text-white/90 truncate leading-tight">{user.name}</p>
                 <p className="text-[10px] text-white/30 truncate mt-0.5">{getRoleLabel(user.role)}</p>
               </div>
-              <ChevronDown className="size-3.5 text-white/20 group-hover:text-white/40 transition-colors shrink-0" />
+              <ChevronDown className="size-3.5 text-white/20 group-hover:text-white/40 transition-colors shrink-0 group-data-[collapsible=icon]:hidden" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">

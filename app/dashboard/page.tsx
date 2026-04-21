@@ -99,7 +99,7 @@ export default function DashboardPage() {
   return (
     <div>
       {/* ── Dark Hero Header ── */}
-      <div className="relative bg-[#0e0e16] px-8 pt-9 pb-10 border-b border-white/[0.05]">
+      <div className="relative bg-[#000000] px-8 pt-9 pb-10 border-b border-white/[0.05]">
         {/* subtle grid texture */}
         <div className="pointer-events-none absolute inset-0 opacity-[0.03]"
           style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
