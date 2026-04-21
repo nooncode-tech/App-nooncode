@@ -205,18 +205,23 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-white/[0.05]">
       {/* ── Wordmark + Toggle ── */}
-      <SidebarHeader className="px-4 pt-4 pb-3 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:items-center">
-        <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
-          <Link href="/dashboard" className="flex items-center gap-3 flex-1 min-w-0 group-data-[collapsible=icon]:flex-none">
+      <SidebarHeader className="px-4 pt-4 pb-3 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:items-center">
+        {/* Expanded: logo left + trigger right */}
+        <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
+          <Link href="/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
             <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(18,0,197,0.4)] hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
               <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
             </div>
-            <div className="flex flex-col leading-none group-data-[collapsible=icon]:hidden">
+            <div className="flex flex-col leading-none">
               <span className="text-[17px] font-black tracking-[-0.04em] text-white">noon</span>
               <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/25 mt-0.5">platform</span>
             </div>
           </Link>
-          <SidebarTrigger className="shrink-0 text-white/20 hover:text-white/50 hover:bg-white/[0.05] size-7 [&>svg]:size-3.5 group-data-[collapsible=icon]:hidden" />
+          <SidebarTrigger className="shrink-0 text-white/20 hover:text-white/50 hover:bg-white/[0.05] size-7 [&>svg]:size-3.5" />
+        </div>
+        {/* Collapsed: just the trigger centered */}
+        <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+          <SidebarTrigger className="text-white/30 hover:text-white/70 hover:bg-white/[0.07] size-9 [&>svg]:size-4" />
         </div>
       </SidebarHeader>
 
@@ -255,7 +260,7 @@ export function AppSidebar() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-white/[0.06] transition-colors text-left group">
+            <button className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-white/[0.06] transition-colors text-left group group-data-[collapsible=icon]:justify-center">
               <Avatar className="size-8 shrink-0">
                 <AvatarFallback className="bg-primary/80 text-white text-[11px] font-bold">
                   {getInitials(user.name)}
