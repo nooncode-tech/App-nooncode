@@ -104,6 +104,11 @@
     border-color: oklch(0.93 0.003 275);
   }
 
+  /* Sidebar: override global border-border so the right edge is invisible */
+  [data-slot="sidebar-container"] {
+    border-color: transparent;
+  }
+
   /* Page title standard */
   .page-title {
     @apply text-2xl font-semibold tracking-tight;
