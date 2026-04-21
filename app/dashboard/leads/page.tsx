@@ -45,6 +45,7 @@ import {
 import { LeadCard } from '@/components/lead-card'
 import { LeadDetail } from '@/components/lead-detail'
 import { LeadFormDialog } from '@/components/lead-form-dialog'
+import { LeadImportDialog } from '@/components/lead-import-dialog'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Search,
@@ -229,10 +230,13 @@ export default function LeadsPage() {
             Gestiona tu cola de prospectos y prioriza por score
           </p>
         </div>
-        <Button onClick={() => setShowNewDialog(true)}>
-          <Plus className="size-4 mr-2" />
-          Nuevo Lead
-        </Button>
+        <div className="flex items-center gap-2">
+          <LeadImportDialog onImported={() => {}} />
+          <Button onClick={() => setShowNewDialog(true)}>
+            <Plus className="size-4 mr-2" />
+            Nuevo Lead
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
