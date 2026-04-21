@@ -104,12 +104,15 @@
     border-color: oklch(0.93 0.003 275);
   }
 
-  /* Sidebar: no border line, gap div matches sidebar background */
+  /* Sidebar: no border line, gap matches sidebar, inset shadow fills any sub-pixel gap */
   [data-slot="sidebar-container"] {
     border-color: transparent;
   }
   [data-slot="sidebar-gap"] {
     background-color: var(--sidebar);
+  }
+  [data-slot="sidebar-inset"] {
+    box-shadow: -2px 0 0 0 var(--sidebar);
   }
 
   /* Page title standard */
