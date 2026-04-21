@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useAuth, canAccessSales, canAccessDelivery, getRoleLabel } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
 import {
@@ -39,6 +39,9 @@ export default function DashboardPage() {
   const { sales, delivery } = summary
   const personalStats = selectPersonalStatsAvailability(authMode, user)
   const dashboardKpiCopy = selectDashboardKpiCopy(authMode)
+
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   const conversionRate = useMemo(() => {
     const closed = leads.filter((l) => l.status === 'won' || l.status === 'lost').length
@@ -225,19 +228,21 @@ export default function DashboardPage() {
               <CardTitle className="text-sm font-medium">Pipeline por estado</CardTitle>
             </CardHeader>
             <CardContent className="flex items-center gap-4 pb-4">
-              <ResponsiveContainer width={80} height={80}>
-                <PieChart>
-                  <Pie data={leadsByStatus} dataKey="value" cx="50%" cy="50%" outerRadius={38} strokeWidth={1}>
-                    {leadsByStatus.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value, name) => [value, name]}
-                    contentStyle={{ fontSize: 11 }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              {mounted && (
+                <ResponsiveContainer width={80} height={80}>
+                  <PieChart>
+                    <Pie data={leadsByStatus} dataKey="value" cx="50%" cy="50%" outerRadius={38} strokeWidth={1}>
+                      {leadsByStatus.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name) => [value, name]}
+                      contentStyle={{ fontSize: 11 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
               <div className="flex flex-col gap-1">
                 {leadsByStatus.map((entry) => (
                   <div key={entry.name} className="flex items-center gap-1.5 text-xs">
