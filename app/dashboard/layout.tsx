@@ -13,7 +13,12 @@ import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
 import { Search } from 'lucide-react'
 import { MaxwellFab } from '@/components/maxwell-fab'
-import { CommandPalette } from '@/components/command-palette'
+import dynamic from 'next/dynamic'
+
+const CommandPalette = dynamic(
+  () => import('@/components/command-palette').then((m) => m.CommandPalette),
+  { ssr: false }
+)
 
 export default function DashboardLayout({
   children,
