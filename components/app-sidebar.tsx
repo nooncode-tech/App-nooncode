@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
-  Sun,
   Activity,
   Bell,
   Blocks,
@@ -21,20 +20,13 @@ import {
   ChevronDown,
   BarChart3,
   Globe,
+  Zap,
 } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarSeparator,
 } from '@/components/ui/sidebar'
 import {
   DropdownMenu,
@@ -55,6 +47,7 @@ import {
 import { selectPersonalStatsAvailability } from '@/lib/dashboard-selectors'
 import { NOTIFICATIONS_UPDATED_EVENT } from '@/lib/notifications/client-events'
 import { useRouter } from 'next/navigation'
+import type { LucideIcon } from 'lucide-react'
 
 const salesNavItems = [
   { title: 'Leads', href: '/dashboard/leads', icon: Users },
@@ -81,9 +74,71 @@ const financeNavItems = [
   { title: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
 ]
 
-const adminNavItems = [
-  { title: 'Configuracion', href: '/dashboard/settings', icon: Settings },
-]
+type NavItem = { title: string; href: string; icon: LucideIcon; badge?: number }
+
+function NavGroup({
+  label,
+  color,
+  items,
+  pathname,
+  badgeMap,
+}: {
+  label?: string
+  color?: string
+  items: NavItem[]
+  pathname: string
+  badgeMap?: Record<string, number>
+}) {
+  return (
+    <div className="px-3 mb-1">
+      {label && (
+        <div className="flex items-center gap-2 mb-1 px-2 py-1.5">
+          {color && <span className="size-1.5 rounded-full shrink-0" style={{ background: color }} />}
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/25">
+            {label}
+          </span>
+        </div>
+      )}
+      <div className="space-y-0.5">
+        {items.map((item) => {
+          const isActive =
+            item.href === '/dashboard'
+              ? pathname === '/dashboard'
+              : pathname.startsWith(item.href)
+          const badge = badgeMap?.[item.href]
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={[
+                'group flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative',
+                isActive
+                  ? 'bg-white/[0.09] text-white'
+                  : 'text-white/45 hover:text-white/80 hover:bg-white/[0.05]',
+              ].join(' ')}
+            >
+              {isActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-primary rounded-full" />
+              )}
+              <item.icon
+                className={[
+                  'size-4 shrink-0 transition-colors',
+                  isActive ? 'text-white' : 'text-white/35 group-hover:text-white/60',
+                ].join(' ')}
+              />
+              <span className="flex-1 truncate">{item.title}</span>
+              {badge != null && badge > 0 && (
+                <span className="ml-auto text-[10px] font-semibold bg-primary/80 text-white px-1.5 py-0.5 rounded-full leading-none tabular-nums">
+                  {badge > 99 ? '99+' : badge}
+                </span>
+              )}
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -96,53 +151,23 @@ export function AppSidebar() {
 
     if (authMode !== 'supabase' || !user) {
       setUnreadNotifications(0)
-      return () => {
-        isActive = false
-      }
+      return () => { isActive = false }
     }
 
-    const loadUnreadNotifications = () => {
-      fetch('/api/notifications?limit=1', {
-        method: 'GET',
-        cache: 'no-store',
-      })
-        .then(async (response) => {
-          const payload = await response.json().catch(() => null)
-
-          if (!response.ok) {
-            throw new Error(
-              payload && typeof payload.error === 'string'
-                ? payload.error
-                : 'No se pudo cargar el contador de notificaciones.'
-            )
-          }
-
-          return payload as { meta?: { unreadCount?: number } }
+    const load = () => {
+      fetch('/api/notifications?limit=1', { cache: 'no-store' })
+        .then(async (r) => {
+          const p = await r.json().catch(() => null)
+          if (!r.ok) throw new Error()
+          return p as { meta?: { unreadCount?: number } }
         })
-        .then((payload) => {
-          if (isActive) {
-            setUnreadNotifications(payload.meta?.unreadCount ?? 0)
-          }
-        })
-        .catch(() => {
-          if (isActive) {
-            setUnreadNotifications(0)
-          }
-        })
+        .then((p) => { if (isActive) setUnreadNotifications(p.meta?.unreadCount ?? 0) })
+        .catch(() => { if (isActive) setUnreadNotifications(0) })
     }
 
-    loadUnreadNotifications()
-
-    const handleNotificationsUpdated = () => {
-      loadUnreadNotifications()
-    }
-
-    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated)
-
-    return () => {
-      isActive = false
-      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated)
-    }
+    load()
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, load)
+    return () => { isActive = false; window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, load) }
   }, [authMode, user])
 
   if (!user) return null
@@ -151,16 +176,9 @@ export function AppSidebar() {
   const deliveryItems = deliveryNavItems
     .filter((item) => canAccessDashboardPath(user.role, item.href))
     .map((item) => {
-      if (item.href !== '/dashboard/tasks') {
-        return item
-      }
-
-      const shouldShowTeamTasks = authMode === 'supabase' && user.role !== 'developer'
-
-      return {
-        ...item,
-        title: shouldShowTeamTasks ? 'Tareas del equipo' : item.title,
-      }
+      if (item.href !== '/dashboard/tasks') return item
+      const shouldShowTeam = authMode === 'supabase' && user.role !== 'developer'
+      return { ...item, title: shouldShowTeam ? 'Tareas del equipo' : item.title }
     })
 
   const handleLogout = async () => {
@@ -168,145 +186,76 @@ export function AppSidebar() {
     router.push('/')
   }
 
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
+  const getInitials = (name: string) =>
+    name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+
+  const badgeMap: Record<string, number> = {
+    '/dashboard/notifications': unreadNotifications,
   }
 
   return (
-    <Sidebar>
-      <SidebarHeader className="p-4">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="size-9 rounded-lg bg-primary flex items-center justify-center">
-            <Sun className="size-5 text-primary-foreground" />
+    <Sidebar className="border-r-0">
+      {/* ── Wordmark ── */}
+      <SidebarHeader className="px-5 py-5 pb-4">
+        <Link href="/dashboard" className="flex items-center gap-3 group">
+          {/* Logo mark */}
+          <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(18,0,197,0.5)] group-hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
+            <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
           </div>
-          <span className="text-lg font-bold text-sidebar-foreground">NoonApp</span>
+          {/* Text mark */}
+          <div className="flex flex-col leading-none">
+            <span className="text-[17px] font-black tracking-[-0.04em] text-white">noon</span>
+            <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/25 mt-0.5">platform</span>
+          </div>
         </Link>
       </SidebarHeader>
 
-      <SidebarSeparator />
+      {/* ── Navigation ── */}
+      <SidebarContent className="pt-1 gap-0">
+        <NavGroup items={workspaceNavItems} pathname={pathname} badgeMap={badgeMap} />
 
-      <SidebarContent>
-        {/* Main Dashboard */}
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {workspaceNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href}>
-                    <Link href={item.href}>
-                      <item.icon className="size-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                  {item.href === '/dashboard/notifications' && authMode === 'supabase' && unreadNotifications > 0 ? (
-                    <SidebarMenuBadge>
-                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                    </SidebarMenuBadge>
-                  ) : null}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {/* Sales Section */}
         {canAccessSales(user.role) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Ventas</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {salesNavItems.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={pathname === item.href}>
-                      <Link href={item.href}>
-                        <item.icon className="size-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <NavGroup label="Ventas" color="#1200c5" items={salesNavItems} pathname={pathname} />
         )}
 
-        {/* Delivery Section */}
         {deliveryItems.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Delivery</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {deliveryItems.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={pathname === item.href}>
-                      <Link href={item.href}>
-                        <item.icon className="size-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <NavGroup label="Delivery" color="oklch(0.50 0.26 264)" items={deliveryItems} pathname={pathname} />
         )}
 
-        {/* Finance Section */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Finanzas</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {financeNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href}>
-                    <Link href={item.href}>
-                      <item.icon className="size-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavGroup label="Finanzas" color="#22c55e" items={financeNavItems} pathname={pathname} />
 
-        {/* Settings — visible to all */}
-        <SidebarGroup>
-          <SidebarGroupLabel>{canAccessAdmin(user.role) ? 'Admin' : 'Cuenta'}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={pathname === '/dashboard/settings'}>
-                  <Link href="/dashboard/settings">
-                    <Settings className="size-4" />
-                    <span>Configuracion</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavGroup
+          label={canAccessAdmin(user.role) ? 'Admin' : 'Cuenta'}
+          color="oklch(0.45 0.02 275)"
+          items={[{ title: 'Configuracion', href: '/dashboard/settings', icon: Settings }]}
+          pathname={pathname}
+        />
       </SidebarContent>
 
-      <SidebarFooter className="p-2">
+      {/* ── User footer ── */}
+      <SidebarFooter className="p-3 border-t border-white/[0.06]">
+        {/* Balance strip */}
+        <div className="flex items-center gap-2 px-2 py-2 mb-1">
+          <Zap className="size-3.5 text-white/20 shrink-0" />
+          <span className="text-[11px] text-white/30 flex-1 tabular-nums truncate">
+            {personalStats.balanceValueLabel}
+          </span>
+          <span className="text-[10px] text-white/20 font-medium uppercase tracking-wide">balance</span>
+        </div>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-sidebar-accent transition-colors text-left">
-              <Avatar className="size-9">
-                <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+            <button className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-white/[0.06] transition-colors text-left group">
+              <Avatar className="size-8 shrink-0">
+                <AvatarFallback className="bg-primary/80 text-white text-[11px] font-bold">
                   {getInitials(user.name)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
-                <p className="text-xs text-sidebar-foreground/60 truncate">{getRoleLabel(user.role)}</p>
+                <p className="text-[13px] font-medium text-white/90 truncate leading-tight">{user.name}</p>
+                <p className="text-[10px] text-white/30 truncate mt-0.5">{getRoleLabel(user.role)}</p>
               </div>
-              <ChevronDown className="size-4 text-sidebar-foreground/60" />
+              <ChevronDown className="size-3.5 text-white/20 group-hover:text-white/40 transition-colors shrink-0" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">

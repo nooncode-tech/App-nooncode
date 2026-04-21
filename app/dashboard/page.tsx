@@ -88,8 +88,9 @@ export default function DashboardPage() {
   }, [leads])
 
   const lbl = 'text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground'
-  const num = 'text-[2.75rem] font-bold tracking-tight tabular-nums leading-none mt-3'
-  const note = 'text-xs text-muted-foreground mt-2'
+  const num = 'text-[2.5rem] font-bold tracking-tight tabular-nums leading-none mt-3'
+  const note = 'text-xs text-muted-foreground mt-3'
+  const card = 'rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]'
 
   const dateStr = mounted
     ? new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -149,17 +150,17 @@ export default function DashboardPage() {
                   <span>{dashboardKpiCopy.salesOpenLeadsNote}</span>
                 </p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>Valor del pipeline</p>
                 <p className={num}>${sales.pipelineValue.toLocaleString()}</p>
                 <p className={note}>Oportunidades abiertas</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>Deals cerrados</p>
                 <p className={num}>{sales.wonLeads}</p>
                 <p className={note}>{dashboardKpiCopy.salesWonLeadsNote}</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>{dashboardKpiCopy.salesRevenueTitle}</p>
                 <p className={num}>${sales.totalRevenue.toLocaleString()}</p>
                 <p className={`${note} flex items-center gap-1`}>
@@ -174,7 +175,7 @@ export default function DashboardPage() {
         {/* ── Conversion + Followups + Chart ── */}
         {canAccessSales(user.role) && leads.length > 0 && (
           <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+            <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
               <p className={lbl}>Tasa de conversión</p>
               <p className={num}>{conversionRate !== null ? `${conversionRate}%` : '—'}</p>
               <p className={note}>
@@ -184,7 +185,7 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+            <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
               <p className={lbl}>Seguimientos vencidos</p>
               <p className={`${num} ${overdueFollowUps.length > 0 ? 'text-destructive' : ''}`}>
                 {overdueFollowUps.length}
@@ -201,7 +202,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+            <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
               <p className={`${lbl} mb-4`}>Pipeline por estado</p>
               <div className="flex items-center gap-4">
                 {mounted && (
@@ -242,17 +243,17 @@ export default function DashboardPage() {
                 <p className="text-[2.75rem] font-bold tracking-tight tabular-nums leading-none mt-3 text-white">{delivery.activeProjects}</p>
                 <p className="text-xs text-white/40 mt-2">{delivery.projectsInReview} en revisión</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>Tareas pendientes</p>
                 <p className={num}>{delivery.pendingTasks}</p>
                 <p className={note}>{delivery.inProgressTasks} en progreso</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>En revisión</p>
                 <p className={num}>{delivery.reviewTasks}</p>
                 <p className={note}>Esperando aprobación</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>Completados</p>
                 <p className={num}>{delivery.completedProjects}</p>
                 <p className={note}>{dashboardKpiCopy.deliveryCompletedProjectsNote}</p>
