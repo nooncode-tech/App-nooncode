@@ -810,7 +810,7 @@ Total: 8 semanas
         <div className="flex items-center gap-4">
           <div
             className={cn(
-              'size-16 rounded-xl flex items-center justify-center font-bold text-2xl',
+              'size-16 rounded-[10px] flex items-center justify-center font-bold text-2xl',
               getScoreColor(lead.score)
             )}
           >

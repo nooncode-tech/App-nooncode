@@ -232,7 +232,7 @@ export default function RewardsPage() {
                       >
                         <CardContent className="p-6">
                           <div className="flex items-start justify-between mb-4">
-                            <div className={cn('size-12 rounded-xl flex items-center justify-center', catConfig.color)}>
+                            <div className={cn('size-12 rounded-[10px] flex items-center justify-center', catConfig.color)}>
                               <Gift className="size-6" />
                             </div>
                             <Badge variant="outline" className={catConfig.color}>{catConfig.label}</Badge>

@@ -222,7 +222,7 @@ export default function NotificationsPage() {
                 return (
                   <div
                     key={item.id}
-                    className={`rounded-xl border p-4 ${item.isRead ? 'bg-background' : 'bg-muted/30'}`}
+                    className={`rounded-[10px] border p-4 ${item.isRead ? 'bg-background' : 'bg-muted/30'}`}
                   >
                     <div className="flex gap-4">
                       <div className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">

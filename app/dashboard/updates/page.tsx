@@ -164,7 +164,7 @@ export default function UpdatesPage() {
                   <Link
                     key={item.id}
                     href={item.href}
-                    className="flex items-start gap-4 rounded-xl border p-4 transition-colors hover:bg-muted/40"
+                    className="flex items-start gap-4 rounded-[10px] border p-4 transition-colors hover:bg-muted/40"
                   >
                     <div className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                       <DomainIcon className="size-5" />

@@ -336,7 +336,7 @@ export default function CreditsPage() {
                   ) : (
                     <div className="space-y-3">
                       {wallet.monetaryLedger.map((entry) => (
-                        <div key={entry.id} className="rounded-xl border p-4">
+                        <div key={entry.id} className="rounded-[10px] border p-4">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="space-y-2">
                               <div className="flex flex-wrap items-center gap-2">
@@ -391,7 +391,7 @@ export default function CreditsPage() {
               ) : (
                 <div className="space-y-3">
                   {wallet.entries.map((entry) => (
-                    <div key={entry.id} className="rounded-xl border p-4">
+                    <div key={entry.id} className="rounded-[10px] border p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">

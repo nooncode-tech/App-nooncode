@@ -5,7 +5,19 @@
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
       "Bash(npx supabase:*)",
-      "WebFetch(domain:v0.app)"
+      "WebFetch(domain:v0.app)",
+      "Bash(where pnpm *)",
+      "Bash(npx pnpm *)",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__apply_migration",
+      "Bash(git add *)",
+      "Bash(git -c user.name=Juan -c user.email=juan.cardozom@outlook.com commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git -c user.name=Juan -c user.email=juan.cardozom@outlook.com commit -m 'fix: add parens around nullish coalescing in earnings page *)",
+      "Bash(mkdir -p \"c:/Users/Juan/Documents/Noon/nooncode-app/app/api/proposals/[proposalId]/review\")",
+      "Bash(mkdir -p \"c:/Users/Juan/Documents/Noon/nooncode-app/app/api/proposals/[proposalId]/open\")",
+      "mcp__supabase__execute_sql",
+      "Bash(git commit *)"
     ]
   }
 }
