@@ -17,6 +17,7 @@ import {
   ArrowUpRight,
   Wallet,
   Zap,
+  Search,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
@@ -110,12 +111,22 @@ export default function DashboardPage() {
         <h1 className="relative text-[2.8rem] font-black tracking-tight text-white leading-none">
           Hola, {user.name.split(' ')[0]}
         </h1>
-        <p className="relative mt-2.5 text-sm text-white/35 flex items-center gap-2">
-          <Badge variant="secondary" className="font-medium text-[10px] bg-white/8 text-white/50 border border-white/10 hover:bg-white/8">
-            {getRoleLabel(user.role)}
-          </Badge>
-          {dashboardKpiCopy.headerSummaryLabel}
-        </p>
+        <div className="relative mt-2.5 flex items-center justify-between gap-4">
+          <p className="text-sm text-white/35 flex items-center gap-2">
+            <Badge variant="secondary" className="font-medium text-[10px] bg-white/8 text-white/50 border border-white/10 hover:bg-white/8">
+              {getRoleLabel(user.role)}
+            </Badge>
+            {dashboardKpiCopy.headerSummaryLabel}
+          </p>
+          <button
+            onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-all text-xs"
+          >
+            <Search className="size-3.5 shrink-0" />
+            <span>Buscar</span>
+            <kbd className="font-mono text-[9px] text-white/20 ml-1">⌘K</kbd>
+          </button>
+        </div>
 
         <div className="relative mt-7 flex flex-wrap gap-2.5">
           <div className="flex items-center gap-2.5 bg-white/[0.05] border border-white/[0.07] rounded-xl px-4 py-2.5">

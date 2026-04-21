@@ -21,7 +21,6 @@ import {
   BarChart3,
   Globe,
   Zap,
-  Search,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -205,35 +204,24 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-white/[0.05]">
-      {/* ── Wordmark ── */}
-      <SidebarHeader className="px-4 pt-5 pb-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:items-center">
-        <Link href="/dashboard" className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-          {/* Logo mark — always visible, centered in icon mode */}
-          <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(18,0,197,0.4)] hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
-            <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
-          </div>
-          {/* Text mark — hidden when collapsed */}
-          <div className="flex flex-col leading-none group-data-[collapsible=icon]:hidden">
-            <span className="text-[17px] font-black tracking-[-0.04em] text-white">noon</span>
-            <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/25 mt-0.5">platform</span>
-          </div>
-        </Link>
+      {/* ── Wordmark + Toggle ── */}
+      <SidebarHeader className="px-4 pt-4 pb-3 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:items-center">
+        <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+          <Link href="/dashboard" className="flex items-center gap-3 flex-1 min-w-0 group-data-[collapsible=icon]:flex-none">
+            <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(18,0,197,0.4)] hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
+              <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
+            </div>
+            <div className="flex flex-col leading-none group-data-[collapsible=icon]:hidden">
+              <span className="text-[17px] font-black tracking-[-0.04em] text-white">noon</span>
+              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/25 mt-0.5">platform</span>
+            </div>
+          </Link>
+          <SidebarTrigger className="shrink-0 text-white/20 hover:text-white/50 hover:bg-white/[0.05] size-7 [&>svg]:size-3.5 group-data-[collapsible=icon]:hidden" />
+        </div>
       </SidebarHeader>
 
       {/* ── Navigation ── */}
       <SidebarContent className="pt-1 gap-0">
-        {/* Search */}
-        <div className="px-3 mb-1 group-data-[collapsible=icon]:px-1.5">
-          <button
-            onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))}
-            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm w-full transition-all duration-150 text-white/35 hover:text-white/70 hover:bg-white/[0.05] group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center"
-          >
-            <Search className="size-4 shrink-0" />
-            <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Buscar</span>
-            <kbd className="text-[9px] font-mono text-white/20 group-data-[collapsible=icon]:hidden">⌘K</kbd>
-          </button>
-        </div>
-
         <NavGroup items={workspaceNavItems} pathname={pathname} badgeMap={badgeMap} />
 
         {canAccessSales(user.role) && (
@@ -308,10 +296,6 @@ export function AppSidebar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Toggle button */}
-        <div className="mt-2 flex group-data-[collapsible=icon]:justify-center">
-          <SidebarTrigger className="text-white/20 hover:text-white/50 hover:bg-white/[0.05] size-8 [&>svg]:size-3.5" />
-        </div>
       </SidebarFooter>
     </Sidebar>
   )
