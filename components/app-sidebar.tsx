@@ -219,9 +219,12 @@ export function AppSidebar() {
           </Link>
           <SidebarTrigger className="shrink-0 text-white/20 hover:text-white/50 hover:bg-white/[0.05] size-7 [&>svg]:size-3.5" />
         </div>
-        {/* Collapsed: just the trigger centered */}
-        <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-          <SidebarTrigger className="text-white/30 hover:text-white/70 hover:bg-white/[0.07] size-9 [&>svg]:size-4" />
+        {/* Collapsed: logo + trigger stacked */}
+        <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-2">
+          <Link href="/dashboard" className="size-8 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_12px_rgba(18,0,197,0.4)] hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
+            <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
+          </Link>
+          <SidebarTrigger className="text-white/25 hover:text-white/60 hover:bg-white/[0.07] size-7 [&>svg]:size-3.5" />
         </div>
       </SidebarHeader>
 
