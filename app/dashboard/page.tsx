@@ -91,7 +91,7 @@ export default function DashboardPage() {
   const lbl = 'text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground'
   const num = 'text-[2.5rem] font-bold tracking-tight tabular-nums leading-none mt-3'
   const note = 'text-xs text-muted-foreground mt-3'
-  const card = 'rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]'
+  const card = 'rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]'
 
   const dateStr = mounted
     ? new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -129,14 +129,14 @@ export default function DashboardPage() {
         </p>
 
         <div className="relative mt-7 flex flex-wrap gap-2.5">
-          <div className="flex items-center gap-2.5 bg-white/[0.05] border border-white/[0.07] rounded-xl px-4 py-2.5">
+          <div className="flex items-center gap-2.5 bg-white/[0.05] border border-white/[0.07] rounded-[10px] px-4 py-2.5">
             <Wallet className="size-3.5 text-white/20 shrink-0" />
             <div>
               <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/20">Balance</p>
               <p className="text-sm font-semibold text-white/60 tabular-nums mt-0.5">{personalStats.balanceValueLabel}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2.5 bg-white/[0.05] border border-white/[0.07] rounded-xl px-4 py-2.5">
+          <div className="flex items-center gap-2.5 bg-white/[0.05] border border-white/[0.07] rounded-[10px] px-4 py-2.5">
             <Zap className="size-3.5 text-white/20 shrink-0" />
             <div>
               <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/20">Puntos</p>
@@ -157,7 +157,7 @@ export default function DashboardPage() {
             </div>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               {/* Hero card — filled */}
-              <div className="rounded-2xl bg-primary px-6 pt-5 pb-6">
+              <div className="rounded-[10px] bg-primary px-6 pt-5 pb-6">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/50">Leads abiertos</p>
                 <p className="text-[2.75rem] font-bold tracking-tight tabular-nums leading-none mt-3 text-white">{sales.openLeads}</p>
                 <p className="text-xs text-white/40 mt-2 flex items-center gap-1">
@@ -165,17 +165,17 @@ export default function DashboardPage() {
                   <span>{dashboardKpiCopy.salesOpenLeadsNote}</span>
                 </p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+              <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>Valor del pipeline</p>
                 <p className={num}>${sales.pipelineValue.toLocaleString()}</p>
                 <p className={note}>Oportunidades abiertas</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+              <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>Deals cerrados</p>
                 <p className={num}>{sales.wonLeads}</p>
                 <p className={note}>{dashboardKpiCopy.salesWonLeadsNote}</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+              <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>{dashboardKpiCopy.salesRevenueTitle}</p>
                 <p className={num}>${sales.totalRevenue.toLocaleString()}</p>
                 <p className={`${note} flex items-center gap-1`}>
@@ -190,7 +190,7 @@ export default function DashboardPage() {
         {/* ── Conversion + Followups + Chart ── */}
         {canAccessSales(user.role) && leads.length > 0 && (
           <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+            <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
               <p className={lbl}>Tasa de conversión</p>
               <p className={num}>{conversionRate !== null ? `${conversionRate}%` : '—'}</p>
               <p className={note}>
@@ -200,7 +200,7 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+            <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
               <p className={lbl}>Seguimientos vencidos</p>
               <p className={`${num} ${overdueFollowUps.length > 0 ? 'text-destructive' : ''}`}>
                 {overdueFollowUps.length}
@@ -217,7 +217,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+            <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
               <p className={`${lbl} mb-4`}>Pipeline por estado</p>
               <div className="flex items-center gap-4">
                 {mounted && (
@@ -253,22 +253,22 @@ export default function DashboardPage() {
             </div>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               {/* Hero card — filled */}
-              <div className="rounded-2xl bg-[oklch(0.50_0.26_264)] px-6 pt-5 pb-6">
+              <div className="rounded-[10px] bg-[oklch(0.50_0.26_264)] px-6 pt-5 pb-6">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/50">Proyectos activos</p>
                 <p className="text-[2.75rem] font-bold tracking-tight tabular-nums leading-none mt-3 text-white">{delivery.activeProjects}</p>
                 <p className="text-xs text-white/40 mt-2">{delivery.projectsInReview} en revisión</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+              <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>Tareas pendientes</p>
                 <p className={num}>{delivery.pendingTasks}</p>
                 <p className={note}>{delivery.inProgressTasks} en progreso</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+              <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>En revisión</p>
                 <p className={num}>{delivery.reviewTasks}</p>
                 <p className={note}>Esperando aprobación</p>
               </div>
-              <div className="rounded-2xl border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
+              <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
                 <p className={lbl}>Completados</p>
                 <p className={num}>{delivery.completedProjects}</p>
                 <p className={note}>{dashboardKpiCopy.deliveryCompletedProjectsNote}</p>
@@ -280,11 +280,11 @@ export default function DashboardPage() {
         {/* ── Quick Actions ── */}
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-4">Acciones rápidas</h2>
-          <div className="rounded-2xl border bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)] overflow-hidden divide-y">
+          <div className="rounded-[10px] border bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)] overflow-hidden divide-y">
             {canAccessSales(user.role) && (
               <>
                 <Link href="/dashboard/leads" className="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors group">
-                  <div className="size-9 rounded-xl bg-primary/8 flex items-center justify-center shrink-0">
+                  <div className="size-9 rounded-[10px] bg-primary/8 flex items-center justify-center shrink-0">
                     <Users className="size-4 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -294,7 +294,7 @@ export default function DashboardPage() {
                   <ArrowUpRight className="size-4 text-muted-foreground/40 group-hover:text-foreground transition-colors shrink-0" />
                 </Link>
                 <Link href="/dashboard/pipeline" className="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors group">
-                  <div className="size-9 rounded-xl bg-primary/8 flex items-center justify-center shrink-0">
+                  <div className="size-9 rounded-[10px] bg-primary/8 flex items-center justify-center shrink-0">
                     <TrendingUp className="size-4 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -308,7 +308,7 @@ export default function DashboardPage() {
             {canAccessDelivery(user.role) && (
               <>
                 <Link href="/dashboard/projects" className="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors group">
-                  <div className="size-9 rounded-xl bg-accent/8 flex items-center justify-center shrink-0">
+                  <div className="size-9 rounded-[10px] bg-accent/8 flex items-center justify-center shrink-0">
                     <FolderKanban className="size-4 text-accent" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -318,7 +318,7 @@ export default function DashboardPage() {
                   <ArrowUpRight className="size-4 text-muted-foreground/40 group-hover:text-foreground transition-colors shrink-0" />
                 </Link>
                 <Link href="/dashboard/tasks" className="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors group">
-                  <div className="size-9 rounded-xl bg-accent/8 flex items-center justify-center shrink-0">
+                  <div className="size-9 rounded-[10px] bg-accent/8 flex items-center justify-center shrink-0">
                     <CheckCircle2 className="size-4 text-accent" />
                   </div>
                   <div className="flex-1 min-w-0">
