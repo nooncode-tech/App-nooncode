@@ -99,33 +99,37 @@ export default function DashboardPage() {
   return (
     <div>
       {/* ── Dark Hero Header ── */}
-      <div className="bg-[#0c0c0e] px-8 py-10">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30 mb-3">
+      <div className="relative bg-[#0e0e16] px-8 pt-9 pb-10 border-b border-white/[0.05]">
+        {/* subtle grid texture */}
+        <div className="pointer-events-none absolute inset-0 opacity-[0.03]"
+          style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+
+        <p className="relative text-[10px] font-semibold uppercase tracking-[0.15em] text-white/25 mb-3">
           {dateStr}
         </p>
-        <h1 className="text-5xl font-bold tracking-tight text-white leading-tight">
+        <h1 className="relative text-[2.8rem] font-black tracking-tight text-white leading-none">
           Hola, {user.name.split(' ')[0]}
         </h1>
-        <p className="mt-2 text-sm text-white/40 flex items-center gap-2">
-          <Badge variant="secondary" className="font-normal text-xs bg-white/10 text-white/70 border-0 hover:bg-white/10">
+        <p className="relative mt-2.5 text-sm text-white/35 flex items-center gap-2">
+          <Badge variant="secondary" className="font-medium text-[10px] bg-white/8 text-white/50 border border-white/10 hover:bg-white/8">
             {getRoleLabel(user.role)}
           </Badge>
           {dashboardKpiCopy.headerSummaryLabel}
         </p>
 
-        <div className="mt-8 flex flex-wrap gap-3">
-          <div className="flex items-center gap-3 bg-white/[0.04] border border-white/[0.08] rounded-xl px-5 py-3">
-            <Wallet className="size-4 text-white/30 shrink-0" />
+        <div className="relative mt-7 flex flex-wrap gap-2.5">
+          <div className="flex items-center gap-2.5 bg-white/[0.05] border border-white/[0.07] rounded-xl px-4 py-2.5">
+            <Wallet className="size-3.5 text-white/20 shrink-0" />
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/30">Balance</p>
-              <p className="text-base font-bold text-white tabular-nums mt-0.5">{personalStats.balanceValueLabel}</p>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/20">Balance</p>
+              <p className="text-sm font-semibold text-white/60 tabular-nums mt-0.5">{personalStats.balanceValueLabel}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 bg-white/[0.04] border border-white/[0.08] rounded-xl px-5 py-3">
-            <Zap className="size-4 text-white/30 shrink-0" />
+          <div className="flex items-center gap-2.5 bg-white/[0.05] border border-white/[0.07] rounded-xl px-4 py-2.5">
+            <Zap className="size-3.5 text-white/20 shrink-0" />
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/30">Puntos</p>
-              <p className="text-base font-bold text-white tabular-nums mt-0.5">{personalStats.pointsValueLabel}</p>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/20">Puntos</p>
+              <p className="text-sm font-semibold text-white/60 tabular-nums mt-0.5">{personalStats.pointsValueLabel}</p>
             </div>
           </div>
         </div>

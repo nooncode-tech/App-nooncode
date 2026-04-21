@@ -146,6 +146,12 @@ export function AppSidebar() {
   const router = useRouter()
   const [unreadNotifications, setUnreadNotifications] = useState(0)
 
+  // Reset sidebar scroll to top on every route change so top items are always visible
+  useEffect(() => {
+    const el = document.querySelector('[data-sidebar="content"]') as HTMLElement | null
+    if (el) el.scrollTop = 0
+  }, [pathname])
+
   useEffect(() => {
     let isActive = true
 
