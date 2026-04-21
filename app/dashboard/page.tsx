@@ -50,6 +50,7 @@ export default function DashboardPage() {
   }, [leads])
 
   const overdueFollowUps = useMemo(() => {
+    if (!mounted) return []
     const now = new Date()
     return leads.filter(
       (l) =>
@@ -58,7 +59,7 @@ export default function DashboardPage() {
         l.status !== 'won' &&
         l.status !== 'lost'
     )
-  }, [leads])
+  }, [leads, mounted])
 
   const leadsByStatus = useMemo(() => {
     const counts: Record<string, number> = {}
