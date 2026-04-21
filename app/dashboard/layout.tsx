@@ -58,15 +58,15 @@ export default function DashboardLayout({
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="h-4" />
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur-sm px-4 sticky top-0 z-10">
+            <SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground" />
+            <Separator orientation="vertical" className="h-4 mx-1" />
             <div className="flex-1" />
             <CommandPalette />
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="hidden md:flex items-center gap-2 text-muted-foreground text-xs h-8 px-3"
+              className="hidden md:flex items-center gap-2 text-muted-foreground text-xs h-8 px-3 hover:text-foreground"
               onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))}
             >
               <Search className="size-3.5" />

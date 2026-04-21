@@ -92,46 +92,43 @@ export default function DashboardPage() {
   }, [leads])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-8 space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 pb-6 border-b">
         <div>
-          <h1 className="text-2xl font-bold text-balance">Bienvenido, {user.name.split(' ')[0]}</h1>
-          <p className="text-muted-foreground max-w-2xl">
-            <Badge variant="outline" className="mr-2">{getRoleLabel(user.role)}</Badge>
+          <h1 className="text-3xl font-semibold tracking-tight">Hola, {user.name.split(' ')[0]}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            <Badge variant="outline" className="mr-2 font-normal">{getRoleLabel(user.role)}</Badge>
             {dashboardKpiCopy.headerSummaryLabel}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:min-w-[260px]">
-          <div className="rounded-xl border bg-card px-4 py-3 text-right shadow-sm">
-            <p className="text-sm text-muted-foreground">Tu balance</p>
-            <p className="text-xl font-bold text-primary">{personalStats.balanceValueLabel}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{personalStats.balanceDescription}</p>
+        <div className="grid grid-cols-2 gap-3 md:min-w-[280px]">
+          <div className="rounded-xl border bg-card px-5 py-4 shadow-sm">
+            <p className="stat-label">Balance</p>
+            <p className="text-2xl font-semibold text-primary mt-1 tabular-nums">{personalStats.balanceValueLabel}</p>
+            <p className="text-xs text-muted-foreground mt-1">{personalStats.balanceDescription}</p>
           </div>
-          <div className="rounded-xl border bg-card px-4 py-3 text-right shadow-sm">
-            <p className="text-sm text-muted-foreground">Puntos</p>
-            <p className="text-xl font-bold text-accent">{personalStats.pointsValueLabel}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{personalStats.pointsDescription}</p>
+          <div className="rounded-xl border bg-card px-5 py-4 shadow-sm">
+            <p className="stat-label">Puntos</p>
+            <p className="text-2xl font-semibold text-accent mt-1 tabular-nums">{personalStats.pointsValueLabel}</p>
+            <p className="text-xs text-muted-foreground mt-1">{personalStats.pointsDescription}</p>
           </div>
         </div>
       </div>
 
       {/* Sales Stats - Only for sales roles */}
       {canAccessSales(user.role) && (
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold">Ventas</h2>
-            <p className="text-sm text-muted-foreground">Resumen comercial derivado de tu pipeline actual.</p>
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-base font-semibold">Ventas</h2>
+            <p className="text-sm text-muted-foreground">Resumen comercial de tu pipeline actual.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card className="gap-4">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Leads abiertos</CardTitle>
-                <Users className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{sales.openLeads}</div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Card>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Leads abiertos</p>
+                <p className="stat-number mt-2">{sales.openLeads}</p>
+                <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                   {authMode === 'mock' && <ArrowUpRight className="size-3 text-success" />}
                   <span className={authMode === 'mock' ? 'text-success' : undefined}>
                     {dashboardKpiCopy.salesOpenLeadsNote}
@@ -139,34 +136,25 @@ export default function DashboardPage() {
                 </p>
               </CardContent>
             </Card>
-            <Card className="gap-4">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Valor del pipeline</CardTitle>
-                <TrendingUp className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">${sales.pipelineValue.toLocaleString()}</div>
-                <p className="text-xs text-muted-foreground">Oportunidades abiertas</p>
+            <Card>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Valor del pipeline</p>
+                <p className="stat-number mt-2">${sales.pipelineValue.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">Oportunidades abiertas</p>
               </CardContent>
             </Card>
-            <Card className="gap-4">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Deals cerrados</CardTitle>
-                <CheckCircle2 className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{sales.wonLeads}</div>
-                <p className="text-xs text-muted-foreground">{dashboardKpiCopy.salesWonLeadsNote}</p>
+            <Card>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Deals cerrados</p>
+                <p className="stat-number mt-2">{sales.wonLeads}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">{dashboardKpiCopy.salesWonLeadsNote}</p>
               </CardContent>
             </Card>
-            <Card className="gap-4">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{dashboardKpiCopy.salesRevenueTitle}</CardTitle>
-                <DollarSign className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">${sales.totalRevenue.toLocaleString()}</div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Card>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">{dashboardKpiCopy.salesRevenueTitle}</p>
+                <p className="stat-number mt-2">${sales.totalRevenue.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                   {authMode === 'mock' && <ArrowUpRight className="size-3 text-success" />}
                   <span className={authMode === 'mock' ? 'text-success' : undefined}>
                     {dashboardKpiCopy.salesRevenueNote}
@@ -182,16 +170,13 @@ export default function DashboardPage() {
       {canAccessSales(user.role) && leads.length > 0 && (
         <div className="grid gap-4 md:grid-cols-3">
           {/* Conversion rate */}
-          <Card className="gap-4">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tasa de conversión</CardTitle>
-              <Target className="size-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+          <Card>
+            <CardContent className="pt-6 pb-5 px-6">
+              <p className="stat-label">Tasa de conversión</p>
+              <p className="stat-number mt-2">
                 {conversionRate !== null ? `${conversionRate}%` : '—'}
-              </div>
-              <p className="text-xs text-muted-foreground">
+              </p>
+              <p className="text-xs text-muted-foreground mt-1.5">
                 {conversionRate !== null
                   ? `${sales.wonLeads} ganados de ${leads.filter((l) => l.status === 'won' || l.status === 'lost').length} cerrados`
                   : 'Sin deals cerrados aún'}
@@ -200,23 +185,19 @@ export default function DashboardPage() {
           </Card>
 
           {/* Overdue follow-ups */}
-          <Card className="gap-4">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Seguimientos vencidos</CardTitle>
-              <Bell className="size-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-destructive">{overdueFollowUps.length}</div>
-              <p className="text-xs text-muted-foreground">
+          <Card>
+            <CardContent className="pt-6 pb-5 px-6">
+              <p className="stat-label">Seguimientos vencidos</p>
+              <p className={`stat-number mt-2 ${overdueFollowUps.length > 0 ? 'text-destructive' : ''}`}>
+                {overdueFollowUps.length}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1.5">
                 {overdueFollowUps.length === 0
                   ? 'Todo al día'
                   : `${overdueFollowUps.length} lead${overdueFollowUps.length > 1 ? 's' : ''} sin seguimiento`}
               </p>
               {overdueFollowUps.length > 0 && (
-                <Link
-                  href="/dashboard/leads"
-                  className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
+                <Link href="/dashboard/leads" className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline">
                   Ver leads <ArrowUpRight className="size-3" />
                 </Link>
               )}
@@ -224,86 +205,71 @@ export default function DashboardPage() {
           </Card>
 
           {/* Pipeline pie chart */}
-          <Card className="gap-2">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Pipeline por estado</CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-center gap-4 pb-4">
-              {mounted && (
-                <ResponsiveContainer width={80} height={80}>
-                  <PieChart>
-                    <Pie data={leadsByStatus} dataKey="value" cx="50%" cy="50%" outerRadius={38} strokeWidth={1}>
-                      {leadsByStatus.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value, name) => [value, name]}
-                      contentStyle={{ fontSize: 11 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-              <div className="flex flex-col gap-1">
-                {leadsByStatus.map((entry) => (
-                  <div key={entry.name} className="flex items-center gap-1.5 text-xs">
-                    <span className="size-2 rounded-full flex-shrink-0" style={{ background: entry.color }} />
-                    <span className="text-muted-foreground">{entry.name}</span>
-                    <span className="font-medium ml-auto pl-2">{entry.value}</span>
-                  </div>
-                ))}
+          <Card>
+            <CardContent className="pt-6 pb-5 px-6">
+              <p className="stat-label mb-4">Pipeline por estado</p>
+              <div className="flex items-center gap-4">
+                {mounted && (
+                  <ResponsiveContainer width={80} height={80}>
+                    <PieChart>
+                      <Pie data={leadsByStatus} dataKey="value" cx="50%" cy="50%" outerRadius={38} strokeWidth={1}>
+                        {leadsByStatus.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value, name) => [value, name]} contentStyle={{ fontSize: 11 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  {leadsByStatus.map((entry) => (
+                    <div key={entry.name} className="flex items-center gap-1.5 text-xs">
+                      <span className="size-2 rounded-full flex-shrink-0" style={{ background: entry.color }} />
+                      <span className="text-muted-foreground">{entry.name}</span>
+                      <span className="font-semibold ml-auto pl-2">{entry.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Delivery Stats - Only for delivery roles */}
+      {/* Delivery Stats */}
       {canAccessDelivery(user.role) && (
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold">Delivery</h2>
-            <p className="text-sm text-muted-foreground">Estado operativo alineado con proyectos y tareas activas.</p>
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-base font-semibold">Delivery</h2>
+            <p className="text-sm text-muted-foreground">Estado operativo de proyectos y tareas activas.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card className="gap-4">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Proyectos activos</CardTitle>
-                <FolderKanban className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{delivery.activeProjects}</div>
-                <p className="text-xs text-muted-foreground">{delivery.projectsInReview} en revision</p>
+            <Card>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Proyectos activos</p>
+                <p className="stat-number mt-2">{delivery.activeProjects}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">{delivery.projectsInReview} en revisión</p>
               </CardContent>
             </Card>
-            <Card className="gap-4">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Tareas pendientes</CardTitle>
-                <Clock className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{delivery.pendingTasks}</div>
-                <p className="text-xs text-muted-foreground">{delivery.inProgressTasks} en progreso</p>
+            <Card>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Tareas pendientes</p>
+                <p className="stat-number mt-2">{delivery.pendingTasks}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">{delivery.inProgressTasks} en progreso</p>
               </CardContent>
             </Card>
-            <Card className="gap-4">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">En revision</CardTitle>
-                <AlertTriangle className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{delivery.reviewTasks}</div>
-                <p className="text-xs text-muted-foreground">Esperando aprobacion</p>
+            <Card>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">En revisión</p>
+                <p className="stat-number mt-2">{delivery.reviewTasks}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">Esperando aprobación</p>
               </CardContent>
             </Card>
-            <Card className="gap-4">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Completados</CardTitle>
-                <CheckCircle2 className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{delivery.completedProjects}</div>
-                <p className="text-xs text-muted-foreground">{dashboardKpiCopy.deliveryCompletedProjectsNote}</p>
+            <Card>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Completados</p>
+                <p className="stat-number mt-2">{delivery.completedProjects}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">{dashboardKpiCopy.deliveryCompletedProjectsNote}</p>
               </CardContent>
             </Card>
           </div>
@@ -312,61 +278,49 @@ export default function DashboardPage() {
 
       {/* Quick Actions */}
       <Card>
-        <CardHeader className="pb-0">
-          <CardTitle>Acciones rapidas</CardTitle>
-          <CardDescription>Accede rapidamente a las funciones mas usadas</CardDescription>
+        <CardHeader className="pb-0 px-6 pt-5">
+          <CardTitle className="text-base font-semibold">Acciones rápidas</CardTitle>
+          <CardDescription>Accede rápidamente a las funciones más usadas</CardDescription>
         </CardHeader>
         <CardContent className="p-0 mt-2">
           <div className="divide-y">
             {canAccessSales(user.role) && (
               <>
-                <Link
-                  href="/dashboard/leads"
-                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/40 transition-colors"
-                >
+                <Link href="/dashboard/leads" className="flex items-center gap-3 px-6 py-4 hover:bg-muted/30 transition-colors">
                   <Users className="size-4 text-muted-foreground shrink-0" />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Ver leads</p>
                     <p className="text-xs text-muted-foreground">{sales.openLeads} leads activos</p>
                   </div>
-                  <ArrowUpRight className="size-4 text-muted-foreground" />
+                  <ArrowUpRight className="size-4 text-muted-foreground shrink-0" />
                 </Link>
-                <Link
-                  href="/dashboard/pipeline"
-                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/40 transition-colors"
-                >
+                <Link href="/dashboard/pipeline" className="flex items-center gap-3 px-6 py-4 hover:bg-muted/30 transition-colors">
                   <TrendingUp className="size-4 text-muted-foreground shrink-0" />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Pipeline de ventas</p>
                     <p className="text-xs text-muted-foreground">Vista kanban</p>
                   </div>
-                  <ArrowUpRight className="size-4 text-muted-foreground" />
+                  <ArrowUpRight className="size-4 text-muted-foreground shrink-0" />
                 </Link>
               </>
             )}
             {canAccessDelivery(user.role) && (
               <>
-                <Link
-                  href="/dashboard/projects"
-                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/40 transition-colors"
-                >
+                <Link href="/dashboard/projects" className="flex items-center gap-3 px-6 py-4 hover:bg-muted/30 transition-colors">
                   <FolderKanban className="size-4 text-muted-foreground shrink-0" />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Proyectos</p>
                     <p className="text-xs text-muted-foreground">{delivery.activeProjects} activos</p>
                   </div>
-                  <ArrowUpRight className="size-4 text-muted-foreground" />
+                  <ArrowUpRight className="size-4 text-muted-foreground shrink-0" />
                 </Link>
-                <Link
-                  href="/dashboard/tasks"
-                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/40 transition-colors"
-                >
+                <Link href="/dashboard/tasks" className="flex items-center gap-3 px-6 py-4 hover:bg-muted/30 transition-colors">
                   <CheckCircle2 className="size-4 text-muted-foreground shrink-0" />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Mis tareas</p>
                     <p className="text-xs text-muted-foreground">{delivery.actionableTasks} pendientes</p>
                   </div>
-                  <ArrowUpRight className="size-4 text-muted-foreground" />
+                  <ArrowUpRight className="size-4 text-muted-foreground shrink-0" />
                 </Link>
               </>
             )}

@@ -230,7 +230,7 @@ export default function EarningsPage() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Mis Ganancias</h1>
+          <h1 className="stat-number">Mis Ganancias</h1>
           <p className="text-muted-foreground">Comisiones acreditadas desde el ledger monetario</p>
         </div>
         <Button
@@ -297,48 +297,34 @@ export default function EarningsPage() {
         <>
           <div className="grid gap-4 md:grid-cols-4">
             <Card className="bg-primary text-primary-foreground">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-primary-foreground/80">
-                  Total Ganado
-                </CardTitle>
-                <Wallet className="size-4 text-primary-foreground/80" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{fmt(summary?.totalEarned ?? 0)}</div>
-                <p className="text-xs text-primary-foreground/70 mt-1">Acumulado histórico</p>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="text-xs font-medium uppercase tracking-wide text-primary-foreground/70">Total Ganado</p>
+                <p className="stat-number-lg mt-2 text-primary-foreground">{fmt(summary?.totalEarned ?? 0)}</p>
+                <p className="text-xs text-primary-foreground/60 mt-1.5">Acumulado histórico</p>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Disponible para retirar</CardTitle>
-                <ArrowDownToLine className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">{fmt(summary?.availableToWithdraw ?? 0)}</div>
-                <p className="text-xs text-muted-foreground">Consolidado y listo</p>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Disponible para retirar</p>
+                <p className="stat-number mt-2 text-green-600">{fmt(summary?.availableToWithdraw ?? 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">Consolidado y listo</p>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pendiente</CardTitle>
-                <Clock className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-yellow-600">{fmt(summary?.pending ?? 0)}</div>
-                <p className="text-xs text-muted-foreground">En validación por PM</p>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Pendiente</p>
+                <p className="stat-number mt-2 text-yellow-600">{fmt(summary?.pending ?? 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">En validación por PM</p>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Bloqueado</CardTitle>
-                <Lock className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-destructive">{fmt(summary?.locked ?? 0)}</div>
-                <p className="text-xs text-muted-foreground">En disputa o retención</p>
+              <CardContent className="pt-6 pb-5 px-6">
+                <p className="stat-label">Bloqueado</p>
+                <p className="stat-number mt-2 text-destructive">{fmt(summary?.locked ?? 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">En disputa o retención</p>
               </CardContent>
             </Card>
           </div>

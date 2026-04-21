@@ -225,7 +225,7 @@ export default function LeadsPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-balance">Leads</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
           <p className="text-muted-foreground">
             Gestiona tu cola de prospectos y prioriza por score
           </p>
@@ -242,40 +242,28 @@ export default function LeadsPage() {
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
-            <Users className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalLeads}</div>
+          <CardContent className="pt-6 pb-5 px-6">
+            <p className="stat-label">Total Leads</p>
+            <p className="stat-number mt-2">{totalLeads}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">High Score</CardTitle>
-            <Star className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{highScoreLeads}</div>
-            <p className="text-xs text-muted-foreground">Score 80+</p>
+          <CardContent className="pt-6 pb-5 px-6">
+            <p className="stat-label">High Score</p>
+            <p className="stat-number mt-2">{highScoreLeads}</p>
+            <p className="text-xs text-muted-foreground mt-1.5">Score 80+</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Score Promedio</CardTitle>
-            <TrendingUp className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{avgScore}</div>
+          <CardContent className="pt-6 pb-5 px-6">
+            <p className="stat-label">Score Promedio</p>
+            <p className="stat-number mt-2">{avgScore}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Valor Pipeline</CardTitle>
-            <Clock className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${pipelineValue.toLocaleString()}</div>
+          <CardContent className="pt-6 pb-5 px-6">
+            <p className="stat-label">Valor Pipeline</p>
+            <p className="stat-number mt-2">${pipelineValue.toLocaleString()}</p>
           </CardContent>
         </Card>
       </div>

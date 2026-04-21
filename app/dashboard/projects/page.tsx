@@ -422,7 +422,7 @@ export default function ProjectsPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold text-balance">Proyectos</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Proyectos</h1>
             {!canManageProjects ? (
               <Badge variant="outline" className="gap-1">
                 <Eye className="size-3.5" />
@@ -458,7 +458,7 @@ export default function ProjectsPage() {
             <FolderKanban className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalProjects}</div>
+            <div className="stat-number">{totalProjects}</div>
           </CardContent>
         </Card>
         <Card>
@@ -467,7 +467,7 @@ export default function ProjectsPage() {
             <Clock className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeProjects}</div>
+            <div className="stat-number">{activeProjects}</div>
           </CardContent>
         </Card>
         <Card>
@@ -476,7 +476,7 @@ export default function ProjectsPage() {
             <AlertTriangle className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{inReview}</div>
+            <div className="stat-number">{inReview}</div>
           </CardContent>
         </Card>
         <Card>
@@ -485,7 +485,7 @@ export default function ProjectsPage() {
             <DollarSign className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalBudget.toLocaleString()}</div>
+            <div className="stat-number">${totalBudget.toLocaleString()}</div>
           </CardContent>
         </Card>
       </div>
