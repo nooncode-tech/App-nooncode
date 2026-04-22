@@ -89,9 +89,9 @@ export default function DashboardPage() {
   }, [leads])
 
   const lbl = 'text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground'
-  const num = 'text-[2.5rem] font-bold tracking-tight tabular-nums leading-none mt-3'
-  const note = 'text-xs text-muted-foreground mt-3'
-  const card = 'rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]'
+  const num = 'text-2xl font-bold tracking-tight tabular-nums leading-none mt-2'
+  const note = 'text-xs text-muted-foreground mt-2'
+  const card = 'rounded-[10px] border bg-card px-5 pt-4 pb-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)]'
 
   const dateStr = mounted
     ? new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -100,7 +100,7 @@ export default function DashboardPage() {
   return (
     <div>
       {/* ── Dark Hero Header ── */}
-      <div className="relative bg-[#000000] px-8 pt-9 pb-10 border-b border-white/[0.05]">
+      <div className="relative bg-[#000000] px-8 pt-6 pb-7 border-b border-white/[0.05]">
         {/* subtle grid texture */}
         <div className="pointer-events-none absolute inset-0 opacity-[0.03]"
           style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
@@ -157,9 +157,9 @@ export default function DashboardPage() {
             </div>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               {/* Hero card — filled */}
-              <div className="rounded-[10px] bg-primary px-6 pt-5 pb-6">
+              <div className="rounded-[10px] bg-primary px-5 pt-4 pb-5">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/50">Leads abiertos</p>
-                <p className="text-[2.75rem] font-bold tracking-tight tabular-nums leading-none mt-3 text-white">{sales.openLeads}</p>
+                <p className="text-3xl font-bold tracking-tight tabular-nums leading-none mt-2 text-white">{sales.openLeads}</p>
                 <p className="text-xs text-white/40 mt-2 flex items-center gap-1">
                   {authMode === 'mock' && <ArrowUpRight className="size-3 text-white/60" />}
                   <span>{dashboardKpiCopy.salesOpenLeadsNote}</span>
@@ -253,9 +253,9 @@ export default function DashboardPage() {
             </div>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               {/* Hero card — filled */}
-              <div className="rounded-[10px] bg-[oklch(0.50_0.26_264)] px-6 pt-5 pb-6">
+              <div className="rounded-[10px] bg-[oklch(0.50_0.26_264)] px-5 pt-4 pb-5">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/50">Proyectos activos</p>
-                <p className="text-[2.75rem] font-bold tracking-tight tabular-nums leading-none mt-3 text-white">{delivery.activeProjects}</p>
+                <p className="text-3xl font-bold tracking-tight tabular-nums leading-none mt-2 text-white">{delivery.activeProjects}</p>
                 <p className="text-xs text-white/40 mt-2">{delivery.projectsInReview} en revisión</p>
               </div>
               <div className="rounded-[10px] border bg-card px-6 pt-5 pb-7 shadow-[0_1px_4px_rgba(0,0,0,0.07)]">
