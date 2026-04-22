@@ -31,7 +31,9 @@ function isRecoverableSessionError(error: { message?: string } | null | undefine
     message.includes('invalid jwt') ||
     message.includes('token is expired') ||
     message.includes('jwt expired') ||
-    message.includes('unable to parse or verify signature')
+    message.includes('unable to parse or verify signature') ||
+    message.includes('refresh token not found') ||
+    message.includes('invalid refresh token')
   )
 }
 
