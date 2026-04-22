@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useData } from '@/lib/data-context'
@@ -10,7 +10,6 @@ import {
   selectPipelineColumnStats,
 } from '@/lib/dashboard-selectors'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -22,12 +21,7 @@ import {
 import { LeadDetail } from '@/components/lead-detail'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
-import {
-  Building2,
-  DollarSign,
-  GripVertical,
-  Plus,
-} from 'lucide-react'
+import { Building2, Plus } from 'lucide-react'
 import { LeadFormDialog } from '@/components/lead-form-dialog'
 import { toast } from 'sonner'
 
@@ -74,19 +68,16 @@ export default function PipelinePage() {
   const getColumnStats = (column: KanbanColumn<Lead>) => selectPipelineColumnStats(column.items)
 
   return (
-    <div className="p-6 space-y-6 h-full flex flex-col">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="h-full flex flex-col">
+      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05] flex items-center justify-between gap-4 shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-balance">Pipeline de Ventas</h1>
-          <p className="text-muted-foreground">
-            Arrastra los leads entre etapas para actualizar su estado
-          </p>
+          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Pipeline de Ventas</h1>
+          <p className="mt-1 text-xs text-white/40">Arrastra los leads entre etapas para actualizar su estado</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 shrink-0">
           <div className="text-right">
-            <p className="text-sm text-muted-foreground">Valor total en pipeline</p>
-            <p className="text-2xl font-bold text-primary">${totalPipelineValue.toLocaleString()}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/25">Valor total</p>
+            <p className="text-xl font-bold text-white tabular-nums">${totalPipelineValue.toLocaleString()}</p>
           </div>
           <Button onClick={() => setShowNewLeadDialog(true)}>
             <Plus className="size-4 mr-2" />
@@ -94,6 +85,7 @@ export default function PipelinePage() {
           </Button>
         </div>
       </div>
+      <div className="px-4 py-4 flex flex-col flex-1 overflow-hidden">
 
       {/* Kanban Board */}
       {isLeadsLoading ? (
@@ -135,6 +127,7 @@ export default function PipelinePage() {
         open={showNewLeadDialog}
         onOpenChange={setShowNewLeadDialog}
       />
+      </div>
     </div>
   )
 }
@@ -147,48 +140,39 @@ interface PipelineCardProps {
 
 function PipelineCard({ lead, isDragging, onClick }: PipelineCardProps) {
   return (
-    <Card
+    <div
       onClick={onClick}
       className={cn(
-        "cursor-grab active:cursor-grabbing hover:shadow-md transition-all",
-        isDragging && "shadow-lg ring-2 ring-primary"
+        "group bg-background rounded-lg border px-2.5 py-2 cursor-pointer",
+        "hover:border-border/80 hover:shadow-sm transition-all duration-100",
+        isDragging && "shadow-md ring-2 ring-primary/50 opacity-90"
       )}
     >
-      <CardContent className="p-3">
-        <div className="flex items-start gap-2">
-          <GripVertical className="size-4 text-muted-foreground shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <h4 className="font-medium text-sm truncate">{lead.name}</h4>
-              <span
-                className={cn(
-                  'text-xs font-bold px-1.5 py-0.5 rounded shrink-0',
-                  selectLeadScoreColor(lead.score)
-                )}
-              >
-                {lead.score}
-              </span>
-            </div>
-            {lead.company && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                <Building2 className="size-3" />
-                <span className="truncate">{lead.company}</span>
-              </p>
-            )}
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex items-center gap-1 text-xs font-medium text-primary">
-                <DollarSign className="size-3" />
-                {lead.value.toLocaleString()}
-              </div>
-              {lead.tags.length > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {lead.tags[0]}
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      {/* Row 1: name + score */}
+      <div className="flex items-center justify-between gap-1.5 mb-1">
+        <span className="text-xs font-semibold truncate leading-tight">{lead.name}</span>
+        <span className={cn('text-[10px] font-bold px-1 py-px rounded shrink-0 tabular-nums', selectLeadScoreColor(lead.score))}>
+          {lead.score}
+        </span>
+      </div>
+      {/* Row 2: company (if any) */}
+      {lead.company && (
+        <p className="text-[10px] text-muted-foreground flex items-center gap-1 truncate mb-1">
+          <Building2 className="size-2.5 shrink-0" />
+          <span className="truncate">{lead.company}</span>
+        </p>
+      )}
+      {/* Row 3: value + tag */}
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[10px] font-semibold text-primary tabular-nums">
+          ${lead.value.toLocaleString()}
+        </span>
+        {lead.tags.length > 0 && (
+          <span className="text-[9px] font-medium px-1 py-px rounded bg-muted text-muted-foreground truncate max-w-[60px]">
+            {lead.tags[0]}
+          </span>
+        )}
+      </div>
+    </div>
   )
 }

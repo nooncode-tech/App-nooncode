@@ -250,6 +250,7 @@
 
 - PASO 0 completado (2026-04-19): Stripe live keys removidas de `.env.local` (ahora solo test keys); Maxwell integrado con GPT via `@ai-sdk/openai 3.0.53`; bug de `ScrollArea min-h-0` en Maxwell chat corregido; `suppressHydrationWarning` agregado al `<body>` para fix de Radix UI SSR.
 - FASE 1 completada (2026-04-19): Wallet monetaria real implementada. Migration 0024 aplicada (6 tablas: `wallet_accounts`, `wallet_ledger_entries`, `payout_methods`, `payout_batches`, `payouts`, `provider_events`; 6 enums monetarios; RLS completo; función `ensure_monetary_wallet`). Migration 0025 bridge aplicada: `ensure_monetary_wallet` siembra `available_to_spend` desde créditos existentes (1 crédito = $1.00); `request_lead_prototype` ahora también debita `wallet_accounts` y registra en `wallet_ledger_entries` como `service_debit`. Frontend `/dashboard/credits` actualizado con sección Wallet monetaria (4 balances + ledger monetario). Bridge validado en browser como `admin@noon.app`.
+- FASE 2 completada (2026-04-21): Earnings reales implementados. `GET /api/earnings` retorna `summary` (4 buckets desde `wallet_accounts`) e `history` (`wallet_ledger_entries` filtrado por `earnings_distribution`). `POST /api/admin/earnings/credit` permite a admin/pm acreditar ganancias manuales al bucket `pending` (usa admin client con service_role para bypass de RLS). `POST /api/admin/earnings/consolidate` permite a admin mover saldo de `pending` a `available_to_withdraw`. `/dashboard/earnings` muestra datos reales (summary + ledger + solicitudes de retiro desde `withdrawal_requests`). `/dashboard/settings` tiene nueva tab `Ganancias` (admin+supabase) con formulario de acreditación manual. Migration 0026 SQL functions replicadas en `lib/server/earnings/admin.ts` vía TypeScript (admin client). Pendiente: validación en browser; index de entry_type no aplicado aún (optimización futura).
 
 ## Active risks
 - Repo is in a mixed real/mock state: auth is real-capable while business data still resets on reload.
@@ -257,7 +258,7 @@
 - `next.config.mjs` still ignores TypeScript build errors.
 - No repo-local automated test suite was found.
 - Local context files can drift quickly unless updated after each real phase.
-- Bridge wallet (0025): conversión 1 crédito = $1.00 es temporal. En FASE 2 se reemplaza por reglas reales de acreditación monetaria.
+- Bridge wallet (0025): conversión 1 crédito = $1.00 es temporal. FASE 2 ya implementa acreditación real vía admin, pero no elimina el bridge aún.
 - Stripe live keys pendientes de subir a Vercel antes del primer deploy a producción.
 
 ## Corrected roadmap status
@@ -310,7 +311,8 @@
 - Partial: Phase 3 "Leads accionables y cercania" because email/phone actions exist, but proximity, location, and WhatsApp are still missing.
 - Closed in runtime: PASO 0 — Maxwell GPT + Stripe keys fix (2026-04-19).
 - Closed in runtime: FASE 1 — Wallet monetaria real, migrations 0024+0025, bridge de compatibilidad, frontend credits actualizado (2026-04-19).
-- Recommended next execution route: FASE 2 — Earnings reales (comisiones reales desde el ledger).
+- Partial: FASE 2 — Earnings reales backend+UI implementados (2026-04-21); pendiente validación en browser.
+- Recommended next execution route: FASE 3 — Propuesta con lifecycle (paid/won trigger automático de earnings) o validación browser de FASE 2.
 
 ## Operating rules
 - Treat auth/session as repo-proven when Supabase env is enabled.
@@ -332,7 +334,8 @@
 - Treat `/dashboard/tasks` wording in `supabase` as role-honest: developers may see personal-task framing, but PM/admin should be framed as viewing visible team tasks, not only assigned personal work.
 - Treat the `/dashboard/projects` header in `supabase` as wiring-only for real creation entry points; do not reintroduce `Nuevo Proyecto desde Hand-off` there until an actual project-creation flow exists from that surface.
 - Treat the `/dashboard/tasks` sidebar entry in `supabase` as role-honest: developers may keep `Mis Tareas`, but PM/admin should see a team-visible label aligned with the page itself.
-- Treat `/dashboard`, `/dashboard/earnings`, `/dashboard/rewards`, and the sidebar user dropdown as intentionally honest unavailable-state UI in `supabase`, not as real finance/rewards implementations.
+- Treat `/dashboard/earnings` in `supabase` as real: it reads from `wallet_accounts` and `wallet_ledger_entries`; admin credits via `POST /api/admin/earnings/credit` use service_role client. Do NOT revert to mock/unavailable state.
+- Treat `/dashboard/rewards` and the sidebar user dropdown as intentionally honest unavailable-state UI in `supabase` for rewards/points, not as real implementations.
 - Treat `/dashboard/updates` in `supabase` as a read-only internal event feed over existing persisted activity only; do not infer new events from generic `updated_at` timestamps or reframe it as the PDF web-review/hosting updates module.
 - Treat `/dashboard/notifications` in `supabase` as a per-user in-app inbox over selected durable events only; do not reframe it as push/email delivery, do not infer notifications from `updated_at`, and do not merge it back into `Actualizaciones`.
 - Treat hand-off lineage in `supabase` as a read-only cross-domain explanation layer: sales surfaces should read linked projects from proposal lineage, project detail should read commercial origin from the enriched project read model, and any broader delivery access for sales roles must remain explicitly bounded to approved slices.

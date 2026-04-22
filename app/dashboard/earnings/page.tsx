@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
@@ -227,21 +227,23 @@ export default function EarningsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div>
+      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05] flex items-center justify-between gap-4">
         <div>
-          <h1 className="stat-number">Mis Ganancias</h1>
-          <p className="text-muted-foreground">Comisiones acreditadas desde el ledger monetario</p>
+          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Mis Ganancias</h1>
+          <p className="mt-1 text-xs text-white/40">Comisiones acreditadas desde el ledger monetario</p>
         </div>
         <Button
           variant="outline"
           onClick={() => setShowWithdrawDialog(true)}
           disabled={!summary || summary.availableToWithdraw <= 0}
+          className="shrink-0 border-white/20 text-white/70 hover:text-white hover:bg-white/10"
         >
           <CreditCard className="size-4 mr-2" />
           Solicitar retiro
         </Button>
       </div>
+      <div className="px-8 py-8 space-y-8">
 
       {/* Stripe Connect card */}
       {!connectLoading && connectStatus && (
@@ -479,6 +481,7 @@ export default function EarningsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   )
 }

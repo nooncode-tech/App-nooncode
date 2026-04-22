@@ -2,12 +2,10 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { Bell, BellOff, Briefcase, CheckCheck, ListTodo } from 'lucide-react'
+import { Bell, BellOff, Briefcase, Check, ExternalLink, ListTodo } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import type { UserNotification } from '@/lib/types'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Spinner } from '@/components/ui/spinner'
 import { NOTIFICATIONS_UPDATED_EVENT } from '@/lib/notifications/client-events'
@@ -18,34 +16,29 @@ import {
 
 interface NotificationsResponse {
   data: UserNotificationWire[]
-  meta: {
-    unreadCount: number
-  }
+  meta: { unreadCount: number }
 }
 
-function formatRelativeTimestamp(value: Date): string {
+function formatTimestamp(value: Date): string {
   return new Intl.DateTimeFormat('es-MX', {
-    dateStyle: 'medium',
+    dateStyle: 'short',
     timeStyle: 'short',
   }).format(value)
 }
 
-function readApiResponse(payload: NotificationsResponse): {
-  items: UserNotification[]
-  unreadCount: number
-} {
+function readApiResponse(payload: NotificationsResponse) {
   return {
     items: payload.data.map(deserializeUserNotification),
     unreadCount: payload.meta.unreadCount,
   }
 }
 
-function domainLabel(domain: UserNotification['domain']): string {
-  return domain === 'sales' ? 'Ventas' : 'Delivery'
-}
-
 function domainIcon(domain: UserNotification['domain']) {
   return domain === 'sales' ? Briefcase : ListTodo
+}
+
+function domainLabel(domain: UserNotification['domain']): string {
+  return domain === 'sales' ? 'Ventas' : 'Delivery'
 }
 
 export default function NotificationsPage() {
@@ -58,215 +51,145 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     let isActive = true
-
     if (authMode !== 'supabase' || !user) {
-      setItems([])
-      setUnreadCount(0)
-      setError(null)
-      setIsLoading(false)
-      return () => {
-        isActive = false
-      }
+      setItems([]); setUnreadCount(0); setError(null); setIsLoading(false)
+      return () => { isActive = false }
     }
-
-    setIsLoading(true)
-    setError(null)
-
-    fetch('/api/notifications?limit=30', {
-      method: 'GET',
-      cache: 'no-store',
-    })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null)
-
-        if (!response.ok) {
-          const message =
-            payload && typeof payload.error === 'string'
-              ? payload.error
-              : 'No se pudieron cargar las notificaciones visibles.'
-          throw new Error(message)
-        }
-
+    setIsLoading(true); setError(null)
+    fetch('/api/notifications?limit=50', { method: 'GET', cache: 'no-store' })
+      .then(async (res) => {
+        const payload = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(payload?.error ?? 'Error al cargar notificaciones')
         return payload as NotificationsResponse
       })
-      .then((payload) => {
-        if (isActive) {
-          const nextState = readApiResponse(payload)
-          setItems(nextState.items)
-          setUnreadCount(nextState.unreadCount)
-        }
-      })
-      .catch((nextError) => {
-        if (isActive) {
-          setItems([])
-          setUnreadCount(0)
-          setError(
-            nextError instanceof Error
-              ? nextError.message
-              : 'No se pudieron cargar las notificaciones visibles.'
-          )
-        }
-      })
-      .finally(() => {
-        if (isActive) {
-          setIsLoading(false)
-        }
-      })
-
-    return () => {
-      isActive = false
-    }
+      .then((payload) => { if (isActive) { const s = readApiResponse(payload); setItems(s.items); setUnreadCount(s.unreadCount) } })
+      .catch((e) => { if (isActive) { setItems([]); setUnreadCount(0); setError(e instanceof Error ? e.message : 'Error') } })
+      .finally(() => { if (isActive) setIsLoading(false) })
+    return () => { isActive = false }
   }, [authMode, user])
 
-  const handleMarkAsRead = async (notificationId: string) => {
-    setMarkingId(notificationId)
-
+  const handleMarkAsRead = async (id: string) => {
+    setMarkingId(id)
     try {
-      const response = await fetch(`/api/notifications/${notificationId}/read`, {
-        method: 'POST',
-      })
-      const payload = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        const message =
-          payload && typeof payload.error === 'string'
-            ? payload.error
-            : 'No se pudo marcar la notificacion como leida.'
-        throw new Error(message)
-      }
-
-      const nextNotification = deserializeUserNotification((payload as { data: UserNotificationWire }).data)
-
-      setItems((currentItems) =>
-        currentItems.map((item) => (item.id === nextNotification.id ? nextNotification : item))
-      )
-      setUnreadCount((currentCount) => Math.max(0, currentCount - 1))
+      const res = await fetch(`/api/notifications/${id}/read`, { method: 'POST' })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error ?? 'Error')
+      const next = deserializeUserNotification((payload as { data: UserNotificationWire }).data)
+      setItems((prev) => prev.map((n) => n.id === next.id ? next : n))
+      setUnreadCount((c) => Math.max(0, c - 1))
       window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT))
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : 'No se pudo marcar la notificacion como leida.'
-      )
-    } finally {
-      setMarkingId(null)
-    }
+    } catch { /* swallow */ } finally { setMarkingId(null) }
   }
 
   if (!user) return null
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-balance">Notificaciones</h1>
-          {authMode === 'supabase' ? <Badge variant="outline">{unreadCount} sin leer</Badge> : null}
+    <div>
+      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05]">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Notificaciones</h1>
+          {authMode === 'supabase' && unreadCount > 0 && (
+            <span className="text-[10px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full tabular-nums">
+              {unreadCount}
+            </span>
+          )}
         </div>
-        <p className="text-muted-foreground max-w-3xl">
-          Inbox interno con notificaciones reales por usuario. No incluye push, email ni automatizaciones externas.
-        </p>
+        <p className="mt-1 text-xs text-white/40">Inbox interno de notificaciones por usuario</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Bandeja personal</CardTitle>
-          <CardDescription>
-            Solo muestra eventos persistidos que ya forman parte de tu alcance visible actual.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {authMode !== 'supabase' ? (
-            <Empty className="border-0 px-0 py-12">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <BellOff className="size-5" />
-                </EmptyMedia>
-                <EmptyTitle>Disponible en runtime Supabase</EmptyTitle>
-                <EmptyDescription>
-                  Este inbox depende de notificaciones persistidas por usuario. En mock no se generan.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : isLoading ? (
-            <div className="flex min-h-40 items-center justify-center">
-              <Spinner className="size-6" />
-            </div>
-          ) : error ? (
-            <Empty className="border-0 px-0 py-12">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <Bell className="size-5" />
-                </EmptyMedia>
-                <EmptyTitle>No se pudo cargar el inbox</EmptyTitle>
-                <EmptyDescription>{error}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : items.length === 0 ? (
-            <Empty className="border-0 px-0 py-12">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <Bell className="size-5" />
-                </EmptyMedia>
-                <EmptyTitle>Sin notificaciones</EmptyTitle>
-                <EmptyDescription>
-                  No hay notificaciones visibles para tu usuario en este momento.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
-            <div className="space-y-3">
-              {items.map((item) => {
-                const DomainIcon = domainIcon(item.domain)
-                const canOpenTarget = item.href !== '/dashboard/notifications'
+      <div className="px-6 py-6 max-w-2xl">
+        {authMode !== 'supabase' ? (
+          <Empty className="py-16">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><BellOff className="size-5" /></EmptyMedia>
+              <EmptyTitle>Disponible en runtime Supabase</EmptyTitle>
+              <EmptyDescription>Este inbox depende de notificaciones persistidas por usuario.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : isLoading ? (
+          <div className="flex min-h-40 items-center justify-center">
+            <Spinner className="size-5" />
+          </div>
+        ) : error ? (
+          <Empty className="py-16">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Bell className="size-5" /></EmptyMedia>
+              <EmptyTitle>Error al cargar</EmptyTitle>
+              <EmptyDescription>{error}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : items.length === 0 ? (
+          <Empty className="py-16">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Bell className="size-5" /></EmptyMedia>
+              <EmptyTitle>Sin notificaciones</EmptyTitle>
+              <EmptyDescription>No hay notificaciones visibles para tu usuario.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <div className="divide-y divide-border rounded-xl border overflow-hidden">
+            {items.map((item) => {
+              const DomainIcon = domainIcon(item.domain)
+              const canOpen = item.href !== '/dashboard/notifications'
 
-                return (
-                  <div
-                    key={item.id}
-                    className={`rounded-[10px] border p-4 ${item.isRead ? 'bg-background' : 'bg-muted/30'}`}
-                  >
-                    <div className="flex gap-4">
-                      <div className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                        <DomainIcon className="size-5" />
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline">{domainLabel(item.domain)}</Badge>
-                          {!item.isRead ? <Badge>No leida</Badge> : null}
-                          <span className="text-xs text-muted-foreground">
-                            {formatRelativeTimestamp(item.createdAt)}
-                          </span>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="font-medium leading-tight">{item.title}</p>
-                          <p className="text-sm text-muted-foreground">{item.body}</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {canOpenTarget ? (
-                            <Button asChild size="sm" variant="outline">
-                              <Link href={item.href}>Abrir</Link>
-                            </Button>
-                          ) : null}
-                          {!item.isRead ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={markingId === item.id}
-                              onClick={() => handleMarkAsRead(item.id)}
-                            >
-                              <CheckCheck className="mr-2 size-4" />
-                              Marcar como leida
-                            </Button>
-                          ) : null}
-                        </div>
-                      </div>
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    'flex items-start gap-3 px-4 py-3 transition-colors',
+                    item.isRead ? 'bg-background' : 'bg-primary/[0.03] border-l-2 border-l-primary'
+                  )}
+                >
+                  {/* Icon */}
+                  <div className={cn(
+                    'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg',
+                    item.isRead ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'
+                  )}>
+                    <DomainIcon className="size-3.5" />
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                      <span className={cn('text-sm leading-tight', item.isRead ? 'font-normal text-foreground' : 'font-semibold text-foreground')}>
+                        {item.title}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+                        {formatTimestamp(item.createdAt)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-snug mb-1.5">{item.body}</p>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/60 bg-muted px-1.5 py-px rounded">
+                        {domainLabel(item.domain)}
+                      </span>
+                      {canOpen && (
+                        <Link
+                          href={item.href}
+                          className="text-[10px] text-primary hover:underline flex items-center gap-0.5 ml-1"
+                        >
+                          <ExternalLink className="size-2.5" />
+                          Abrir
+                        </Link>
+                      )}
+                      {!item.isRead && (
+                        <button
+                          onClick={() => handleMarkAsRead(item.id)}
+                          disabled={markingId === item.id}
+                          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 ml-auto transition-colors disabled:opacity-40"
+                        >
+                          <Check className="size-2.5" />
+                          {markingId === item.id ? 'Marcando...' : 'Leída'}
+                        </button>
+                      )}
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

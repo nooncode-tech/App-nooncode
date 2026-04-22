@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { useAuth, getRoleLabel } from '@/lib/auth-context'
@@ -47,6 +47,8 @@ import {
   Edit,
   Trash2,
   Coins,
+  DollarSign,
+  Loader2,
 } from 'lucide-react'
 
 export default function SettingsPage() {
@@ -67,6 +69,14 @@ export default function SettingsPage() {
   // Notification preferences
   const [notifPrefs, setNotifPrefs] = useState<Record<string, boolean>>({})
   const [notifSaving, setNotifSaving] = useState(false)
+
+  // Admin earnings credit state
+  const [creditTargetId, setCreditTargetId] = useState('')
+  const [creditAmount, setCreditAmount] = useState('')
+  const [creditType, setCreditType] = useState<'activation' | 'membership' | 'milestone' | 'manual'>('manual')
+  const [creditChannel, setCreditChannel] = useState<'inbound' | 'outbound' | ''>('')
+  const [creditNotes, setCreditNotes] = useState('')
+  const [creditSaving, setCreditSaving] = useState(false)
 
   const isSupabaseMode = authMode === 'supabase'
 
@@ -115,6 +125,38 @@ export default function SettingsPage() {
     }
   }
 
+  const handleCreditEarnings = async () => {
+    if (!creditTargetId) { toast.error('Selecciona un usuario'); return }
+    const amount = parseFloat(creditAmount)
+    if (!amount || amount <= 0) { toast.error('Ingresa un monto válido'); return }
+    setCreditSaving(true)
+    try {
+      const res = await fetch('/api/admin/earnings/credit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetProfileId: creditTargetId,
+          amount,
+          earningType: creditType,
+          channel: creditChannel || null,
+          notes: creditNotes || null,
+        }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        toast.success('Ganancia acreditada correctamente')
+        setCreditAmount('')
+        setCreditNotes('')
+      } else {
+        toast.error(json.error ?? 'Error al acreditar')
+      }
+    } catch {
+      toast.error('Error de red')
+    } finally {
+      setCreditSaving(false)
+    }
+  }
+
   if (!user) return null
 
   const isAdmin = user.role === 'admin'
@@ -124,14 +166,12 @@ export default function SettingsPage() {
   const settingsRoleCards = selectSettingsRoleCards(users, user.role)
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Configuracion</h1>
-        <p className="text-muted-foreground">
-          Administra la configuracion del sistema y usuarios
-        </p>
+    <div>
+      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05]">
+        <h1 className="text-xl font-bold tracking-tight text-white leading-none">Configuración</h1>
+        <p className="mt-1 text-xs text-white/40">Administra la configuración del sistema y usuarios</p>
       </div>
+      <div className="px-8 py-8 space-y-8">
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -162,6 +202,12 @@ export default function SettingsPage() {
             <TabsTrigger value="prototypes">
               <Coins className="size-4 mr-2" />
               Prototipos
+            </TabsTrigger>
+          )}
+          {isAdmin && isSupabaseMode && (
+            <TabsTrigger value="earnings">
+              <DollarSign className="size-4 mr-2" />
+              Ganancias
             </TabsTrigger>
           )}
         </TabsList>
@@ -617,6 +663,7 @@ export default function SettingsPage() {
         </TabsContent>
         {/* Prototype Credit Settings */}
         {isSupabaseMode && (
+          <>
           <TabsContent value="prototypes" className="mt-6">
             <Card>
               <CardHeader>
@@ -689,8 +736,96 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="earnings" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <DollarSign className="size-5" />
+                  Acreditar ganancia manual
+                </CardTitle>
+                <CardDescription>
+                  Acredita comisiones al ledger monetario de un usuario. Las ganancias entran en estado <strong>Pendiente</strong> hasta que las consolides.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Usuario</Label>
+                    <Select value={creditTargetId} onValueChange={setCreditTargetId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar usuario" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {settingsDirectoryRows.map((row) => (
+                          <SelectItem key={row.id} value={row.id}>
+                            {row.name} — {row.role}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="credit-amount">Monto (USD)</Label>
+                    <Input
+                      id="credit-amount"
+                      type="number"
+                      min={0.01}
+                      step={0.01}
+                      placeholder="0.00"
+                      value={creditAmount}
+                      onChange={(e) => setCreditAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipo de ganancia</Label>
+                    <Select value={creditType} onValueChange={(v) => setCreditType(v as typeof creditType)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="activation">Activación</SelectItem>
+                        <SelectItem value="membership">Membresía</SelectItem>
+                        <SelectItem value="milestone">Milestone</SelectItem>
+                        <SelectItem value="manual">Manual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Canal</Label>
+                    <Select value={creditChannel} onValueChange={(v) => setCreditChannel(v as typeof creditChannel)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sin canal" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Sin canal</SelectItem>
+                        <SelectItem value="inbound">Inbound</SelectItem>
+                        <SelectItem value="outbound">Outbound</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="credit-notes">Notas (opcional)</Label>
+                  <Input
+                    id="credit-notes"
+                    placeholder="Descripción del concepto, lead, proyecto..."
+                    value={creditNotes}
+                    onChange={(e) => setCreditNotes(e.target.value)}
+                  />
+                </div>
+                <Button onClick={handleCreditEarnings} disabled={creditSaving}>
+                  {creditSaving
+                    ? <><Loader2 className="size-4 mr-2 animate-spin" />Acreditando...</>
+                    : <><DollarSign className="size-4 mr-2" />Acreditar ganancia</>}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          </>
         )}
       </Tabs>
+      </div>
     </div>
   )
 }

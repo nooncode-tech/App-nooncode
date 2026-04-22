@@ -124,8 +124,8 @@ export function KanbanBoard<T extends { id: string }>({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex-1 pb-2">
-        <div className="flex gap-3 pb-4">
+      <div className="flex-1 overflow-x-auto pb-2">
+        <div className="flex gap-2 pb-4 min-w-max">
           {columns.map((column) => (
             <KanbanColumnComponent
               key={column.id}
@@ -166,34 +166,37 @@ function KanbanColumnComponent<T extends { id: string }>({
   isOver,
 }: KanbanColumnProps<T>) {
   return (
-    <div className="flex-1 min-w-45">
-      <Card className={cn(
-        "h-full flex flex-col transition-colors",
-        isOver && "ring-2 ring-primary/50 bg-primary/5"
+    <div className="flex-1 min-w-[170px] max-w-[240px]">
+      <div className={cn(
+        "h-full flex flex-col rounded-xl border bg-muted/30 transition-colors",
+        isOver && "ring-2 ring-primary/40 bg-primary/5"
       )}>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={cn('size-3 rounded-full', column.color)} />
-              <CardTitle className="text-sm font-medium">{column.title}</CardTitle>
-              <Badge variant="secondary" className="text-xs">
-                {column.items.length}
-              </Badge>
+        {/* Column header */}
+        <div className="px-3 pt-3 pb-2">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5">
+              <div className={cn('size-2 rounded-full shrink-0', column.color)} />
+              <span className="text-xs font-semibold text-foreground">{column.title}</span>
             </div>
+            <span className="text-xs font-medium text-muted-foreground bg-background rounded-full px-1.5 py-0.5 border">
+              {column.items.length}
+            </span>
           </div>
           {getStats && (
-            <div className="text-sm text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               {getStats(column)}
             </div>
           )}
-        </CardHeader>
-        <CardContent className="flex-1 pt-0">
+        </div>
+
+        {/* Cards list */}
+        <div className="flex-1 px-2 pb-2 overflow-y-auto">
           <SortableContext
             id={column.id}
             items={column.items.map((i) => i.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="space-y-3 min-h-[200px]">
+            <div className="space-y-1.5 min-h-[120px]">
               {column.items.map((item) => (
                 <SortableCard key={item.id} id={item.id}>
                   {renderCard(item, false)}
@@ -201,21 +204,21 @@ function KanbanColumnComponent<T extends { id: string }>({
               ))}
               {column.items.length === 0 && (
                 <div className={cn(
-                  "h-[100px] border-2 border-dashed rounded-lg flex items-center justify-center text-muted-foreground text-sm transition-colors",
-                  isOver && "border-primary bg-primary/10"
+                  "h-[80px] border-2 border-dashed rounded-lg flex items-center justify-center text-muted-foreground/50 text-xs transition-colors",
+                  isOver && "border-primary/50 bg-primary/5 text-primary"
                 )}>
-                  {isOver ? 'Suelta aqui' : 'Arrastra items aqui'}
+                  {isOver ? 'Suelta aquí' : 'Vacío'}
                 </div>
               )}
             </div>
           </SortableContext>
           {renderFooter && (
-            <div className="mt-3 pt-3 border-t">
+            <div className="mt-2 pt-2 border-t">
               {renderFooter(column)}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

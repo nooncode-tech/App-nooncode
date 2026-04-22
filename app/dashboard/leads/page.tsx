@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -221,16 +221,13 @@ export default function LeadsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div>
+      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05] flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
-          <p className="text-muted-foreground">
-            Gestiona tu cola de prospectos y prioriza por score
-          </p>
+          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Leads</h1>
+          <p className="mt-1 text-xs text-white/40">Gestiona tu cola de prospectos y prioriza por score</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <LeadImportDialog onImported={() => {}} />
           <Button onClick={() => setShowNewDialog(true)}>
             <Plus className="size-4 mr-2" />
@@ -238,38 +235,31 @@ export default function LeadsPage() {
           </Button>
         </div>
       </div>
+      <div className="px-6 py-4 space-y-4">
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6 pb-5 px-6">
-            <p className="stat-label">Total Leads</p>
-            <p className="stat-number mt-2">{totalLeads}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 pb-5 px-6">
-            <p className="stat-label">High Score</p>
-            <p className="stat-number mt-2">{highScoreLeads}</p>
-            <p className="text-xs text-muted-foreground mt-1.5">Score 80+</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 pb-5 px-6">
-            <p className="stat-label">Score Promedio</p>
-            <p className="stat-number mt-2">{avgScore}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 pb-5 px-6">
-            <p className="stat-label">Valor Pipeline</p>
-            <p className="stat-number mt-2">${pipelineValue.toLocaleString()}</p>
-          </CardContent>
-        </Card>
+      {/* Stats row */}
+      <div className="grid grid-cols-4 divide-x rounded-xl border overflow-hidden bg-card">
+        <div className="px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Leads</p>
+          <p className="text-xl font-bold tabular-nums mt-0.5">{totalLeads}</p>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">High Score</p>
+          <p className="text-xl font-bold tabular-nums mt-0.5">{highScoreLeads}</p>
+          <p className="text-[10px] text-muted-foreground">80+</p>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Score prom.</p>
+          <p className="text-xl font-bold tabular-nums mt-0.5">{avgScore}</p>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pipeline</p>
+          <p className="text-xl font-bold tabular-nums mt-0.5">${pipelineValue.toLocaleString()}</p>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
@@ -283,7 +273,7 @@ export default function LeadsPage() {
           value={statusFilter}
           onValueChange={(value) => setStatusFilter(value as LeadStatusFilter)}
         >
-          <SelectTrigger className="w-full sm:w-[180px]">
+          <SelectTrigger className="w-full sm:w-[150px]">
             <Filter className="size-4 mr-2" />
             <SelectValue placeholder="Estado" />
           </SelectTrigger>
@@ -297,7 +287,7 @@ export default function LeadsPage() {
           </SelectContent>
         </Select>
         <Select value={sortBy} onValueChange={(value) => setSortBy(value as LeadSortOption)}>
-          <SelectTrigger className="w-full sm:w-[180px]">
+          <SelectTrigger className="w-full sm:w-[150px]">
             <SelectValue placeholder="Ordenar por" />
           </SelectTrigger>
           <SelectContent>
@@ -319,7 +309,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Lead List */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {isLeadsLoading ? (
           <Card className="p-12 text-center">
             <div className="flex flex-col items-center gap-3">
@@ -397,6 +387,7 @@ export default function LeadsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   )
 }

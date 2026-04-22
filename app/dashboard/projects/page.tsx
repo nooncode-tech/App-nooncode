@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
@@ -417,88 +417,64 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 h-full flex flex-col">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="h-full flex flex-col">
+      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05] flex items-center justify-between gap-4 shrink-0">
         <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">Proyectos</h1>
-            {!canManageProjects ? (
-              <Badge variant="outline" className="gap-1">
-                <Eye className="size-3.5" />
-                Solo lectura
-              </Badge>
-            ) : null}
-          </div>
-          <p className="text-muted-foreground max-w-2xl">
-            {pageDescription}
-          </p>
+          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Proyectos</h1>
+          <p className="mt-1 text-xs text-white/40">{pageDescription}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)}>
             <TabsList>
               <TabsTrigger value="kanban">Kanban</TabsTrigger>
               <TabsTrigger value="list">Lista</TabsTrigger>
             </TabsList>
           </Tabs>
-          {canManageProjects && authMode === 'mock' && (
-            <Button variant="outline" disabled>
-              <Plus className="size-4 mr-2" />
-              Nuevo Proyecto desde Hand-off
-            </Button>
-          )}
         </div>
       </div>
+      <div className="px-6 py-4 flex flex-col flex-1 space-y-4 overflow-auto">
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Proyectos</CardTitle>
-            <FolderKanban className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="stat-number">{totalProjects}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En Progreso</CardTitle>
-            <Clock className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="stat-number">{activeProjects}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En Revision</CardTitle>
-            <AlertTriangle className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="stat-number">{inReview}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Presupuesto Total</CardTitle>
-            <DollarSign className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="stat-number">${totalBudget.toLocaleString()}</div>
-          </CardContent>
-        </Card>
+      {/* Stats row */}
+      <div className="grid grid-cols-4 divide-x rounded-xl border overflow-hidden bg-card shrink-0">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <FolderKanban className="size-4 text-muted-foreground shrink-0" />
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total</p>
+            <p className="text-xl font-bold tabular-nums">{totalProjects}</p>
+          </div>
+        </div>
+        <div className="px-4 py-3 flex items-center gap-3">
+          <Clock className="size-4 text-muted-foreground shrink-0" />
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">En Progreso</p>
+            <p className="text-xl font-bold tabular-nums">{activeProjects}</p>
+          </div>
+        </div>
+        <div className="px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="size-4 text-muted-foreground shrink-0" />
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">En Revisión</p>
+            <p className="text-xl font-bold tabular-nums">{inReview}</p>
+          </div>
+        </div>
+        <div className="px-4 py-3 flex items-center gap-3">
+          <DollarSign className="size-4 text-muted-foreground shrink-0" />
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Presupuesto</p>
+            <p className="text-xl font-bold tabular-nums">${totalBudget.toLocaleString()}</p>
+          </div>
+        </div>
       </div>
 
       {/* Kanban View */}
       {viewMode === 'kanban' && (
-        <ScrollArea className="flex-1 -mx-6 px-6">
-          <div className="flex gap-4 pb-4" style={{ minWidth: 'max-content' }}>
+        <ScrollArea className="flex-1 -mx-2 px-2">
+          <div className="flex gap-3 pb-4" style={{ minWidth: 'max-content' }}>
             {projectStages.map((stage) => {
               const stageProjects = getProjectsByStatus(stage.status)
 
               return (
-                <div key={stage.status} className="w-[320px] shrink-0">
+                <div key={stage.status} className="w-[260px] shrink-0">
                   <Card className="h-full flex flex-col">
                     <CardHeader className="pb-3">
                       <div className="flex items-center gap-2">
@@ -640,6 +616,7 @@ export default function ProjectsPage() {
           )}
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   )
 }
@@ -668,70 +645,62 @@ function ProjectCard({
     .filter((member): member is DeliveryUser => Boolean(member))
 
   return (
-    <Card
-      className="cursor-pointer hover:shadow-md transition-shadow"
+    <div
+      className="bg-background rounded-lg border px-3 py-2.5 cursor-pointer hover:shadow-sm hover:border-border/80 transition-all duration-100"
       onClick={onClick}
     >
-      <CardContent className="p-4">
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div>
-            <h4 className="font-medium text-sm line-clamp-1">{project.name}</h4>
-            <p className="text-xs text-muted-foreground">{project.clientName}</p>
+            <h4 className="font-semibold text-xs line-clamp-1 leading-tight">{project.name}</h4>
+            <p className="text-[10px] text-muted-foreground">{project.clientName}</p>
           </div>
 
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center justify-between text-[10px]">
             <div className="flex items-center gap-1 text-muted-foreground">
-              <Calendar className="size-3" />
+              <Calendar className="size-2.5" />
               {project.endDate
                 ? project.endDate.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' })
                 : 'Sin fecha'}
             </div>
-            <div className="flex items-center gap-1 font-medium text-primary">
-              <DollarSign className="size-3" />
+            <div className="flex items-center gap-0.5 font-semibold text-primary">
+              <DollarSign className="size-2.5" />
               {project.budget.toLocaleString()}
             </div>
           </div>
 
-          <div>
-            {canViewProjectTasks ? (
-              <>
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-muted-foreground">{taskCount ?? 0} tareas</span>
-                  <span>{progress ?? 0}%</span>
-                </div>
-                <Progress value={progress ?? 0} className="h-1.5" />
-              </>
-            ) : (
-              <div className="rounded-md border border-dashed px-2 py-1 text-[11px] text-muted-foreground">
-                Tareas visibles solo para delivery.
+          {canViewProjectTasks && (
+            <div>
+              <div className="flex items-center justify-between text-[10px] mb-1">
+                <span className="text-muted-foreground">{taskCount ?? 0} tareas</span>
+                <span className="font-medium">{progress ?? 0}%</span>
               </div>
-            )}
-          </div>
+              <Progress value={progress ?? 0} className="h-1" />
+            </div>
+          )}
 
           {(teamMembers.length > 0 || pmName) && (
             <div className="flex items-center justify-between">
-              <div className="flex -space-x-2">
+              <div className="flex -space-x-1.5">
                 {teamMembers.slice(0, 3).map((member) => (
-                  <Avatar key={member?.id} className="size-6 border-2 border-background">
-                    <AvatarFallback className="text-xs bg-muted">
+                  <Avatar key={member?.id} className="size-5 border-2 border-background">
+                    <AvatarFallback className="text-[8px] bg-muted">
                       {member?.name.split(' ').map((n) => n[0]).join('')}
                     </AvatarFallback>
                   </Avatar>
                 ))}
                 {teamMembers.length > 3 && (
-                  <div className="size-6 rounded-full bg-muted flex items-center justify-center text-xs border-2 border-background">
+                  <div className="size-5 rounded-full bg-muted flex items-center justify-center text-[8px] border-2 border-background">
                     +{teamMembers.length - 3}
                   </div>
                 )}
               </div>
               {pmName && (
-                <span className="text-xs text-muted-foreground">PM: {pmName.split(' ')[0]}</span>
+                <span className="text-[10px] text-muted-foreground">{pmName.split(' ')[0]}</span>
               )}
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+    </div>
   )
 }
 
