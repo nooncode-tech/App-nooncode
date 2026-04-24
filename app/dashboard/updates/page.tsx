@@ -69,7 +69,7 @@ export default function UpdatesPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl">
+      <div className="app-feed">
         {authMode !== 'supabase' ? (
           <Empty className="py-16">
             <EmptyHeader>

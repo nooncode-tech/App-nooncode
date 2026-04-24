@@ -121,6 +121,10 @@
     @apply rounded-md bg-card p-6;
   }
 
+  .app-feed {
+    @apply w-full max-w-6xl;
+  }
+
   .app-panel-muted {
     @apply rounded-md bg-muted/20 p-4;
   }
