@@ -127,7 +127,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
 
   return (
     <Card
-      className="p-4 cursor-pointer hover:shadow-md transition-shadow"
+      className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20"
       onClick={onClick}
     >
       <div className="flex items-start gap-4">

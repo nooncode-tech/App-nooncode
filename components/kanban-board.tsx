@@ -168,8 +168,8 @@ function KanbanColumnComponent<T extends { id: string }>({
   return (
     <div className="flex-1 min-w-[170px] max-w-[240px]">
       <div className={cn(
-        "h-full flex flex-col rounded-xl border bg-muted/30 transition-colors",
-        isOver && "ring-2 ring-primary/40 bg-primary/5"
+        "h-full flex flex-col rounded-xl border bg-muted/20 transition-colors",
+        isOver && "ring-1 ring-primary/40 bg-primary/[0.05]"
       )}>
         {/* Column header */}
         <div className="px-3 pt-3 pb-2">
@@ -178,7 +178,7 @@ function KanbanColumnComponent<T extends { id: string }>({
               <div className={cn('size-2 rounded-full shrink-0', column.color)} />
               <span className="text-xs font-semibold text-foreground">{column.title}</span>
             </div>
-            <span className="text-xs font-medium text-muted-foreground bg-background rounded-full px-1.5 py-0.5 border">
+            <span className="rounded-full border bg-background/80 px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
               {column.items.length}
             </span>
           </div>

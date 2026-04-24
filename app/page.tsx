@@ -33,9 +33,9 @@ export default function LoginPage() {
       return
     }
 
-    const success = await login(email, password)
+    const result = await login(email, password)
     
-    if (success) {
+    if (result.success) {
       toast.success('Bienvenido a NoonApp')
       if (authMode === 'supabase') {
         window.location.replace('/dashboard')
@@ -45,9 +45,11 @@ export default function LoginPage() {
       router.push('/dashboard')
     } else {
       toast.error(
-        authMode === 'supabase'
-          ? 'Credenciales invalidas.'
-          : 'Credenciales invalidas. Usa uno de los emails de prueba.'
+        result.reason === 'network_error'
+          ? 'No se pudo conectar con Supabase. Revisa tu red o DNS.'
+          : authMode === 'supabase'
+            ? 'Credenciales invalidas.'
+            : 'Credenciales invalidas. Usa uno de los emails de prueba.'
       )
     }
   }
@@ -62,19 +64,19 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-sidebar text-sidebar-foreground p-12 flex-col justify-between">
+      <div className="hidden lg:flex lg:w-1/2 bg-sidebar text-sidebar-foreground px-12 py-10 flex-col justify-between">
         <div>
           <div className="flex items-center gap-3 mb-12">
             <div className="size-10 rounded-lg bg-primary flex items-center justify-center">
               <Sun className="size-6 text-primary-foreground" />
             </div>
-            <span className="text-2xl font-bold">NoonApp</span>
+            <span className="text-xl font-semibold">NoonApp</span>
           </div>
           
-          <h1 className="text-4xl font-bold leading-tight mb-6 text-balance">
+          <h1 className="text-[32px] font-semibold leading-tight mb-5 text-balance">
             Gestiona ventas y proyectos en un solo lugar
           </h1>
-          <p className="text-sidebar-foreground/70 text-lg mb-12">
+          <p className="text-sidebar-foreground/70 text-sm leading-6 mb-10 max-w-xl">
             Plataforma integral para equipos de ventas y desarrollo. Desde el primer contacto hasta la entrega final.
           </p>
 
@@ -124,12 +126,12 @@ export default function LoginPage() {
             <div className="size-10 rounded-lg bg-primary flex items-center justify-center">
               <Sun className="size-6 text-primary-foreground" />
             </div>
-            <span className="text-2xl font-bold">NoonApp</span>
+            <span className="text-xl font-semibold">NoonApp</span>
           </div>
 
-          <Card className="border-0 shadow-lg">
+          <Card>
             <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl">Iniciar sesion</CardTitle>
+              <CardTitle className="text-[28px] font-semibold leading-[1.15]">Iniciar sesion</CardTitle>
               <CardDescription>
                 Ingresa tus credenciales para acceder al sistema
               </CardDescription>
@@ -179,7 +181,7 @@ export default function LoginPage() {
                         key={account.email}
                         type="button"
                         onClick={() => setEmail(account.email)}
-                        className="w-full text-left p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                        className="w-full rounded-md px-3 py-3 text-left transition-colors hover:bg-muted/40"
                       >
                         <div className="flex items-center justify-between">
                           <div>

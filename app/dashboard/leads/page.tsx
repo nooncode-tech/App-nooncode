@@ -221,13 +221,13 @@ export default function LeadsPage() {
   }
 
   return (
-    <div>
-      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05] flex items-center justify-between gap-4">
+    <div className="app-page">
+      <div className="app-page-header">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Leads</h1>
-          <p className="mt-1 text-xs text-white/40">Gestiona tu cola de prospectos y prioriza por score</p>
+          <h1 className="app-page-title">Leads</h1>
+          <p className="app-page-subtitle">Cola comercial, prioridad por score y seguimiento activo.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <LeadImportDialog onImported={() => {}} />
           <Button onClick={() => setShowNewDialog(true)}>
             <Plus className="size-4 mr-2" />
@@ -235,26 +235,26 @@ export default function LeadsPage() {
           </Button>
         </div>
       </div>
-      <div className="px-6 py-4 space-y-4">
+      <div className="app-section">
 
       {/* Stats row */}
-      <div className="grid grid-cols-4 divide-x rounded-xl border overflow-hidden bg-card">
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Leads</p>
-          <p className="text-xl font-bold tabular-nums mt-0.5">{totalLeads}</p>
+      <div className="metric-grid">
+        <div className="metric-card-primary">
+          <p className="metric-label-inverse">Leads abiertos</p>
+          <p className="metric-value-inverse">{totalLeads}</p>
         </div>
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">High Score</p>
-          <p className="text-xl font-bold tabular-nums mt-0.5">{highScoreLeads}</p>
-          <p className="text-[10px] text-muted-foreground">80+</p>
+        <div className="metric-card">
+          <p className="metric-label">High score</p>
+          <p className="metric-value">{highScoreLeads}</p>
+          <p className="metric-note">Score 80+</p>
         </div>
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Score prom.</p>
-          <p className="text-xl font-bold tabular-nums mt-0.5">{avgScore}</p>
+        <div className="metric-card">
+          <p className="metric-label">Score promedio</p>
+          <p className="metric-value">{avgScore}</p>
         </div>
-        <div className="px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pipeline</p>
-          <p className="text-xl font-bold tabular-nums mt-0.5">${pipelineValue.toLocaleString()}</p>
+        <div className="metric-card">
+          <p className="metric-label">Pipeline</p>
+          <p className="metric-value">${pipelineValue.toLocaleString()}</p>
         </div>
       </div>
 

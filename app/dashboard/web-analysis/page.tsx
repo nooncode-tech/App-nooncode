@@ -146,13 +146,15 @@ export default function WebAnalysisPage() {
     : []
 
   return (
-    <div className="container mx-auto max-w-4xl py-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Análisis de Sitio Web</h1>
-        <p className="text-muted-foreground mt-1">
+    <div className="app-page mx-auto max-w-4xl">
+      <div className="app-page-header">
+        <div>
+        <h1 className="app-page-title">Analisis de sitio web</h1>
+        <p className="app-page-subtitle">
           Pega la URL de la web de un prospecto y genera oportunidades comerciales en segundos.
         </p>
       </div>
+        </div>
 
       {/* Input Section */}
       <Card>
@@ -165,7 +167,7 @@ export default function WebAnalysisPage() {
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !isAnalyzing && handleAnalyze()}
                 placeholder="https://ejemplo.com"
-                className="border-0 px-0 shadow-none focus-visible:ring-0"
+                className="border-0 px-0 focus-visible:ring-0"
               />
             </div>
             <Select value={channel} onValueChange={(v) => setChannel(v as 'inbound' | 'outbound')}>
@@ -256,7 +258,7 @@ export default function WebAnalysisPage() {
             </CardHeader>
             <CardContent className="pt-0 space-y-3">
               {sortedOpportunities.map((opp, i) => (
-                <div key={i} className="flex gap-3 p-3 rounded-lg border bg-card">
+                <div key={i} className="flex gap-3 rounded-md bg-muted/20 p-3">
                   <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
                     {categoryIcons[opp.category]}
                   </div>
@@ -287,18 +289,18 @@ export default function WebAnalysisPage() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
+                <div className="rounded-md bg-muted/20 p-4 text-center">
                   <p className="text-xs text-muted-foreground mb-1">Activación</p>
-                  <p className="text-2xl font-bold">${result.pricing.activationFinal}</p>
+                  <p className="metric-value">${result.pricing.activationFinal}</p>
                   {result.pricing.isOutbound && (
                     <p className="text-xs text-muted-foreground mt-1">
                       (base ${result.pricing.activationBase} + $100 seller)
                     </p>
                   )}
                 </div>
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
+                <div className="rounded-md bg-muted/20 p-4 text-center">
                   <p className="text-xs text-muted-foreground mb-1">Membresía mensual</p>
-                  <p className="text-2xl font-bold">${result.pricing.membership}</p>
+                  <p className="metric-value">${result.pricing.membership}</p>
                   <p className="text-xs text-muted-foreground mt-1">/ mes</p>
                 </div>
               </div>

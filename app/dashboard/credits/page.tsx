@@ -149,15 +149,17 @@ export default function CreditsPage() {
   const canOpenLeads = canAccessDashboardPath(user.role, '/dashboard/leads')
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-balance">Creditos</h1>
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+          <h1 className="app-page-title">Creditos</h1>
           {authMode === 'supabase' ? <Badge variant="outline">Wallet interna</Badge> : null}
         </div>
-        <p className="text-muted-foreground max-w-3xl">
+        <p className="app-page-subtitle">
           Saldo interno disponible para solicitar prototipos. No equivale a liquidaciones mensuales ni a pagos reales.
         </p>
+        </div>
       </div>
 
       {authMode !== 'supabase' ? (
@@ -198,54 +200,30 @@ export default function CreditsPage() {
         </Card>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card className="bg-primary text-primary-foreground">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-primary-foreground/80">
-                  Saldo disponible
-                </CardTitle>
-                <Wallet className="size-4 text-primary-foreground/80" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{wallet?.totalAvailable ?? 0}</div>
-                <p className="text-xs text-primary-foreground/70 mt-1">Creditos listos para usar</p>
-              </CardContent>
-            </Card>
+          <div className="metric-grid">
+            <div className="metric-card-primary">
+              <p className="metric-label-inverse">Saldo disponible</p>
+              <p className="metric-value-inverse">{wallet?.totalAvailable ?? 0}</p>
+              <p className="metric-note-inverse">Creditos listos para usar</p>
+            </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Creditos gratis</CardTitle>
-                <Sparkles className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{wallet?.freeAvailable ?? 0}</div>
-                <p className="text-xs text-muted-foreground">Se consumen primero en solicitudes de prototipo</p>
-              </CardContent>
-            </Card>
+            <div className="metric-card">
+              <p className="metric-label">Creditos gratis</p>
+              <p className="metric-value">{wallet?.freeAvailable ?? 0}</p>
+              <p className="metric-note">Se consumen primero en solicitudes de prototipo</p>
+            </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Saldo propio</CardTitle>
-                <Coins className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{wallet?.earnedAvailable ?? 0}</div>
-                <p className="text-xs text-muted-foreground">Saldo interno reflejado dentro de Noon</p>
-              </CardContent>
-            </Card>
+            <div className="metric-card">
+              <p className="metric-label">Saldo propio</p>
+              <p className="metric-value">{wallet?.earnedAvailable ?? 0}</p>
+              <p className="metric-note">Saldo interno reflejado dentro de Noon</p>
+            </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Costo por prototipo</CardTitle>
-                <History className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {wallet?.prototypeRequestCost ?? 'No configurado'}
-                </div>
-                <p className="text-xs text-muted-foreground">Costo actual por solicitud comercial</p>
-              </CardContent>
-            </Card>
+            <div className="metric-card">
+              <p className="metric-label">Costo por prototipo</p>
+              <p className="metric-value">{wallet?.prototypeRequestCost ?? 'No configurado'}</p>
+              <p className="metric-note">Costo actual por solicitud comercial</p>
+            </div>
           </div>
 
           {wallet?.monetaryWallet && (
@@ -257,8 +235,8 @@ export default function CreditsPage() {
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-4">
-                <Card className="bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
+              <div className="metric-grid">
+                <Card className="bg-emerald-50/60 dark:bg-emerald-950/30">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
                       Disponible para usar
@@ -266,7 +244,7 @@ export default function CreditsPage() {
                     <Sparkles className="size-4 text-emerald-600" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                    <div className="metric-value text-emerald-700 dark:text-emerald-300">
                       {formatUSD(wallet.monetaryWallet.availableToSpend)}
                     </div>
                     <p className="text-xs text-emerald-600/70 mt-1">Para prototipos y servicios internos</p>
@@ -279,7 +257,7 @@ export default function CreditsPage() {
                     <ArrowDownToLine className="size-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <div className="metric-value">
                       {formatUSD(wallet.monetaryWallet.availableToWithdraw)}
                     </div>
                     <p className="text-xs text-muted-foreground">Retirable a banco o Binance</p>
@@ -292,7 +270,7 @@ export default function CreditsPage() {
                     <Timer className="size-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <div className="metric-value">
                       {formatUSD(wallet.monetaryWallet.pending)}
                     </div>
                     <p className="text-xs text-muted-foreground">Confirmación en progreso</p>
@@ -305,7 +283,7 @@ export default function CreditsPage() {
                     <Lock className="size-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <div className="metric-value">
                       {formatUSD(wallet.monetaryWallet.locked)}
                     </div>
                     <p className="text-xs text-muted-foreground">En validación por admin/PM</p>
@@ -336,7 +314,7 @@ export default function CreditsPage() {
                   ) : (
                     <div className="space-y-3">
                       {wallet.monetaryLedger.map((entry) => (
-                        <div key={entry.id} className="rounded-[10px] border p-4">
+                          <div key={entry.id} className="app-panel-muted">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="space-y-2">
                               <div className="flex flex-wrap items-center gap-2">
@@ -391,7 +369,7 @@ export default function CreditsPage() {
               ) : (
                 <div className="space-y-3">
                   {wallet.entries.map((entry) => (
-                    <div key={entry.id} className="rounded-[10px] border p-4">
+                          <div key={entry.id} className="app-panel-muted">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">

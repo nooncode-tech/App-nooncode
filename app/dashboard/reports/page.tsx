@@ -119,65 +119,39 @@ export default function ReportsPage() {
   const revenueKpiCopy = selectReportsRevenueKpiCopy(authMode)
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="app-page">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-balance">Reportes y Analiticas</h1>
-        <p className="text-muted-foreground">
+      <div className="app-page-header">
+        <div>
+        <h1 className="app-page-title">Reportes y analiticas</h1>
+        <p className="app-page-subtitle">
           {canViewAll ? 'Vision general del rendimiento del equipo' : 'Tu rendimiento personal'}
         </p>
+        </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tasa de Conversion</CardTitle>
-            <Target className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.conversionRate}%</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.wonLeads} de {stats.totalLeads} leads
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{revenueKpiCopy.title}</CardTitle>
-            <DollarSign className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${stats.totalRevenue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              Promedio ${stats.avgDealSize.toLocaleString()} {revenueKpiCopy.averageLabel}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Score Promedio</CardTitle>
-            <Award className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.avgScore}</div>
-            <p className="text-xs text-muted-foreground">
-              Calidad de leads
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Proyectos Activos</CardTitle>
-            <Clock className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeProjects}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.completedTasks} tareas completadas
-            </p>
-          </CardContent>
-        </Card>
+      <div className="metric-grid">
+        <div className="metric-card-primary">
+          <p className="metric-label-inverse">Tasa de conversion</p>
+          <p className="metric-value-inverse">{stats.conversionRate}%</p>
+          <p className="metric-note-inverse">{stats.wonLeads} de {stats.totalLeads} leads</p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">{revenueKpiCopy.title}</p>
+          <p className="metric-value">${stats.totalRevenue.toLocaleString()}</p>
+          <p className="metric-note">Promedio ${stats.avgDealSize.toLocaleString()} {revenueKpiCopy.averageLabel}</p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">Score promedio</p>
+          <p className="metric-value">{stats.avgScore}</p>
+          <p className="metric-note">Calidad de leads</p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">Proyectos activos</p>
+          <p className="metric-value">{stats.activeProjects}</p>
+          <p className="metric-note">{stats.completedTasks} tareas completadas</p>
+        </div>
       </div>
 
       {/* Charts */}

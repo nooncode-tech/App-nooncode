@@ -166,12 +166,14 @@ export default function SettingsPage() {
   const settingsRoleCards = selectSettingsRoleCards(users, user.role)
 
   return (
-    <div>
-      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05]">
-        <h1 className="text-xl font-bold tracking-tight text-white leading-none">Configuración</h1>
-        <p className="mt-1 text-xs text-white/40">Administra la configuración del sistema y usuarios</p>
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
+        <h1 className="app-page-title">Configuracion</h1>
+        <p className="app-page-subtitle">Administra configuracion operativa, usuarios y permisos.</p>
+        </div>
       </div>
-      <div className="px-8 py-8 space-y-8">
+      <div className="space-y-8">
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>

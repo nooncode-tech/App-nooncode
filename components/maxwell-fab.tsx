@@ -23,7 +23,7 @@ export function MaxwellFab() {
           )}
         >
           <MaxwellChat
-            className="size-full shadow-2xl"
+            className="size-full"
             onClose={() => {
               setIsOpen(false)
               setIsExpanded(false)
@@ -38,8 +38,8 @@ export function MaxwellFab() {
       <Button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'fixed bottom-4 right-4 z-50 size-14 rounded-full shadow-lg transition-all duration-200',
-          'hover:scale-110 hover:shadow-xl',
+          'fixed bottom-4 right-4 z-50 size-14 rounded-full transition-all duration-200',
+          'hover:scale-110',
           isOpen && 'bg-muted text-muted-foreground hover:bg-muted'
         )}
         size="icon"

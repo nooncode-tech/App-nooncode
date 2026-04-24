@@ -1,11 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { stripe } from './client'
+import { getStripeClient } from './client'
 
 export async function getOrCreateConnectAccount(
   client: SupabaseClient,
   profileId: string,
   email: string,
 ): Promise<string> {
+  const stripe = getStripeClient()
   const { data: profile } = await client
     .from('user_profiles' as never)
     .select('stripe_connect_account_id')
@@ -34,6 +35,7 @@ export async function createOnboardingLink(
   returnUrl: string,
   refreshUrl: string,
 ): Promise<string> {
+  const stripe = getStripeClient()
   const link = await stripe.accountLinks.create({
     account: accountId,
     type: 'account_onboarding',
@@ -44,6 +46,7 @@ export async function createOnboardingLink(
 }
 
 export async function getConnectAccountDetails(accountId: string) {
+  const stripe = getStripeClient()
   const account = await stripe.accounts.retrieve(accountId)
   return {
     id: account.id,
@@ -60,6 +63,7 @@ export async function createTransfer(
   currency: string,
   metadata: Record<string, string>,
 ): Promise<string> {
+  const stripe = getStripeClient()
   const transfer = await stripe.transfers.create({
     amount: amountCents,
     currency: currency.toLowerCase(),

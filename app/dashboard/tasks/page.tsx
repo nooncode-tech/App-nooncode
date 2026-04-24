@@ -210,12 +210,12 @@ export default function TasksPage() {
     : 'Ajusta los filtros o espera nuevas asignaciones para ver trabajo aqui.'
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="app-page">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="app-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-balance">{pageTitle}</h1>
-          <p className="text-muted-foreground max-w-2xl">
+          <h1 className="app-page-title">{pageTitle}</h1>
+          <p className="app-page-subtitle">
             {pageDescription}
           </p>
         </div>
@@ -228,44 +228,24 @@ export default function TasksPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Tareas</CardTitle>
-            <ListTodo className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalTasks}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Por Hacer</CardTitle>
-            <Clock className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{todoTasks}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En Progreso</CardTitle>
-            <AlertCircle className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{inProgressTasks}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completadas</CardTitle>
-            <CheckCircle2 className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{completedTasks}</div>
-            <Progress value={completionRate} className="h-1.5 mt-2" />
-          </CardContent>
-        </Card>
+      <div className="metric-grid">
+        <div className="metric-card-primary">
+          <p className="metric-label-inverse">Total tareas</p>
+          <p className="metric-value-inverse">{totalTasks}</p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">Por hacer</p>
+          <p className="metric-value">{todoTasks}</p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">En progreso</p>
+          <p className="metric-value">{inProgressTasks}</p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">Completadas</p>
+          <p className="metric-value">{completedTasks}</p>
+          <Progress value={completionRate} className="mt-3 h-1.5" />
+        </div>
       </div>
 
       {/* Filters */}
@@ -390,7 +370,7 @@ function TaskCard({ task, projectName, onQuickComplete, onClick }: TaskCardProps
   return (
     <Card
       className={cn(
-        'p-4 cursor-pointer hover:shadow-md transition-shadow',
+        'p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20',
         isOverdue && 'border-destructive/50'
       )}
       onClick={onClick}
@@ -577,15 +557,15 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTask
       </div>
 
       {/* Time Info */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-0 overflow-hidden rounded-lg border bg-background md:grid-cols-2">
         {task.dueDate && (
-          <div className="p-3 bg-muted/50 rounded-lg">
+          <div className="p-3">
             <p className="text-xs text-muted-foreground">Fecha limite</p>
             <p className="font-medium">{task.dueDate.toLocaleDateString('es-MX')}</p>
           </div>
         )}
         {task.estimatedHours && (
-          <div className="p-3 bg-muted/50 rounded-lg">
+          <div className={cn('p-3', task.dueDate && 'border-t md:border-t-0 md:border-l')}>
             <p className="text-xs text-muted-foreground">Horas estimadas</p>
             <p className="font-medium">{task.estimatedHours}h</p>
           </div>
@@ -627,9 +607,9 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTask
         ) : activities.length === 0 ? (
           <p className="text-sm text-muted-foreground">Aun no hay actividad visible en esta tarea.</p>
         ) : (
-          <div className="space-y-3">
-            {activities.map((activity) => (
-              <div key={activity.id} className="rounded-lg border bg-muted/20 p-3 space-y-1.5">
+          <div className="overflow-hidden rounded-lg border bg-background">
+            {activities.map((activity, index) => (
+              <div key={activity.id} className={cn('space-y-1.5 px-4 py-3', index > 0 && 'border-t')}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">{formatTaskActivityTitle(activity)}</p>

@@ -19,9 +19,14 @@ interface AuthContextType {
   authMode: AuthMode
   user: User | null
   isLoading: boolean
-  login: (email: string, password: string) => Promise<boolean>
+  login: (email: string, password: string) => Promise<LoginResult>
   logout: () => Promise<void>
   switchRole: (role: UserRole) => void
+}
+
+export interface LoginResult {
+  success: boolean
+  reason?: 'invalid_credentials' | 'network_error'
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -96,26 +101,30 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
     }
   }, [authMode, router])
 
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+  const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     setIsLoading(true)
 
     try {
       if (authMode === 'supabase') {
         const supabase = createSupabaseBrowserClient()
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
-          password,
-        })
+        try {
+          const { error } = await supabase.auth.signInWithPassword({
+            email: email.trim().toLowerCase(),
+            password,
+          })
 
-        if (error) {
-          return false
+          if (error) {
+            return { success: false, reason: 'invalid_credentials' }
+          }
+
+          startTransition(() => {
+            router.refresh()
+          })
+
+          return { success: true }
+        } catch {
+          return { success: false, reason: 'network_error' }
         }
-
-        startTransition(() => {
-          router.refresh()
-        })
-
-        return true
       }
 
       // Simulate API call
@@ -125,10 +134,10 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
 
       if (foundUser) {
         setUser(foundUser)
-        return true
+        return { success: true }
       }
 
-      return false
+      return { success: false, reason: 'invalid_credentials' }
     } finally {
       setIsLoading(false)
     }

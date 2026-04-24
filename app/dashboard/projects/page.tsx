@@ -417,13 +417,13 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05] flex items-center justify-between gap-4 shrink-0">
+    <div className="flex h-full flex-col px-4 py-5 md:px-8 md:py-8">
+      <div className="app-page-header shrink-0">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Proyectos</h1>
-          <p className="mt-1 text-xs text-white/40">{pageDescription}</p>
+          <h1 className="app-page-title">Proyectos</h1>
+          <p className="app-page-subtitle">{pageDescription}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)}>
             <TabsList>
               <TabsTrigger value="kanban">Kanban</TabsTrigger>
@@ -432,37 +432,25 @@ export default function ProjectsPage() {
           </Tabs>
         </div>
       </div>
-      <div className="px-6 py-4 flex flex-col flex-1 space-y-4 overflow-auto">
+      <div className="mt-6 flex flex-1 flex-col space-y-4 overflow-auto">
 
       {/* Stats row */}
-      <div className="grid grid-cols-4 divide-x rounded-xl border overflow-hidden bg-card shrink-0">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <FolderKanban className="size-4 text-muted-foreground shrink-0" />
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total</p>
-            <p className="text-xl font-bold tabular-nums">{totalProjects}</p>
-          </div>
+      <div className="metric-grid shrink-0">
+        <div className="metric-card-primary">
+          <p className="metric-label-inverse">Total proyectos</p>
+          <p className="metric-value-inverse">{totalProjects}</p>
         </div>
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Clock className="size-4 text-muted-foreground shrink-0" />
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">En Progreso</p>
-            <p className="text-xl font-bold tabular-nums">{activeProjects}</p>
-          </div>
+        <div className="metric-card">
+          <p className="metric-label">En progreso</p>
+          <p className="metric-value">{activeProjects}</p>
         </div>
-        <div className="px-4 py-3 flex items-center gap-3">
-          <AlertTriangle className="size-4 text-muted-foreground shrink-0" />
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">En Revisión</p>
-            <p className="text-xl font-bold tabular-nums">{inReview}</p>
-          </div>
+        <div className="metric-card">
+          <p className="metric-label">En revision</p>
+          <p className="metric-value">{inReview}</p>
         </div>
-        <div className="px-4 py-3 flex items-center gap-3">
-          <DollarSign className="size-4 text-muted-foreground shrink-0" />
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Presupuesto</p>
-            <p className="text-xl font-bold tabular-nums">${totalBudget.toLocaleString()}</p>
-          </div>
+        <div className="metric-card">
+          <p className="metric-label">Presupuesto</p>
+          <p className="metric-value">${totalBudget.toLocaleString()}</p>
         </div>
       </div>
 
@@ -546,7 +534,7 @@ export default function ProjectsPage() {
             visibleProjects.map((project) => (
               <Card
                 key={project.id}
-                className="p-4 cursor-pointer hover:shadow-md transition-shadow"
+                className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20"
                 onClick={() => handleOpenProject(project.id)}
               >
                 <div className="flex items-center gap-4">
@@ -646,7 +634,7 @@ function ProjectCard({
 
   return (
     <div
-      className="bg-background rounded-lg border px-3 py-2.5 cursor-pointer hover:shadow-sm hover:border-border/80 transition-all duration-100"
+      className="bg-background rounded-lg border border-transparent px-3 py-2.5 cursor-pointer transition-colors duration-100 hover:bg-muted/20"
       onClick={onClick}
     >
         <div className="space-y-2">
@@ -798,7 +786,7 @@ function ProjectDetail({
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-xl font-bold">{project.name}</h2>
+          <h2 className="text-lg font-semibold">{project.name}</h2>
           <p className="text-muted-foreground">{project.clientName}</p>
         </div>
         <Badge variant="outline" className={statusConfig[displayStatus].color}>
@@ -1039,9 +1027,9 @@ function ProjectDetail({
               { key: 'review', label: 'Revision', color: 'border-yellow-400' },
               { key: 'done', label: 'Completadas', color: 'border-green-400' },
             ].map(({ key, label, color }) => (
-              <div key={key} className={cn('p-3 rounded-lg border-l-4', color, 'bg-muted/30')}>
+              <div key={key} className={cn('rounded-md border-l-4 p-3', color, 'bg-muted/20')}>
                 <p className="text-xs text-muted-foreground mb-1">{label}</p>
-                <p className="text-xl font-bold">{tasksByStatus[key as keyof typeof tasksByStatus].length}</p>
+                <p className="metric-value">{tasksByStatus[key as keyof typeof tasksByStatus].length}</p>
               </div>
             ))}
           </div>
@@ -1228,9 +1216,9 @@ function ProjectActivityTimeline({
           </Empty>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {activities.map((activity) => (
-            <div key={activity.id} className="rounded-lg border bg-muted/20 p-4 space-y-2">
+        <div className="overflow-hidden rounded-lg border bg-background">
+          {activities.map((activity, index) => (
+            <div key={activity.id} className={cn('space-y-2 px-4 py-4', index > 0 && 'border-t')}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium">

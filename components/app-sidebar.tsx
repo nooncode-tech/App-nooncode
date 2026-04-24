@@ -95,7 +95,7 @@ function NavGroup({
       {label && (
         <div className="flex items-center gap-2 mb-1 px-2 py-1.5 group-data-[collapsible=icon]:hidden">
           {color && <span className="size-1.5 rounded-full shrink-0" style={{ background: color }} />}
-          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/25">
+          <span className="text-[10px] font-semibold text-white/30">
             {label}
           </span>
         </div>
@@ -209,7 +209,7 @@ export function AppSidebar() {
         {/* Expanded: logo left + trigger right */}
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
           <Link href="/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(18,0,197,0.4)] hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
+            <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
               <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
             </div>
             <div className="flex flex-col leading-none">
@@ -221,7 +221,7 @@ export function AppSidebar() {
         </div>
         {/* Collapsed: logo + trigger stacked */}
         <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-2">
-          <Link href="/dashboard" className="size-8 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_12px_rgba(18,0,197,0.4)] hover:shadow-[0_0_16px_rgba(18,0,197,0.7)] transition-shadow">
+          <Link href="/dashboard" className="size-8 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
           </Link>
           <SidebarTrigger className="text-white/25 hover:text-white/60 hover:bg-white/[0.07] size-7 [&>svg]:size-3.5" />
@@ -258,7 +258,7 @@ export function AppSidebar() {
           <span className="text-[11px] text-white/30 flex-1 tabular-nums truncate">
             {personalStats.balanceValueLabel}
           </span>
-          <span className="text-[10px] text-white/20 font-medium uppercase tracking-wide">balance</span>
+          <span className="text-[10px] text-white/25 font-medium">balance</span>
         </div>
 
         <DropdownMenu>

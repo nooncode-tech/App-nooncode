@@ -1,6 +1,5 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
 import { AuthProvider } from '@/lib/auth-context'
@@ -9,8 +8,6 @@ import { mapProfileToClientUser, type AuthMode } from '@/lib/auth-user'
 import { hasSupabasePublicEnv, isSupabaseAuthEnabled } from '@/lib/env'
 import { getCurrentPrincipal } from '@/lib/server/auth/session'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata: Metadata = {
   title: 'NoonApp - Sales & Delivery Platform',
@@ -73,7 +70,7 @@ export default async function RootLayout({
 
   return (
     <html lang="es">
-      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <AuthProvider authMode={authMode} initialUser={initialUser}>
           {children}
           <Toaster position="top-right" richColors />

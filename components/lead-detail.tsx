@@ -810,14 +810,14 @@ Total: 8 semanas
         <div className="flex items-center gap-4">
           <div
             className={cn(
-              'size-16 rounded-[10px] flex items-center justify-center font-bold text-2xl',
+              'size-16 rounded-md flex items-center justify-center text-2xl font-semibold',
               getScoreColor(lead.score)
             )}
           >
             {lead.score}
           </div>
           <div>
-            <h2 className="text-xl font-bold">{lead.name}</h2>
+            <h2 className="text-lg font-semibold">{lead.name}</h2>
             {lead.company && (
               <p className="text-muted-foreground flex items-center gap-1">
                 <Building2 className="size-4" />
@@ -827,7 +827,7 @@ Total: 8 semanas
           </div>
         </div>
         <div className="text-right">
-          <p className="text-2xl font-bold text-primary">${lead.value.toLocaleString()}</p>
+          <p className="metric-value text-primary">${lead.value.toLocaleString()}</p>
           <Badge variant="outline" className={statusConfig[lead.status].color}>
             {statusConfig[lead.status].label}
           </Badge>
@@ -1688,7 +1688,7 @@ Total: 8 semanas
       <Dialog open={showMaxwellDialog} onOpenChange={setShowMaxwellDialog}>
         <DialogContent className="max-w-xl p-0 overflow-hidden h-[600px] flex flex-col">
           <MaxwellChat
-            className="size-full border-0 shadow-none rounded-none"
+              className="size-full border-0 rounded-none"
             onClose={() => setShowMaxwellDialog(false)}
             leadId={lead.id}
             leadName={lead.name}

@@ -84,20 +84,22 @@ export default function NotificationsPage() {
   if (!user) return null
 
   return (
-    <div>
-      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05]">
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Notificaciones</h1>
+          <h1 className="app-page-title">Notificaciones</h1>
           {authMode === 'supabase' && unreadCount > 0 && (
             <span className="text-[10px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full tabular-nums">
               {unreadCount}
             </span>
           )}
         </div>
-        <p className="mt-1 text-xs text-white/40">Inbox interno de notificaciones por usuario</p>
+        <p className="app-page-subtitle">Inbox interno de notificaciones por usuario.</p>
+        </div>
       </div>
 
-      <div className="px-6 py-6 max-w-2xl">
+      <div className="max-w-2xl">
         {authMode !== 'supabase' ? (
           <Empty className="py-16">
             <EmptyHeader>
@@ -127,7 +129,7 @@ export default function NotificationsPage() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="divide-y divide-border rounded-xl border overflow-hidden">
+          <div className="overflow-hidden rounded-md bg-card divide-y divide-border/80">
             {items.map((item) => {
               const DomainIcon = domainIcon(item.domain)
               const canOpen = item.href !== '/dashboard/notifications'
@@ -160,7 +162,7 @@ export default function NotificationsPage() {
                     </div>
                     <p className="text-xs text-muted-foreground leading-snug mb-1.5">{item.body}</p>
                     <div className="flex items-center gap-1">
-                      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/60 bg-muted px-1.5 py-px rounded">
+                      <span className="rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground/70">
                         {domainLabel(item.domain)}
                       </span>
                       {canOpen && (

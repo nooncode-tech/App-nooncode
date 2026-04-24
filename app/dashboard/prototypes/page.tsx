@@ -159,16 +159,18 @@ export default function PrototypesPage() {
   const canOpenProjects = canAccessDashboardPath(user.role, '/dashboard/projects')
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-balance">Prototipos</h1>
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+          <h1 className="app-page-title">Prototipos</h1>
           {authMode === 'supabase' ? <Badge variant="outline">Workspace comercial</Badge> : null}
           {requestedLeadId ? <Badge variant="secondary">Filtrado por lead</Badge> : null}
         </div>
-        <p className="text-muted-foreground max-w-3xl">
+        <p className="app-page-subtitle">
           Esta surface muestra workspaces de prototipo reales ya solicitados desde leads. No implica que el contenido IA del prototipo ya exista.
         </p>
+        </div>
       </div>
 
       {authMode !== 'supabase' ? (
@@ -247,21 +249,21 @@ export default function PrototypesPage() {
               </CardHeader>
               <CardContent className="px-4 space-y-4">
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border bg-background p-3">
+                  <div className="app-panel-muted">
                     <p className="text-xs text-muted-foreground">Lead origen</p>
                     <p className="text-sm font-medium">{item.leadName}</p>
                   </div>
-                  <div className="rounded-lg border bg-background p-3">
+                  <div className="app-panel-muted">
                     <p className="text-xs text-muted-foreground">Proyecto vinculado</p>
                     <p className="text-sm font-medium">{item.projectName ?? 'Sin proyecto vinculado'}</p>
                   </div>
-                  <div className="rounded-lg border bg-background p-3">
+                  <div className="app-panel-muted">
                     <p className="text-xs text-muted-foreground">Ultimo movimiento</p>
                     <p className="text-sm font-medium">{formatDate(item.updatedAt)}</p>
                   </div>
                 </div>
 
-                <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
+                <div className="app-panel-muted space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <Link2 className="size-4 text-primary" />
                     Handoff actual
@@ -274,8 +276,8 @@ export default function PrototypesPage() {
                 </div>
 
                 {generatedContent[item.id] ? (
-                  <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prototipo generado por v0</p>
+                  <div className="app-panel-muted space-y-3">
+                    <p className="metric-label">Prototipo generado por v0</p>
                     {demoUrls[item.id] ? (
                       <a
                         href={demoUrls[item.id]}

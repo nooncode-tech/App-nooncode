@@ -44,8 +44,98 @@
   --warning-foreground: oklch(0.18 0.05 80);
 }
 
+@layer components {
+  .app-page {
+    @apply px-4 py-5 md:px-8 md:py-8 space-y-8;
+  }
+
+  .app-page-header {
+    @apply flex flex-col gap-4 border-b border-border/70 pb-5 md:flex-row md:items-end md:justify-between;
+  }
+
+  .app-page-title {
+    @apply text-[28px] font-semibold leading-[1.15] text-foreground;
+  }
+
+  .app-page-subtitle {
+    @apply mt-1 max-w-2xl text-sm leading-6 text-muted-foreground;
+  }
+
+  .app-section {
+    @apply space-y-4;
+  }
+
+  .app-section-header {
+    @apply flex flex-col gap-1 md:flex-row md:items-center md:justify-between;
+  }
+
+  .app-section-title {
+    @apply text-base font-semibold leading-6 text-foreground;
+  }
+
+  .app-section-subtitle {
+    @apply text-sm leading-6 text-muted-foreground;
+  }
+
+  .metric-grid {
+    @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-4;
+  }
+
+  .metric-card {
+    @apply rounded-md bg-card px-4 py-4 transition-colors hover:bg-muted/20;
+  }
+
+  .metric-card-primary {
+    @apply rounded-md bg-primary px-4 py-4 text-primary-foreground transition-colors hover:bg-primary/90;
+  }
+
+  .metric-label {
+    @apply text-xs font-semibold leading-4 text-muted-foreground;
+  }
+
+  .metric-label-inverse {
+    @apply text-xs font-semibold leading-4 text-primary-foreground/70;
+  }
+
+  .metric-value {
+    @apply mt-2 text-2xl font-semibold leading-none tabular-nums text-foreground;
+  }
+
+  .metric-value-lg {
+    @apply mt-2 text-[32px] font-semibold leading-none tabular-nums text-foreground;
+  }
+
+  .metric-value-inverse {
+    @apply mt-2 text-2xl font-semibold leading-none tabular-nums text-primary-foreground;
+  }
+
+  .metric-note {
+    @apply mt-2 text-xs leading-5 text-muted-foreground;
+  }
+
+  .metric-note-inverse {
+    @apply mt-2 text-xs leading-5 text-primary-foreground/70;
+  }
+
+  .app-panel {
+    @apply rounded-md bg-card p-6;
+  }
+
+  .app-panel-muted {
+    @apply rounded-md bg-muted/20 p-4;
+  }
+
+  .app-row {
+    @apply flex items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/20;
+  }
+
+  .app-muted-surface {
+    @apply rounded-md bg-muted/20;
+  }
+}
+
 @theme inline {
-  --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -98,13 +188,14 @@
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 
-  /* Stripe-like card: shadow subtle, border barely visible */
+  /* Cards stay on one plane by default; reserve strong elevation for overlays. */
   [data-slot="card"] {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
-    border-color: oklch(0.93 0.003 275);
+    box-shadow: none !important;
+    filter: none !important;
+    border-color: transparent;
   }
 
-  /* Sidebar: no border line, gap matches sidebar, inset shadow fills any sub-pixel gap */
+  /* Sidebar: no border line, gap matches sidebar, inset uses a hard edge instead of a shadow */
   [data-slot="sidebar-container"] {
     border-color: transparent;
   }
@@ -112,31 +203,31 @@
     background-color: var(--sidebar);
   }
   [data-slot="sidebar-inset"] {
-    box-shadow: -2px 0 0 0 var(--sidebar);
+    border-left: 2px solid var(--sidebar);
   }
 
   /* Page title standard */
   .page-title {
-    @apply text-2xl font-semibold tracking-tight;
+    @apply text-[28px] font-semibold leading-[1.15] text-foreground;
   }
   .page-subtitle {
-    @apply text-sm text-muted-foreground mt-0.5;
+    @apply mt-1 max-w-2xl text-sm leading-6 text-muted-foreground;
   }
 
   /* Stat number — large metric display like Stripe */
   .stat-number {
-    @apply text-3xl font-semibold tracking-tight tabular-nums;
+    @apply mt-2 text-[32px] font-semibold leading-none tabular-nums text-foreground;
   }
   .stat-number-lg {
-    @apply text-4xl font-bold tracking-tight tabular-nums;
+    @apply mt-2 text-[32px] font-semibold leading-none tabular-nums text-foreground;
   }
   .stat-label {
-    @apply text-xs font-medium text-muted-foreground uppercase tracking-wide;
+    @apply text-xs font-semibold leading-4 text-muted-foreground;
   }
 
   /* Section divider */
   .section-header {
-    @apply flex items-center justify-between pb-4 border-b mb-6;
+    @apply flex items-center justify-between border-b border-border/70 pb-4;
   }
 
   /* Hide scrollbars globally, allow scroll */
@@ -166,6 +257,6 @@
 
   /* Table improvements */
   th {
-    @apply text-xs font-medium text-muted-foreground uppercase tracking-wide;
+    @apply text-xs font-medium text-muted-foreground;
   }
 }

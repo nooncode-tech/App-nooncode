@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { stripe } from './client'
+import { getStripeClient } from './client'
 import type { AuthenticatedPrincipal } from '@/lib/server/profiles/types'
 
 export async function getOrCreateStripeCustomer(
@@ -8,6 +8,7 @@ export async function getOrCreateStripeCustomer(
   clientName: string,
   clientEmail: string | null,
 ): Promise<string> {
+  const stripe = getStripeClient()
   const { data: existing } = await client
     .from('stripe_customers')
     .select('stripe_customer_id')
@@ -47,6 +48,7 @@ export async function createCheckoutSession(
   },
   appUrl: string,
 ): Promise<{ url: string; paymentId: string }> {
+  const stripe = getStripeClient()
   const stripeCustomerId = await getOrCreateStripeCustomer(
     client,
     params.leadId,

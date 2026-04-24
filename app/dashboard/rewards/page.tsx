@@ -131,7 +131,7 @@ export default function RewardsPage() {
 
   if (!isSupabase) {
     return (
-      <div className="p-6">
+      <div className="app-page">
         <Card>
           <CardContent className="min-h-[280px]">
             <Empty className="h-full border-0 p-0">
@@ -148,11 +148,13 @@ export default function RewardsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Recompensas</h1>
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
+        <h1 className="app-page-title">Recompensas</h1>
         <p className="text-muted-foreground">Gana puntos y canjéalos por premios</p>
       </div>
+        </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -161,14 +163,14 @@ export default function RewardsPage() {
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-3">
-            <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
+            <Card className="bg-primary text-primary-foreground">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-primary-foreground/80 flex items-center gap-2">
                   <Star className="size-4" /> Tus Puntos
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-4xl font-bold">{balance.toLocaleString()}</div>
+                <div className="metric-value-lg text-primary-foreground">{balance.toLocaleString()}</div>
                 <p className="text-sm text-primary-foreground/70 mt-2">Disponibles para canjear</p>
               </CardContent>
             </Card>
@@ -225,14 +227,14 @@ export default function RewardsPage() {
                       <Card
                         key={item.id}
                         className={cn(
-                          'cursor-pointer transition-all hover:shadow-lg',
+                          'cursor-pointer transition-colors duration-150 hover:bg-muted/20',
                           (!canAfford || outOfStock) && 'opacity-60'
                         )}
                         onClick={() => !outOfStock && setSelectedItem(item)}
                       >
                         <CardContent className="p-6">
                           <div className="flex items-start justify-between mb-4">
-                            <div className={cn('size-12 rounded-[10px] flex items-center justify-center', catConfig.color)}>
+                            <div className={cn('size-12 rounded-md flex items-center justify-center', catConfig.color)}>
                               <Gift className="size-6" />
                             </div>
                             <Badge variant="outline" className={catConfig.color}>{catConfig.label}</Badge>
@@ -270,12 +272,12 @@ export default function RewardsPage() {
                       Aún no tienes actividad de puntos registrada.
                     </p>
                   ) : (
-                    <div className="space-y-3">
-                      {ledger.map((entry) => {
+                    <div className="overflow-hidden rounded-lg border bg-background">
+                      {ledger.map((entry, index) => {
                         const cfg = eventTypeConfig[entry.event_type] ?? { label: entry.event_type, icon: TrendingUp }
                         const Icon = cfg.icon
                         return (
-                          <div key={entry.id} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div key={entry.id} className={cn('flex items-center justify-between gap-4 px-4 py-3', index > 0 && 'border-t')}>
                             <div className="flex items-center gap-3">
                               <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center">
                                 <Icon className="size-5 text-primary" />
@@ -311,7 +313,7 @@ export default function RewardsPage() {
           </DialogHeader>
           {selectedItem && (
             <div className="space-y-4">
-              <div className="p-4 bg-muted/50 rounded-lg">
+              <div className="rounded-lg border bg-muted/20 p-4">
                 <p className="font-semibold">{selectedItem.name}</p>
                 <p className="text-sm text-muted-foreground mt-1">{selectedItem.description}</p>
               </div>

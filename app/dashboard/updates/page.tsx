@@ -61,13 +61,15 @@ export default function UpdatesPage() {
   if (!user) return null
 
   return (
-    <div>
-      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05]">
-        <h1 className="text-xl font-bold tracking-tight text-white leading-none">Actualizaciones</h1>
-        <p className="mt-1 text-xs text-white/40">Feed interno de eventos visibles para tu alcance actual</p>
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
+        <h1 className="app-page-title">Actualizaciones</h1>
+        <p className="app-page-subtitle">Feed interno de eventos visibles para tu alcance actual.</p>
+        </div>
       </div>
 
-      <div className="px-6 py-6 max-w-2xl">
+      <div className="max-w-2xl">
         {authMode !== 'supabase' ? (
           <Empty className="py-16">
             <EmptyHeader>
@@ -97,7 +99,7 @@ export default function UpdatesPage() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="divide-y divide-border rounded-xl border overflow-hidden">
+          <div className="overflow-hidden rounded-md bg-card divide-y divide-border/80">
             {items.map((item) => {
               const DomainIcon = domainIcon(item.domain)
               return (
@@ -122,7 +124,7 @@ export default function UpdatesPage() {
                     <p className="text-xs text-muted-foreground leading-snug mb-1">{item.description}</p>
                     <div className="flex items-center gap-1.5">
                       <span className={cn(
-                        'text-[9px] font-medium uppercase tracking-wide px-1.5 py-px rounded',
+                        'rounded px-1.5 py-px text-[10px] font-medium',
                         item.domain === 'sales' ? 'bg-blue-500/10 text-blue-600' : 'bg-orange-500/10 text-orange-600'
                       )}>
                         {domainLabel(item.domain)}

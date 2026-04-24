@@ -208,7 +208,7 @@ export default function EarningsPage() {
 
   if (!isSupabase) {
     return (
-      <div className="p-6">
+      <div className="app-page">
         <Card>
           <CardContent className="min-h-[280px]">
             <Empty className="h-full border-0 p-0">
@@ -227,27 +227,27 @@ export default function EarningsPage() {
   }
 
   return (
-    <div>
-      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05] flex items-center justify-between gap-4">
+    <div className="app-page">
+      <div className="app-page-header">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Mis Ganancias</h1>
-          <p className="mt-1 text-xs text-white/40">Comisiones acreditadas desde el ledger monetario</p>
+          <h1 className="app-page-title">Mis ganancias</h1>
+          <p className="app-page-subtitle">Comisiones acreditadas desde el ledger monetario.</p>
         </div>
         <Button
           variant="outline"
           onClick={() => setShowWithdrawDialog(true)}
           disabled={!summary || summary.availableToWithdraw <= 0}
-          className="shrink-0 border-white/20 text-white/70 hover:text-white hover:bg-white/10"
+          className="shrink-0"
         >
           <CreditCard className="size-4 mr-2" />
           Solicitar retiro
         </Button>
       </div>
-      <div className="px-8 py-8 space-y-8">
+      <div className="space-y-8">
 
       {/* Stripe Connect card */}
       {!connectLoading && connectStatus && (
-        <Card className={connectStatus.status === 'active' ? 'border-emerald-200 bg-emerald-50/40' : 'border-yellow-200 bg-yellow-50/40'}>
+        <Card className={connectStatus.status === 'active' ? 'border-emerald-200/80 bg-emerald-50/20' : 'border-yellow-200/80 bg-yellow-50/20'}>
           <CardContent className="flex flex-col gap-3 pt-5 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-3">
               {connectStatus.status === 'active' ? (
@@ -297,38 +297,30 @@ export default function EarningsPage() {
         </Card>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card className="bg-primary text-primary-foreground">
-              <CardContent className="pt-6 pb-5 px-6">
-                <p className="text-xs font-medium uppercase tracking-wide text-primary-foreground/70">Total Ganado</p>
-                <p className="stat-number-lg mt-2 text-primary-foreground">{fmt(summary?.totalEarned ?? 0)}</p>
-                <p className="text-xs text-primary-foreground/60 mt-1.5">Acumulado histórico</p>
-              </CardContent>
-            </Card>
+          <div className="metric-grid">
+            <div className="metric-card-primary">
+              <p className="metric-label-inverse">Total ganado</p>
+              <p className="metric-value-inverse">{fmt(summary?.totalEarned ?? 0)}</p>
+              <p className="metric-note-inverse">Acumulado historico</p>
+            </div>
 
-            <Card>
-              <CardContent className="pt-6 pb-5 px-6">
-                <p className="stat-label">Disponible para retirar</p>
-                <p className="stat-number mt-2 text-green-600">{fmt(summary?.availableToWithdraw ?? 0)}</p>
-                <p className="text-xs text-muted-foreground mt-1.5">Consolidado y listo</p>
-              </CardContent>
-            </Card>
+            <div className="metric-card">
+              <p className="metric-label">Disponible para retirar</p>
+              <p className="metric-value text-green-600">{fmt(summary?.availableToWithdraw ?? 0)}</p>
+              <p className="metric-note">Consolidado y listo</p>
+            </div>
 
-            <Card>
-              <CardContent className="pt-6 pb-5 px-6">
-                <p className="stat-label">Pendiente</p>
-                <p className="stat-number mt-2 text-yellow-600">{fmt(summary?.pending ?? 0)}</p>
-                <p className="text-xs text-muted-foreground mt-1.5">En validación por PM</p>
-              </CardContent>
-            </Card>
+            <div className="metric-card">
+              <p className="metric-label">Pendiente</p>
+              <p className="metric-value text-yellow-600">{fmt(summary?.pending ?? 0)}</p>
+              <p className="metric-note">En validacion por PM</p>
+            </div>
 
-            <Card>
-              <CardContent className="pt-6 pb-5 px-6">
-                <p className="stat-label">Bloqueado</p>
-                <p className="stat-number mt-2 text-destructive">{fmt(summary?.locked ?? 0)}</p>
-                <p className="text-xs text-muted-foreground mt-1.5">En disputa o retención</p>
-              </CardContent>
-            </Card>
+            <div className="metric-card">
+              <p className="metric-label">Bloqueado</p>
+              <p className="metric-value text-destructive">{fmt(summary?.locked ?? 0)}</p>
+              <p className="metric-note">En disputa o retencion</p>
+            </div>
           </div>
 
           <Card>

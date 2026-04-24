@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
-import { stripe } from '@/lib/server/stripe/client'
+import { toErrorResponse } from '@/lib/server/api/errors'
+import { getStripeClient } from '@/lib/server/stripe/client'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 
 async function handleCheckoutSessionCompleted(
@@ -349,30 +350,31 @@ async function handleChargeRefunded(
 }
 
 export async function POST(request: Request) {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-
-  if (!webhookSecret) {
-    return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 })
-  }
-
-  const body = await request.text()
-  const signature = request.headers.get('stripe-signature')
-
-  if (!signature) {
-    return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 })
-  }
-
-  let event: Stripe.Event
-
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-  } catch {
-    return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 400 })
-  }
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
-  const client = await createSupabaseAdminClient()
+    if (!webhookSecret) {
+      return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 })
+    }
 
-  try {
+    const body = await request.text()
+    const signature = request.headers.get('stripe-signature')
+
+    if (!signature) {
+      return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 })
+    }
+
+    const stripe = getStripeClient()
+    let event: Stripe.Event
+
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+    } catch {
+      return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 400 })
+    }
+
+    const client = await createSupabaseAdminClient()
+
     switch (event.type) {
       case 'checkout.session.completed':
         await handleCheckoutSessionCompleted(client, event.data.object as Stripe.Checkout.Session)
@@ -393,9 +395,8 @@ export async function POST(request: Request) {
         await handleTransferReversed(client, event.data.object as Stripe.Transfer)
         break
     }
-  } catch (err) {
-    console.error(`Webhook handler error for ${event.type}:`, err)
-    return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 })
+  } catch (error) {
+    return toErrorResponse(error)
   }
 
   return NextResponse.json({ received: true })

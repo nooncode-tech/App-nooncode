@@ -68,16 +68,16 @@ export default function PipelinePage() {
   const getColumnStats = (column: KanbanColumn<Lead>) => selectPipelineColumnStats(column.items)
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="relative bg-[#000000] px-8 pt-4 pb-4 border-b border-white/[0.05] flex items-center justify-between gap-4 shrink-0">
+    <div className="flex h-full flex-col px-4 py-5 md:px-8 md:py-8">
+      <div className="app-page-header shrink-0">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-white leading-none">Pipeline de Ventas</h1>
-          <p className="mt-1 text-xs text-white/40">Arrastra los leads entre etapas para actualizar su estado</p>
+          <h1 className="app-page-title">Pipeline de ventas</h1>
+          <p className="app-page-subtitle">Arrastra leads entre etapas para actualizar su estado.</p>
         </div>
-        <div className="flex items-center gap-4 shrink-0">
+        <div className="flex shrink-0 items-center gap-4">
           <div className="text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-white/25">Valor total</p>
-            <p className="text-xl font-bold text-white tabular-nums">${totalPipelineValue.toLocaleString()}</p>
+            <p className="metric-label">Valor total</p>
+            <p className="metric-value mt-1">${totalPipelineValue.toLocaleString()}</p>
           </div>
           <Button onClick={() => setShowNewLeadDialog(true)}>
             <Plus className="size-4 mr-2" />
@@ -85,7 +85,7 @@ export default function PipelinePage() {
           </Button>
         </div>
       </div>
-      <div className="px-4 py-4 flex flex-col flex-1 overflow-hidden">
+      <div className="mt-6 flex flex-1 flex-col overflow-hidden">
 
       {/* Kanban Board */}
       {isLeadsLoading ? (
@@ -143,9 +143,9 @@ function PipelineCard({ lead, isDragging, onClick }: PipelineCardProps) {
     <div
       onClick={onClick}
       className={cn(
-        "group bg-background rounded-lg border px-2.5 py-2 cursor-pointer",
-        "hover:border-border/80 hover:shadow-sm transition-all duration-100",
-        isDragging && "shadow-md ring-2 ring-primary/50 opacity-90"
+        "group bg-background rounded-lg border border-transparent px-2.5 py-2 cursor-pointer",
+        "transition-colors duration-100 hover:bg-muted/20",
+        isDragging && "ring-2 ring-primary/40 opacity-95"
       )}
     >
       {/* Row 1: name + score */}

@@ -160,11 +160,11 @@ export default function ClientPortalPage() {
   const canPay = !isPaid && !!project.proposal_id && project.proposal_amount && project.proposal_amount > 0
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center py-12 px-4 gap-6 max-w-lg mx-auto">
+    <div className="min-h-screen bg-background flex flex-col items-center px-4 py-8 gap-6 max-w-lg mx-auto">
       {/* Header */}
       <div className="text-center space-y-1 w-full">
-        <p className="text-xs text-muted-foreground uppercase tracking-wide">Portal de cliente · Noon</p>
-        <h1 className="text-2xl font-bold">
+        <p className="metric-label">Portal de cliente / Noon</p>
+        <h1 className="app-page-title">
           {project.client_name ? `Hola, ${project.client_name}` : 'Tu proyecto'}
         </h1>
       </div>
@@ -184,7 +184,7 @@ export default function ClientPortalPage() {
         <CardContent className="space-y-4">
           {/* Payment section */}
           {project.proposal_amount && project.proposal_amount > 0 && (
-            <div className="p-4 rounded-lg border space-y-3">
+            <div className="app-panel-muted space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Inversión del proyecto</span>
                 <span className="font-bold">
@@ -213,7 +213,7 @@ export default function ClientPortalPage() {
           )}
 
           {/* Project activation status */}
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 text-sm">
+          <div className="flex items-center gap-2 rounded-md bg-muted/20 p-3 text-sm">
             <div className={`size-2 rounded-full shrink-0 ${isPaid ? 'bg-emerald-500' : 'bg-yellow-400'}`} />
             {isPaid
               ? 'Proyecto activo — el equipo de Noon está trabajando en él'
@@ -262,7 +262,7 @@ export default function ClientPortalPage() {
           {comments.length > 0 && (
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {comments.map((c) => (
-                <div key={c.id} className="rounded-lg bg-muted/50 px-3 py-2 text-sm space-y-0.5">
+                <div key={c.id} className="rounded-md bg-muted/20 px-3 py-2 text-sm space-y-0.5">
                   <p>{c.body}</p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(c.created_at).toLocaleDateString('es-MX', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
