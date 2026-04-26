@@ -103,7 +103,13 @@ export interface LeadActivity {
 }
 
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'handoff_ready'
-export type ProposalReviewStatus = 'pending_review' | 'approved' | 'rejected' | 'expired' | 'cancelled'
+export type ProposalReviewStatus =
+  | 'pending_review'
+  | 'approved'
+  | 'rejected'
+  | 'changes_requested'
+  | 'expired'
+  | 'cancelled'
 export type ProposalPaymentStatus = 'pending' | 'succeeded' | 'failed' | 'refunded'
 
 export interface LeadProposal {

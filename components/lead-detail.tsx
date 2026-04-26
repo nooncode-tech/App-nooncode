@@ -127,6 +127,7 @@ const reviewStatusConfig: Record<ProposalReviewStatus, { label: string; color: s
   pending_review: { label: 'Pendiente revisión', color: 'bg-yellow-500/10 text-yellow-700' },
   approved:       { label: 'Aprobada',           color: 'bg-emerald-500/10 text-emerald-700' },
   rejected:       { label: 'Rechazada',          color: 'bg-red-500/10 text-red-700' },
+  changes_requested: { label: 'Ajustes solicitados', color: 'bg-amber-500/10 text-amber-700' },
   expired:        { label: 'Expirada',           color: 'bg-slate-500/10 text-slate-500' },
   cancelled:      { label: 'Cancelada',          color: 'bg-slate-500/10 text-slate-500' },
 }

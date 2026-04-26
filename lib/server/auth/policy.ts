@@ -1,6 +1,6 @@
 import type { AppRole } from '@/lib/server/profiles/types'
 
-export type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'admin'
+export type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'pm' | 'admin'
 
 export interface DashboardRouteAccessRule {
   prefix: string
@@ -10,6 +10,7 @@ export interface DashboardRouteAccessRule {
 export const salesRoles: AppRole[] = ['admin', 'sales_manager', 'sales']
 export const projectReadRoles: AppRole[] = ['admin', 'sales_manager', 'pm', 'developer']
 export const deliveryRoles: AppRole[] = ['admin', 'pm', 'developer']
+export const pmQueueRoles: AppRole[] = ['admin', 'pm']
 export const adminRoles: AppRole[] = ['admin']
 export const teamManagerRoles: AppRole[] = ['admin', 'sales_manager', 'pm']
 export const fullStatsRoles: AppRole[] = ['admin', 'sales_manager']
@@ -19,6 +20,8 @@ export const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
   { prefix: '/dashboard/leads', access: 'sales' },
   { prefix: '/dashboard/pipeline', access: 'sales' },
   { prefix: '/dashboard/prototypes', access: 'sales' },
+  { prefix: '/dashboard/web-analysis', access: 'sales' },
+  { prefix: '/dashboard/pm-queue', access: 'pm' },
   { prefix: '/dashboard/projects', access: 'projects' },
   { prefix: '/dashboard/tasks', access: 'delivery' },
 ]
@@ -53,6 +56,10 @@ export function canAccessProjects(role: AppRole): boolean {
   return projectReadRoles.includes(role)
 }
 
+export function canAccessPmQueue(role: AppRole): boolean {
+  return pmQueueRoles.includes(role)
+}
+
 export function canAccessAdmin(role: AppRole): boolean {
   return adminRoles.includes(role)
 }
@@ -80,6 +87,7 @@ export function canAccessDashboardPath(role: AppRole, pathname: string): boolean
   if (accessLevel === 'sales') return canAccessSales(role)
   if (accessLevel === 'projects') return canAccessProjects(role)
   if (accessLevel === 'delivery') return canAccessDelivery(role)
+  if (accessLevel === 'pm') return canAccessPmQueue(role)
   if (accessLevel === 'admin') return canAccessAdmin(role)
 
   return true

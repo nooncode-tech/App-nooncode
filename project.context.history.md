@@ -1812,6 +1812,51 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - prototype delivery handoff mutation validated in `supabase`
   - real prototype generation and continuation behavior remain open
 
+## Session note: Website inbound bridge to Noon App
+- Route used: system-backend -> system-frontend -> system-security -> system-testing
+- Objective: connect Noon Website inbound flow to Noon App without merging products or sharing UI
+- Implemented:
+  - `supabase/migrations/0034_phase_14a_website_inbound_integration.sql`
+    - adds `website_inbound_links` for idempotent lineage across external website session, proposal, payment, internal lead, proposal, and project
+    - restricts direct authenticated reads to `admin|pm`
+  - `supabase/migrations/0035_phase_14b_request_changes_review_action.sql`
+    - extends PM review with `request_changes` / `changes_requested`
+  - `lib/server/website-webhook-auth.ts`
+    - verifies Website -> App HMAC signatures through `NOON_WEBSITE_WEBHOOK_SECRET`
+    - signs App -> Website approval callbacks
+  - `lib/server/website-integration.ts`
+    - receives inbound proposal payloads as lead/proposal records in `pending_review`
+    - returns corrected website payloads for the same external proposal to `pending_review` without duplicating records
+    - records PM review outcomes and sends approval callbacks to the website
+    - receives payment confirmations and creates payment-activated unassigned backlog projects only after PM approval
+  - `app/api/integrations/website/inbound-proposal/route.ts`
+  - `app/api/integrations/website/payment-confirmed/route.ts`
+  - `app/api/inbound/pm-queue/route.ts`
+  - `app/api/inbound/pm-queue/[proposalId]/review-webhook/route.ts`
+  - `app/dashboard/pm-queue/page.tsx`
+  - `components/app-sidebar.tsx`
+  - `lib/auth-context.tsx`
+  - `lib/server/auth/policy.ts`
+  - `.env.example`
+- Scope boundary kept:
+  - did not merge website/app UI
+  - did not change outbound seller flow
+  - did not add client-facing proposal or payment UI to Noon App
+  - did not assign developers automatically after payment
+- Operational dependency:
+  - Supabase migration `0034_phase_14a_website_inbound_integration.sql` must be applied before using the new inbound integration endpoints
+  - Vercel needs `NOON_WEBSITE_WEBHOOK_SECRET` and `NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL`
+
+## Session note: Website inbound bridge review-decision contract
+- Route used: system-backend -> system-security -> system-testing
+- Updated App-side outbound website notification from approval-only to review-decision semantics:
+  - approval, changes requested, rejection, and cancellation now all use the same signed website webhook contract
+  - PM queue retry route is now `/api/inbound/pm-queue/[proposalId]/review-webhook`
+  - `website_inbound_links` now tracks `review_webhook_*` status columns instead of approval-only naming
+- Updated operational dependency:
+  - Noon App requires `NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL`
+  - the shared HMAC secret remains `NOON_WEBSITE_WEBHOOK_SECRET`
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context

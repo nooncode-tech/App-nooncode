@@ -31,7 +31,7 @@ export interface LoginResult {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
-type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'admin'
+type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'pm' | 'admin'
 
 interface DashboardRouteAccessRule {
   prefix: string
@@ -44,6 +44,7 @@ const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
   { prefix: '/dashboard/pipeline', access: 'sales' },
   { prefix: '/dashboard/prototypes', access: 'sales' },
   { prefix: '/dashboard/web-analysis', access: 'sales' },
+  { prefix: '/dashboard/pm-queue', access: 'pm' },
   { prefix: '/dashboard/projects', access: 'projects' },
   { prefix: '/dashboard/tasks', access: 'delivery' },
 ]
@@ -197,6 +198,10 @@ export function canAccessDelivery(role: UserRole): boolean {
   return ['admin', 'pm', 'developer'].includes(role)
 }
 
+export function canAccessPmQueue(role: UserRole): boolean {
+  return ['admin', 'pm'].includes(role)
+}
+
 export function canAccessProjects(role: UserRole): boolean {
   return ['admin', 'sales_manager', 'pm', 'developer'].includes(role)
 }
@@ -228,6 +233,7 @@ export function canAccessDashboardPath(role: UserRole, pathname: string): boolea
   if (accessLevel === 'sales') return canAccessSales(role)
   if (accessLevel === 'projects') return canAccessProjects(role)
   if (accessLevel === 'delivery') return canAccessDelivery(role)
+  if (accessLevel === 'pm') return canAccessPmQueue(role)
   if (accessLevel === 'admin') return canAccessAdmin(role)
 
   return true

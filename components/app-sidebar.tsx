@@ -21,6 +21,7 @@ import {
   BarChart3,
   Globe,
   Zap,
+  ClipboardCheck,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -58,6 +59,7 @@ const salesNavItems = [
 ]
 
 const deliveryNavItems = [
+  { title: 'Bandeja PM', href: '/dashboard/pm-queue', icon: ClipboardCheck },
   { title: 'Proyectos', href: '/dashboard/projects', icon: FolderKanban },
   { title: 'Mis Tareas', href: '/dashboard/tasks', icon: ListTodo },
 ]

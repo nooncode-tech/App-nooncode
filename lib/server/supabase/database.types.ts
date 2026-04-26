@@ -1915,6 +1915,7 @@ export type Database = {
         | "pending_review"
         | "approved"
         | "rejected"
+        | "changes_requested"
         | "expired"
         | "cancelled"
       proposal_status:
@@ -2155,6 +2156,7 @@ export const Constants = {
         "pending_review",
         "approved",
         "rejected",
+        "changes_requested",
         "expired",
         "cancelled",
       ],

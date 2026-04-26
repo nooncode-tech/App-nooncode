@@ -15,6 +15,7 @@
 - Dashboard home: `/dashboard`
 - Internal updates feed: `/dashboard/updates`
 - Sales modules: `/dashboard/leads`, `/dashboard/pipeline`
+- PM inbound review module: `/dashboard/pm-queue`
 - Delivery modules: `/dashboard/projects`, `/dashboard/tasks`
 - Finance/personal modules: `/dashboard/earnings`, `/dashboard/rewards`, `/dashboard/reports`
 - Admin module: `/dashboard/settings`
@@ -34,6 +35,7 @@
 - Dashboard route protection now exists at both middleware and client shell layers.
 - Business-domain data for leads, projects, tasks, rewards, users, and points still lives in `lib/data-context.tsx`.
 - `lib/dashboard-selectors.ts` remains the main selector/view-model layer over client data.
+- Noon Website and Noon App are separate products. The website owns the public inbound/client/payment experience; Noon App owns collaborator operations and receives website handoffs through server-to-server webhooks.
 
 ## Confirmed auth and data reality
 - Supabase auth/session has been implemented for the active real-auth path.
@@ -93,6 +95,18 @@
   - durable `projects` records created from `handoff_ready` proposals
   - `lib/data-context.tsx` now merges persisted projects with mock delivery data in Supabase mode
   - real UUID-backed projects now support persisted metadata updates for delivery management fields
+- Website inbound review and payment handoff now has a real App-side code path:
+  - `supabase/migrations/0034_phase_14a_website_inbound_integration.sql`
+  - `supabase/migrations/0035_phase_14b_request_changes_review_action.sql`
+  - `/api/integrations/website/inbound-proposal`
+  - `/api/integrations/website/payment-confirmed`
+  - `/api/inbound/pm-queue`
+  - `/api/inbound/pm-queue/[proposalId]/review-webhook`
+  - `/dashboard/pm-queue`
+  - signed website webhooks create idempotent lead/proposal lineage for PM review
+  - PMs can approve, reject, or request changes; corrected website payloads return the same linked proposal to `pending_review`
+  - PM review decisions in Noon App can call the website review decision webhook
+  - payment-confirmed handoff activates an unassigned, payment-activated backlog project only after PM approval
 - Project status activity now has a real code path:
   - `supabase/migrations/0014_phase_2k_project_status_events.sql`
   - `supabase/migrations/0015_phase_2k_project_activity_metadata_fix.sql`

@@ -5,10 +5,14 @@ import { toErrorResponse } from '@/lib/server/api/errors'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { getLeadProposalById } from '@/lib/server/leads/proposal-repository'
 import { mapLeadProposalRowToWire } from '@/lib/server/leads/proposal-mappers'
+import {
+  recordInboundReviewOutcome,
+  sendProposalReviewDecisionToWebsite,
+} from '@/lib/server/website-integration'
 
 const paramsSchema = z.object({ proposalId: z.string().uuid() })
 const bodySchema = z.object({
-  action: z.enum(['approve', 'reject', 'cancel']),
+  action: z.enum(['approve', 'reject', 'request_changes', 'cancel']),
 })
 
 export async function POST(
@@ -16,7 +20,7 @@ export async function POST(
   context: { params: Promise<{ proposalId: string }> }
 ) {
   try {
-    await requireRole(['admin', 'pm'])
+    const principal = await requireRole(['admin', 'pm'])
 
     const { proposalId } = paramsSchema.parse(await context.params)
     const { action } = bodySchema.parse(await request.json())
@@ -48,7 +52,20 @@ export async function POST(
       return NextResponse.json({ error: 'Proposal not found.', code: 'NOT_FOUND' }, { status: 404 })
     }
 
-    return NextResponse.json({ data: mapLeadProposalRowToWire(proposal) })
+    const inboundReview = await recordInboundReviewOutcome(proposalId, action)
+    const reviewWebhook = await sendProposalReviewDecisionToWebsite(proposalId, action, {
+      id: principal.userId,
+      email: principal.email,
+      role: principal.role,
+    })
+
+    return NextResponse.json({
+      data: mapLeadProposalRowToWire(proposal),
+      meta: {
+        inboundReview,
+        reviewWebhook,
+      },
+    })
   } catch (err) {
     return toErrorResponse(err)
   }
