@@ -661,7 +661,9 @@ export async function sendProposalReviewDecisionToWebsite(
   }
 
   const { data: proposal, error: proposalError } = await table(client, 'lead_proposals')
-    .select('id, title, body, amount, currency, review_status, reviewed_at, lead:leads(id, name, email, company)')
+    .select(
+      'id, title, body, amount, currency, review_status, reviewed_at, lead:leads!lead_proposals_lead_id_fkey(id, name, email, company)'
+    )
     .eq('id', proposalId)
     .single()
 
