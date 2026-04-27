@@ -34,3 +34,8 @@ next-env.d.ts
 /tmp_*.txt
 /tmp_edge_profile*/
 /tmp_validate_*.mjs
+.playwright-cli/
+.tmp-pdf-deps/
+.tmp-pdf-render/
+.tmp-website-context/
+output/
