@@ -1,0 +1,77 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - img [ref=e7]
+          - generic [ref=e13]: NoonApp
+        - heading "Gestiona ventas y proyectos en un solo lugar" [level=1] [ref=e14]
+        - paragraph [ref=e15]: Plataforma integral para equipos de ventas y desarrollo. Desde el primer contacto hasta la entrega final.
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - img [ref=e19]
+            - generic [ref=e21]:
+              - heading "Ventas asistidas por IA" [level=3] [ref=e22]
+              - paragraph [ref=e23]: Scoring de leads, propuestas automaticas y seguimiento inteligente
+          - generic [ref=e24]:
+            - img [ref=e26]
+            - generic [ref=e31]:
+              - heading "Hand-off perfecto" [level=3] [ref=e32]
+              - paragraph [ref=e33]: Transicion fluida de ventas a delivery sin perder contexto
+          - generic [ref=e34]:
+            - img [ref=e36]
+            - generic [ref=e39]:
+              - heading "Comisiones y recompensas" [level=3] [ref=e40]
+              - paragraph [ref=e41]: Sistema de puntos y pagos automatizados para todo el equipo
+      - paragraph [ref=e42]: NoonApp MVP Demo
+    - generic [ref=e45]:
+      - generic [ref=e46]:
+        - generic [ref=e47]: Iniciar sesion
+        - generic [ref=e48]: Ingresa tus credenciales para acceder al sistema
+      - generic [ref=e49]:
+        - generic [ref=e50]:
+          - generic [ref=e51]:
+            - generic [ref=e52]: Email
+            - textbox "Email" [ref=e53]:
+              - /placeholder: tu@email.com
+              - text: admin@noon.app
+          - generic [ref=e54]:
+            - generic [ref=e55]: Contraseña
+            - textbox "Contraseña" [ref=e56]:
+              - /placeholder: "********"
+          - button "Ingresar" [ref=e57]
+        - generic [ref=e58]:
+          - paragraph [ref=e59]: "Cuentas de prueba:"
+          - generic [ref=e60]:
+            - button "admin@noon.app Acceso total Admin" [active] [ref=e61]:
+              - generic [ref=e62]:
+                - generic [ref=e63]:
+                  - paragraph [ref=e64]: admin@noon.app
+                  - paragraph [ref=e65]: Acceso total
+                - generic [ref=e66]: Admin
+            - button "juan@noon.app Pipeline de ventas Vendedor" [ref=e67]:
+              - generic [ref=e68]:
+                - generic [ref=e69]:
+                  - paragraph [ref=e70]: juan@noon.app
+                  - paragraph [ref=e71]: Pipeline de ventas
+                - generic [ref=e72]: Vendedor
+            - button "ana@noon.app Gestion de proyectos PM" [ref=e73]:
+              - generic [ref=e74]:
+                - generic [ref=e75]:
+                  - paragraph [ref=e76]: ana@noon.app
+                  - paragraph [ref=e77]: Gestion de proyectos
+                - generic [ref=e78]: PM
+            - button "pedro@noon.app Tareas asignadas Developer" [ref=e79]:
+              - generic [ref=e80]:
+                - generic [ref=e81]:
+                  - paragraph [ref=e82]: pedro@noon.app
+                  - paragraph [ref=e83]: Tareas asignadas
+                - generic [ref=e84]: Developer
+  - region "Notifications alt+T":
+    - list:
+      - listitem [ref=e95]:
+        - img [ref=e97]
+        - generic [ref=e100]: Por favor ingresa tu email
+  - button "Open Next.js Dev Tools" [ref=e90] [cursor=pointer]:
+    - img [ref=e91]
+  - alert [ref=e94]

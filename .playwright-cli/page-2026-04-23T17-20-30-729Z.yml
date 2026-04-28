@@ -1,0 +1,276 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e101]:
+    - generic [ref=e104]:
+      - generic [ref=e106]:
+        - link "N noon platform" [ref=e107] [cursor=pointer]:
+          - /url: /dashboard
+          - generic [ref=e109]: "N"
+          - generic [ref=e110]:
+            - generic [ref=e111]: noon
+            - generic [ref=e112]: platform
+        - button "Toggle Sidebar" [ref=e113]:
+          - img
+          - generic [ref=e114]: Toggle Sidebar
+      - generic [ref=e115]:
+        - generic [ref=e117]:
+          - link "Dashboard" [ref=e118] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e120]
+            - generic [ref=e125]: Dashboard
+          - link "Actualizaciones" [ref=e126] [cursor=pointer]:
+            - /url: /dashboard/updates
+            - img [ref=e127]
+            - generic [ref=e129]: Actualizaciones
+          - link "Notificaciones" [ref=e130] [cursor=pointer]:
+            - /url: /dashboard/notifications
+            - img [ref=e131]
+            - generic [ref=e134]: Notificaciones
+        - generic [ref=e135]:
+          - generic [ref=e138]: Ventas
+          - generic [ref=e139]:
+            - link "Leads" [ref=e140] [cursor=pointer]:
+              - /url: /dashboard/leads
+              - img [ref=e141]
+              - generic [ref=e146]: Leads
+            - link "Pipeline" [ref=e147] [cursor=pointer]:
+              - /url: /dashboard/pipeline
+              - img [ref=e148]
+              - generic [ref=e149]: Pipeline
+            - link "Prototipos" [ref=e150] [cursor=pointer]:
+              - /url: /dashboard/prototypes
+              - img [ref=e151]
+              - generic [ref=e154]: Prototipos
+            - link "Análisis Web" [ref=e155] [cursor=pointer]:
+              - /url: /dashboard/web-analysis
+              - img [ref=e156]
+              - generic [ref=e159]: Análisis Web
+        - generic [ref=e160]:
+          - generic [ref=e163]: Delivery
+          - generic [ref=e164]:
+            - link "Proyectos" [ref=e165] [cursor=pointer]:
+              - /url: /dashboard/projects
+              - img [ref=e166]
+              - generic [ref=e168]: Proyectos
+            - link "Mis Tareas" [ref=e169] [cursor=pointer]:
+              - /url: /dashboard/tasks
+              - img [ref=e170]
+              - generic [ref=e173]: Mis Tareas
+        - generic [ref=e174]:
+          - generic [ref=e177]: Finanzas
+          - generic [ref=e178]:
+            - link "Creditos" [ref=e179] [cursor=pointer]:
+              - /url: /dashboard/credits
+              - img [ref=e180]
+              - generic [ref=e183]: Creditos
+            - link "Earnings" [ref=e184] [cursor=pointer]:
+              - /url: /dashboard/earnings
+              - img [ref=e185]
+              - generic [ref=e187]: Earnings
+            - link "Recompensas" [ref=e188] [cursor=pointer]:
+              - /url: /dashboard/rewards
+              - img [ref=e189]
+              - generic [ref=e193]: Recompensas
+            - link "Reportes" [ref=e194] [cursor=pointer]:
+              - /url: /dashboard/reports
+              - img [ref=e195]
+              - generic [ref=e197]: Reportes
+        - generic [ref=e198]:
+          - generic [ref=e201]: Admin
+          - link "Configuracion" [ref=e203] [cursor=pointer]:
+            - /url: /dashboard/settings
+            - img [ref=e204]
+            - generic [ref=e207]: Configuracion
+      - generic [ref=e208]:
+        - generic [ref=e209]:
+          - img [ref=e210]
+          - generic [ref=e212]: $15,000
+          - generic [ref=e213]: balance
+        - button "CA Carlos Admin Administrador" [ref=e214]:
+          - generic [ref=e216]: CA
+          - generic [ref=e217]:
+            - paragraph [ref=e218]: Carlos Admin
+            - paragraph [ref=e219]: Administrador
+          - img [ref=e220]
+    - main [ref=e222]:
+      - generic [ref=e223]:
+        - heading "Command Palette" [level=2] [ref=e224]
+        - paragraph [ref=e225]: Search for a command to run...
+      - generic [ref=e226]:
+        - generic [ref=e227]:
+          - button "Buscar ⌘K" [ref=e229]:
+            - img [ref=e230]
+            - generic [ref=e233]: Buscar
+            - generic [ref=e234]: ⌘K
+          - paragraph [ref=e235]: jueves, 23 de abril
+          - heading "Hola, Carlos" [level=1] [ref=e236]
+          - paragraph [ref=e237]:
+            - generic [ref=e238]: Administrador
+            - text: Aqui esta el resumen de hoy
+          - generic [ref=e239]:
+            - link "Balance $15,000" [ref=e240] [cursor=pointer]:
+              - /url: /dashboard/earnings
+              - img [ref=e241]
+              - generic [ref=e244]:
+                - paragraph [ref=e245]: Balance
+                - paragraph [ref=e246]: $15,000
+            - link "Puntos 5,000" [ref=e247] [cursor=pointer]:
+              - /url: /dashboard/rewards
+              - img [ref=e248]
+              - generic [ref=e250]:
+                - paragraph [ref=e251]: Puntos
+                - paragraph [ref=e252]: 5,000
+            - generic [ref=e253]:
+              - link "Nuevo Lead" [ref=e254] [cursor=pointer]:
+                - /url: /dashboard/leads
+                - img [ref=e255]
+                - text: Nuevo Lead
+              - link "Pipeline" [ref=e256] [cursor=pointer]:
+                - /url: /dashboard/pipeline
+                - img [ref=e257]
+                - text: Pipeline
+              - link "Proyectos" [ref=e258] [cursor=pointer]:
+                - /url: /dashboard/projects
+                - img [ref=e259]
+                - text: Proyectos
+              - link "Tareas" [ref=e261] [cursor=pointer]:
+                - /url: /dashboard/tasks
+                - img [ref=e262]
+                - text: Tareas
+        - generic [ref=e265]:
+          - generic [ref=e266]:
+            - generic [ref=e267]:
+              - heading "Ventas" [level=2] [ref=e268]
+              - paragraph [ref=e269]: Pipeline actual
+            - generic [ref=e270]:
+              - link "Leads abiertos 5 +12% vs mes anterior" [ref=e271] [cursor=pointer]:
+                - /url: /dashboard/leads
+                - paragraph [ref=e272]: Leads abiertos
+                - paragraph [ref=e273]: "5"
+                - paragraph [ref=e274]:
+                  - img [ref=e275]
+                  - generic [ref=e278]: +12% vs mes anterior
+              - link "Valor del pipeline $145,000 Oportunidades abiertas" [ref=e279] [cursor=pointer]:
+                - /url: /dashboard/pipeline
+                - paragraph [ref=e280]: Valor del pipeline
+                - paragraph [ref=e281]: $145,000
+                - paragraph [ref=e282]: Oportunidades abiertas
+              - link "Deals cerrados 1 Este mes" [ref=e283] [cursor=pointer]:
+                - /url: /dashboard/leads
+                - paragraph [ref=e284]: Deals cerrados
+                - paragraph [ref=e285]: "1"
+                - paragraph [ref=e286]: Este mes
+              - link "Revenue total $55,000 +23% vs mes anterior" [ref=e287] [cursor=pointer]:
+                - /url: /dashboard/earnings
+                - paragraph [ref=e288]: Revenue total
+                - paragraph [ref=e289]: $55,000
+                - paragraph [ref=e290]:
+                  - img [ref=e291]
+                  - generic [ref=e294]: +23% vs mes anterior
+          - generic [ref=e295]:
+            - link "Tasa de conversión 50% 1 ganados de 2 cerrados" [ref=e296] [cursor=pointer]:
+              - /url: /dashboard/leads
+              - paragraph [ref=e297]: Tasa de conversión
+              - paragraph [ref=e298]: 50%
+              - paragraph [ref=e299]: 1 ganados de 2 cerrados
+            - link "Seguimientos vencidos 0 Todo al día" [ref=e300] [cursor=pointer]:
+              - /url: /dashboard/leads
+              - paragraph [ref=e301]: Seguimientos vencidos
+              - paragraph [ref=e302]: "0"
+              - paragraph [ref=e303]: Todo al día
+            - link "Pipeline por estado Nuevo 1 Contactado 1 Calificado 1 Propuesta 1 Negociación 1 Ganado 1 Perdido 1" [ref=e304] [cursor=pointer]:
+              - /url: /dashboard/pipeline
+              - paragraph [ref=e305]: Pipeline por estado
+              - generic [ref=e306]:
+                - img [ref=e309]:
+                  - generic [ref=e311]:
+                    - img [ref=e313]
+                    - img [ref=e315]
+                    - img [ref=e317]
+                    - img [ref=e319]
+                    - img [ref=e321]
+                    - img [ref=e323]
+                    - img [ref=e325]
+                - generic [ref=e326]:
+                  - generic [ref=e327]:
+                    - generic [ref=e329]: Nuevo
+                    - generic [ref=e330]: "1"
+                  - generic [ref=e331]:
+                    - generic [ref=e333]: Contactado
+                    - generic [ref=e334]: "1"
+                  - generic [ref=e335]:
+                    - generic [ref=e337]: Calificado
+                    - generic [ref=e338]: "1"
+                  - generic [ref=e339]:
+                    - generic [ref=e341]: Propuesta
+                    - generic [ref=e342]: "1"
+                  - generic [ref=e343]:
+                    - generic [ref=e345]: Negociación
+                    - generic [ref=e346]: "1"
+                  - generic [ref=e347]:
+                    - generic [ref=e349]: Ganado
+                    - generic [ref=e350]: "1"
+                  - generic [ref=e351]:
+                    - generic [ref=e353]: Perdido
+                    - generic [ref=e354]: "1"
+          - generic [ref=e355]:
+            - generic [ref=e356]:
+              - heading "Delivery" [level=2] [ref=e357]
+              - paragraph [ref=e358]: Proyectos y tareas activas
+            - generic [ref=e359]:
+              - link "Proyectos activos 1 1 en revisión" [ref=e360] [cursor=pointer]:
+                - /url: /dashboard/projects
+                - paragraph [ref=e361]: Proyectos activos
+                - paragraph [ref=e362]: "1"
+                - paragraph [ref=e363]: 1 en revisión
+              - link "Tareas pendientes 2 1 en progreso" [ref=e364] [cursor=pointer]:
+                - /url: /dashboard/tasks
+                - paragraph [ref=e365]: Tareas pendientes
+                - paragraph [ref=e366]: "2"
+                - paragraph [ref=e367]: 1 en progreso
+              - link "En revisión 1 Esperando aprobación" [ref=e368] [cursor=pointer]:
+                - /url: /dashboard/tasks
+                - paragraph [ref=e369]: En revisión
+                - paragraph [ref=e370]: "1"
+                - paragraph [ref=e371]: Esperando aprobación
+              - link "Completados 1 Este mes" [ref=e372] [cursor=pointer]:
+                - /url: /dashboard/projects
+                - paragraph [ref=e373]: Completados
+                - paragraph [ref=e374]: "1"
+                - paragraph [ref=e375]: Este mes
+          - generic [ref=e376]:
+            - heading "Acciones rápidas" [level=2] [ref=e377]
+            - generic [ref=e378]:
+              - link "Ver leads 5 leads activos" [ref=e379] [cursor=pointer]:
+                - /url: /dashboard/leads
+                - img [ref=e381]
+                - generic [ref=e386]:
+                  - paragraph [ref=e387]: Ver leads
+                  - paragraph [ref=e388]: 5 leads activos
+                - img [ref=e389]
+              - link "Pipeline de ventas Vista kanban" [ref=e392] [cursor=pointer]:
+                - /url: /dashboard/pipeline
+                - img [ref=e394]
+                - generic [ref=e397]:
+                  - paragraph [ref=e398]: Pipeline de ventas
+                  - paragraph [ref=e399]: Vista kanban
+                - img [ref=e400]
+              - link "Proyectos 1 activos" [ref=e403] [cursor=pointer]:
+                - /url: /dashboard/projects
+                - img [ref=e405]
+                - generic [ref=e407]:
+                  - paragraph [ref=e408]: Proyectos
+                  - paragraph [ref=e409]: 1 activos
+                - img [ref=e410]
+              - link "Mis tareas 3 pendientes" [ref=e413] [cursor=pointer]:
+                - /url: /dashboard/tasks
+                - img [ref=e415]
+                - generic [ref=e418]:
+                  - paragraph [ref=e419]: Mis tareas
+                  - paragraph [ref=e420]: 3 pendientes
+                - img [ref=e421]
+    - button [ref=e424]:
+      - img
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e90] [cursor=pointer]:
+    - img [ref=e91]
+  - alert [ref=e94]
