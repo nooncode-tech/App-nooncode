@@ -39,7 +39,7 @@ export async function POST(
     // Load latest proposal for amount/description
     const { data: proposal } = await client
       .from('lead_proposals')
-      .select('amount, content')
+      .select('amount, body')
       .eq('lead_id', workspace.lead_id)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -53,7 +53,7 @@ export async function POST(
       lead?.tags?.length ? `- Industria / Etiquetas: ${(lead.tags as string[]).join(', ')}` : null,
       lead?.notes ? `- Descripción del proyecto: ${lead.notes}` : null,
       proposal?.amount ? `- Presupuesto estimado: $${proposal.amount} USD` : null,
-      proposal?.content ? `- Detalles de la propuesta: ${proposal.content}` : null,
+      proposal?.body ? `- Detalles de la propuesta: ${proposal.body}` : null,
       '',
       'El prototipo debe ser un componente React moderno con Tailwind CSS.',
       'Enfócate en la pantalla principal / dashboard del producto.',

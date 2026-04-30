@@ -7,7 +7,6 @@ import {
   selectSettingsDirectoryRows,
   selectSettingsRoleCards,
   selectSettingsUserRows,
-  settingsNotificationOptions,
   settingsPermissionRows,
 } from '@/lib/dashboard-selectors'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

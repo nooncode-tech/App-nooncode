@@ -244,12 +244,14 @@ export function AppSidebar() {
 
         <NavGroup label="Finanzas" color="#22c55e" items={financeNavItems} pathname={pathname} />
 
-        <NavGroup
-          label={canAccessAdmin(user.role) ? 'Admin' : 'Cuenta'}
-          color="oklch(0.45 0.02 275)"
-          items={[{ title: 'Configuracion', href: '/dashboard/settings', icon: Settings }]}
-          pathname={pathname}
-        />
+        {canAccessAdmin(user.role) && (
+          <NavGroup
+            label="Admin"
+            color="oklch(0.45 0.02 275)"
+            items={[{ title: 'Configuracion', href: '/dashboard/settings', icon: Settings }]}
+            pathname={pathname}
+          />
+        )}
       </SidebarContent>
 
       {/* ── User footer ── */}

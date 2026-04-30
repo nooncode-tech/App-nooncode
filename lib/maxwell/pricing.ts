@@ -66,7 +66,6 @@ export function detectSpecialCase(description: string): boolean {
 
 export function formatPricingTable(): string {
   const types: ProjectType[] = ['landing', 'ecommerce', 'webapp', 'mobile', 'saas_ai']
-  const complexities: Complexity[] = ['low', 'medium', 'high']
 
   let table = '### Tabla de Activación (precio único inicial)\n'
   table += '| Tipo | Bajo | Medio | Alto |\n|---|---|---|---|\n'

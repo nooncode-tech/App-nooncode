@@ -22,7 +22,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -32,6 +32,10 @@ export default function DashboardLayout({
   const isAuthorized = !!user && !!pathname && authorizedPath === pathname
 
   useEffect(() => {
+    if (isLoading) {
+      return
+    }
+
     if (!user) {
       router.replace('/')
       return
@@ -40,9 +44,9 @@ export default function DashboardLayout({
     if (pathname && authorizedPath && authorizedPath !== pathname) {
       router.replace(authorizedPath)
     }
-  }, [authorizedPath, pathname, router, user])
+  }, [authorizedPath, isLoading, pathname, router, user])
 
-  if (!user || !isAuthorized) {
+  if (isLoading || !user || !isAuthorized) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Spinner className="size-8" />

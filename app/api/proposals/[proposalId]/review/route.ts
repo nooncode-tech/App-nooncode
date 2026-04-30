@@ -27,7 +27,7 @@ export async function POST(
     const client = await createSupabaseServerClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (client.rpc as any)('review_proposal', {
+    const { error } = await (client.rpc as any)('review_proposal', {
       p_proposal_id: proposalId,
       p_action: action,
     })

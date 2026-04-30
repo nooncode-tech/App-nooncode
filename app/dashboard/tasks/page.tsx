@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth, canManageTeam } from '@/lib/auth-context'
 import { buildTaskDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
 import { useData } from '@/lib/data-context'
 import type { Task, TaskActivity, TaskStatus, TaskPriority } from '@/lib/types'
 import { TaskFormDialog } from '@/components/task-form-dialog'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -35,9 +35,6 @@ import { formatTaskActivityBody, formatTaskActivityTitle } from '@/lib/tasks/act
 import { toast } from 'sonner'
 import {
   ListTodo,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
   Calendar,
   Timer,
   FolderKanban,
@@ -87,13 +84,13 @@ export default function TasksPage() {
   const canCreateTasks = user ? canManageTeam(user.role) : false
   const realProjects = projectBoardProjects.filter((project) => isUuid(project.id))
   const isSupabaseTeamTaskView = authMode === 'supabase' && user?.role !== 'developer'
-  const replaceTaskHref = (taskId: string | null) => {
+  const replaceTaskHref = useCallback((taskId: string | null) => {
     const nextHref = taskId
       ? buildTaskDetailHref(taskId, searchParams)
       : clearDashboardEntityHref(pathname, searchParams, 'taskId')
 
     router.replace(nextHref, { scroll: false })
-  }
+  }, [pathname, router, searchParams])
 
   // Filter tasks for current user (devs see only their tasks, PMs see all)
   const visibleTasks = user?.role === 'developer'
@@ -171,7 +168,7 @@ export default function TasksPage() {
     }
 
     setSelectedTaskId(requestedTask.id)
-  }, [requestedTaskId, selectedTaskId, user, visibleTasks])
+  }, [replaceTaskHref, requestedTaskId, selectedTaskId, user, visibleTasks])
 
   useEffect(() => {
     if (!user) {
@@ -191,7 +188,7 @@ export default function TasksPage() {
         replaceTaskHref(null)
       }
     }
-  }, [requestedTaskId, selectedTaskId, user, visibleTasks])
+  }, [replaceTaskHref, requestedTaskId, selectedTaskId, user, visibleTasks])
 
   if (!user) return null
 
@@ -379,8 +376,7 @@ function TaskCard({ task, projectName, onQuickComplete, onClick }: TaskCardProps
         {/* Checkbox */}
         <Checkbox
           checked={task.status === 'done'}
-          onCheckedChange={(e) => {
-            e // prevent event
+          onCheckedChange={() => {
             onQuickComplete(task.id)
           }}
           onClick={(e) => e.stopPropagation()}

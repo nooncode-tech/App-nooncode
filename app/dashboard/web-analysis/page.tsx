@@ -81,16 +81,6 @@ const impactConfig: Record<ImpactLevel, { label: string; color: string }> = {
   low: { label: 'Bajo impacto', color: 'bg-sky-500/10 text-sky-700 border-sky-200' },
 }
 
-function buildMaxwellUrl(result: AnalysisResult): string {
-  const params = new URLSearchParams({
-    url: result.url,
-    type: result.projectType,
-    complexity: result.complexity,
-    headline: result.headline,
-  })
-  return `/dashboard/leads?maxwell=web-analysis&${params.toString()}`
-}
-
 export default function WebAnalysisPage() {
   const [url, setUrl] = useState('')
   const [channel, setChannel] = useState<'inbound' | 'outbound'>('inbound')

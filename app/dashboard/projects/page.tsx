@@ -1,7 +1,7 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
 import {
@@ -49,18 +49,13 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Blocks,
   FolderKanban,
-  Clock,
-  AlertTriangle,
-  Eye,
   Users,
   Calendar,
   DollarSign,
   MessageSquareText,
-  Plus,
   ArrowRight,
   Loader2,
   Link2,
-  Copy,
   CheckCheck,
   Sparkles,
 } from 'lucide-react'
@@ -296,20 +291,19 @@ export default function ProjectsPage() {
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban')
   const requestedProjectId = searchParams.get('projectId')
 
-  if (!user) return null
-
-  const canManageProjects = ['admin', 'pm'].includes(user.role)
-  const canViewProjectTasks = canAccessDashboardPath(user.role, '/dashboard/tasks')
-  const canViewProjectActivity = canManageProjects || user.role === 'sales_manager'
-  const canOpenLeadRoute = canAccessDashboardPath(user.role, '/dashboard/leads')
+  const userRole = user?.role
+  const canManageProjects = userRole ? ['admin', 'pm'].includes(userRole) : false
+  const canViewProjectTasks = userRole ? canAccessDashboardPath(userRole, '/dashboard/tasks') : false
+  const canViewProjectActivity = canManageProjects || userRole === 'sales_manager'
+  const canOpenLeadRoute = userRole ? canAccessDashboardPath(userRole, '/dashboard/leads') : false
   const visibleProjects = projectBoardProjects
-  const replaceProjectHref = (projectId: string | null) => {
+  const replaceProjectHref = useCallback((projectId: string | null) => {
     const nextHref = projectId
       ? buildProjectDetailHref(projectId, searchParams)
       : clearDashboardEntityHref(pathname, searchParams, 'projectId')
 
     router.replace(nextHref, { scroll: false })
-  }
+  }, [pathname, router, searchParams])
 
   const getVisibleProjectTasks = (projectId: string) => (
     canViewProjectTasks ? getTasksByProject(projectId) : []
@@ -367,7 +361,7 @@ export default function ProjectsPage() {
     }
 
     setSelectedProjectId(requestedProject.id)
-  }, [requestedProjectId, selectedProjectId, visibleProjects])
+  }, [replaceProjectHref, requestedProjectId, selectedProjectId, visibleProjects])
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -383,7 +377,9 @@ export default function ProjectsPage() {
         replaceProjectHref(null)
       }
     }
-  }, [requestedProjectId, selectedProjectId, visibleProjects])
+  }, [replaceProjectHref, requestedProjectId, selectedProjectId, visibleProjects])
+
+  if (!user) return null
 
   // Stats
   const totalProjects = visibleProjects.length
@@ -392,7 +388,7 @@ export default function ProjectsPage() {
   const totalBudget = visibleProjects.reduce((sum, p) => sum + p.budget, 0)
   const pageDescription = canManageProjects
     ? 'Gestiona todos los proyectos del equipo'
-    : user.role === 'sales_manager'
+    : userRole === 'sales_manager'
       ? 'Consulta el estado y el hand-off de los proyectos visibles sin acciones de edicion.'
       : 'Proyectos donde colaboras'
 

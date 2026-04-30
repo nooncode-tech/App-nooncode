@@ -23,7 +23,7 @@ export function getStripeClient(): Stripe {
 
   if (!stripeClient || stripeClientKey !== key) {
     stripeClient = new Stripe(key, {
-      apiVersion: '2025-03-31.basil',
+      apiVersion: '2026-03-25.dahlia',
     })
     stripeClientKey = key
   }

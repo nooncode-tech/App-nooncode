@@ -59,11 +59,9 @@ export function toErrorResponse(error: unknown) {
     )
   }
 
-  const message = error instanceof Error ? error.message : 'Unexpected server error.'
-
   return NextResponse.json(
     {
-      error: message,
+      error: 'Unexpected server error.',
       code: 'INTERNAL_ERROR',
     },
     { status: 500 }

@@ -30,6 +30,7 @@ export interface LoginResult {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
+const MOCK_AUTH_STORAGE_KEY = 'noon.mockUserEmail'
 
 type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'pm' | 'admin'
 
@@ -39,7 +40,7 @@ interface DashboardRouteAccessRule {
 }
 
 const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
-  { prefix: '/dashboard/settings', access: 'authenticated' },
+  { prefix: '/dashboard/settings', access: 'admin' },
   { prefix: '/dashboard/leads', access: 'sales' },
   { prefix: '/dashboard/pipeline', access: 'sales' },
   { prefix: '/dashboard/prototypes', access: 'sales' },
@@ -70,11 +71,25 @@ interface AuthProviderProps {
 export function AuthProvider({ authMode, initialUser, children }: AuthProviderProps) {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(initialUser)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(authMode === 'mock')
 
   useEffect(() => {
-    setUser(initialUser)
-  }, [initialUser])
+    if (authMode === 'supabase') {
+      setUser(initialUser)
+      return
+    }
+
+    try {
+      const storedEmail = window.sessionStorage.getItem(MOCK_AUTH_STORAGE_KEY)
+      const storedUser = storedEmail
+        ? mockUsers.find((mockUser) => mockUser.email.toLowerCase() === storedEmail.toLowerCase())
+        : null
+
+      setUser(storedUser ?? null)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [authMode, initialUser])
 
   useEffect(() => {
     if (authMode !== 'supabase') {
@@ -131,9 +146,11 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 800))
 
-      const foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase())
+      const normalizedEmail = email.trim().toLowerCase()
+      const foundUser = mockUsers.find(u => u.email.toLowerCase() === normalizedEmail)
 
       if (foundUser) {
+        window.sessionStorage.setItem(MOCK_AUTH_STORAGE_KEY, foundUser.email)
         setUser(foundUser)
         return { success: true }
       }
@@ -161,6 +178,7 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
     }
 
     setUser(null)
+    window.sessionStorage.removeItem(MOCK_AUTH_STORAGE_KEY)
   }, [authMode, router])
 
   const switchRole = useCallback((role: UserRole) => {
@@ -170,6 +188,7 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
 
     const userWithRole = mockUsers.find(u => u.role === role)
     if (userWithRole) {
+      window.sessionStorage.setItem(MOCK_AUTH_STORAGE_KEY, userWithRole.email)
       setUser(userWithRole)
     }
   }, [authMode])

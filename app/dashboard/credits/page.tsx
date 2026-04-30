@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { ArrowDownToLine, Coins, CircleOff, History, Lock, Sparkles, Timer, Wallet } from 'lucide-react'
+import { ArrowDownToLine, CircleOff, History, Lock, Sparkles, Timer, Wallet } from 'lucide-react'
 import { useAuth, canAccessDashboardPath } from '@/lib/auth-context'
 import type { WalletSummary, WalletEntry } from '@/lib/types'
 import { deserializeWalletSummary, type WalletSummaryWire } from '@/lib/wallet/serialization'

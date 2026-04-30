@@ -6,7 +6,15 @@ import {
   getAuthorizedDashboardPath,
   isProtectedDashboardPath,
 } from '@/lib/server/auth/policy'
+import type { AppRole } from '@/lib/server/profiles/types'
 import type { Database } from '@/lib/server/supabase/database.types'
+
+type CookieToSet = { name: string; value: string; options: CookieOptions }
+type MiddlewareProfile = {
+  id: string
+  role: AppRole
+  is_active: boolean
+}
 
 function redirectWithCookies(
   request: NextRequest,
@@ -22,8 +30,8 @@ function redirectWithCookies(
   return redirectResponse
 }
 
-export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
+export async function proxy(request: NextRequest) {
+  const response = NextResponse.next({
     request,
   })
 
@@ -44,8 +52,8 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }: { name: string; value: string; options: CookieOptions }) => {
+        setAll(cookiesToSet: CookieToSet[]) {
+          cookiesToSet.forEach(({ name, value, options }) => {
             request.cookies.set(name, value)
             response.cookies.set(name, value, options)
           })
@@ -67,7 +75,7 @@ export async function middleware(request: NextRequest) {
     .from('user_profiles')
     .select('id, role, is_active')
     .eq('id', user.id)
-    .maybeSingle()
+    .maybeSingle() as { data: MiddlewareProfile | null; error: { message: string } | null }
 
   if (profileError || !profile || !profile.is_active) {
     return redirectWithCookies(request, response, '/')

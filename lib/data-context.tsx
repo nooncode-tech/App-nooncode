@@ -1672,7 +1672,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return projectActivities
       .flat()
       .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
-  }, [getTaskActivity, tasks])
+  }, [authMode, getTaskActivity, tasks])
 
   const addTaskNote = useCallback(async (taskId: string, body: string) => {
     if (authMode !== 'supabase' || !isUuid(taskId)) {

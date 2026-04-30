@@ -3,25 +3,71 @@ import type Stripe from 'stripe'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { getStripeClient } from '@/lib/server/stripe/client'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
+import type { Database, Json } from '@/lib/server/supabase/database.types'
+
+type SupabaseAdminClient = Awaited<ReturnType<typeof createSupabaseAdminClient>>
+type MonetaryEntryType = Database['public']['Enums']['monetary_entry_type']
+type WalletBalanceBucket = 'available_to_spend' | 'available_to_withdraw' | 'pending' | 'locked'
+
+async function creditWalletBucket(
+  client: SupabaseAdminClient,
+  input: {
+    profileId: string
+    amount: number
+    currency: string
+    entryType: MonetaryEntryType
+    balanceBucket: WalletBalanceBucket
+    referenceType: string
+    referenceId: string
+    actorProfileId?: string | null
+    metadata?: Json
+    idempotencyKey: string
+    createdAt?: string
+  }
+) {
+  const { error } = await client.rpc('credit_wallet_bucket', {
+    p_profile_id: input.profileId,
+    p_amount: input.amount,
+    p_currency: input.currency,
+    p_entry_type: input.entryType,
+    p_balance_bucket: input.balanceBucket,
+    p_reference_type: input.referenceType,
+    p_reference_id: input.referenceId,
+    p_actor_profile_id: input.actorProfileId ?? null,
+    p_metadata: input.metadata ?? {},
+    p_idempotency_key: input.idempotencyKey,
+    p_created_at: input.createdAt,
+  })
+
+  if (error) {
+    throw new Error(`Failed to credit wallet: ${error.message}`)
+  }
+}
 
 async function handleCheckoutSessionCompleted(
-  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  client: SupabaseAdminClient,
   session: Stripe.Checkout.Session,
 ) {
   const proposalId = session.metadata?.noon_proposal_id
   const projectId = session.metadata?.noon_project_id || null
 
-  console.log('[webhook] checkout.session.completed — proposalId:', proposalId, 'sessionId:', session.id)
-
   if (!proposalId) {
-    console.log('[webhook] no proposalId in metadata — skipping')
     return
   }
 
   const now = new Date().toISOString()
 
-  // Mark payment as succeeded and retrieve its DB id
-  const { data: payment } = await client
+  const { data: payment, error: paymentLookupError } = await client
+    .from('payments')
+    .select('id, amount')
+    .eq('stripe_checkout_session_id', session.id)
+    .maybeSingle()
+
+  if (paymentLookupError) {
+    throw new Error(`Failed to resolve payment: ${paymentLookupError.message}`)
+  }
+
+  const { error: paymentUpdateError } = await client
     .from('payments')
     .update({
       stripe_payment_intent_id: session.payment_intent as string,
@@ -29,10 +75,10 @@ async function handleCheckoutSessionCompleted(
       paid_at: now,
     })
     .eq('stripe_checkout_session_id', session.id)
-    .select('id, amount')
-    .maybeSingle()
 
-  console.log('[webhook] payment lookup result:', payment ? `id=${payment.id} amount=${payment.amount}` : 'NULL — no matching payment row')
+  if (paymentUpdateError) {
+    throw new Error(`Failed to update payment: ${paymentUpdateError.message}`)
+  }
 
   // Update proposal payment status
   await client
@@ -53,20 +99,17 @@ async function handleCheckoutSessionCompleted(
       .eq('payment_activated', false)
   }
 
-  // ── Credit earnings ────────────────────────────────────────────────────────
+  // Credit earnings.
   if (!payment) {
-    console.log('[webhook] payment is null — skipping earnings')
     return
   }
 
-  // Fetch proposal (two separate queries — avoids PostgREST join ambiguity)
+  // Fetch proposal separately to avoid PostgREST join ambiguity.
   const { data: proposal } = await client
     .from('lead_proposals')
     .select('id, lead_id, amount')
     .eq('id', proposalId)
     .maybeSingle()
-
-  console.log('[webhook] proposal lookup:', proposal ? `found lead_id=${proposal.lead_id}` : 'NOT FOUND')
 
   if (!proposal) return
 
@@ -77,15 +120,11 @@ async function handleCheckoutSessionCompleted(
     .eq('id', proposal.lead_id)
     .maybeSingle()
 
-  console.log('[webhook] lead lookup:', leadRow ? `origin=${leadRow.lead_origin} assigned=${leadRow.assigned_to}` : 'NULL')
-
   if (!leadRow) return
 
   const leadOrigin = leadRow.lead_origin as 'inbound' | 'outbound' | null
   const sellerId = leadRow.assigned_to ?? leadRow.created_by
   const activationAmount = Number(payment.amount)
-
-  console.log('[webhook] lead_origin:', leadOrigin, '| sellerId:', sellerId, '| amount:', activationAmount)
 
   // Fetch developer from project if linked
   let developerUserId: string | null = null
@@ -107,6 +146,7 @@ async function handleCheckoutSessionCompleted(
     lead_id: string
     proposal_id: string
     payment_id: string
+    idempotency_key: string
     notes: string
   }> = []
 
@@ -114,7 +154,7 @@ async function handleCheckoutSessionCompleted(
     ? Math.max(activationAmount - 100, 0)
     : activationAmount
 
-  // Seller commission — outbound only, $100 fixed
+  // Seller commission - outbound only, $100 fixed
   if (leadOrigin === 'outbound') {
     earningRows.push({
       actor_id: sellerId,
@@ -125,11 +165,12 @@ async function handleCheckoutSessionCompleted(
       lead_id: proposal.lead_id,
       proposal_id: proposalId,
       payment_id: payment.id,
-      notes: 'Outbound activation — $100 fixed',
+      idempotency_key: `stripe:${session.id}:earning:seller:${sellerId}`,
+      notes: 'Outbound activation - $100 fixed',
     })
   }
 
-  // Developer commission — 50% of base
+  // Developer commission - 50% of base
   if (base > 0) {
     earningRows.push({
       actor_id: developerUserId,
@@ -140,12 +181,13 @@ async function handleCheckoutSessionCompleted(
       lead_id: proposal.lead_id,
       proposal_id: proposalId,
       payment_id: payment.id,
+      idempotency_key: `stripe:${session.id}:earning:developer:${developerUserId ?? 'unassigned'}`,
       notes: developerUserId
-        ? `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation — 50% of base $${base}`
-        : 'Developer not yet assigned — pending resolution',
+        ? `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation - 50% of base $${base}`
+        : 'Developer not yet assigned - pending resolution',
     })
 
-    // Noon share — 50% of base
+    // Noon share - 50% of base
     earningRows.push({
       actor_id: null,
       actor_role: 'noon',
@@ -155,72 +197,58 @@ async function handleCheckoutSessionCompleted(
       lead_id: proposal.lead_id,
       proposal_id: proposalId,
       payment_id: payment.id,
-      notes: `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation — 50% of base $${base}`,
+      idempotency_key: `stripe:${session.id}:earning:noon`,
+      notes: `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation - 50% of base $${base}`,
     })
   }
 
-  console.log('[webhook] earningRows to insert:', JSON.stringify(earningRows))
-
   if (earningRows.length > 0) {
-    const { error: earningsError } = await client.from('earnings_ledger').insert(earningRows)
+    const { error: earningsError } = await client
+      .from('earnings_ledger')
+      .upsert(earningRows, { onConflict: 'idempotency_key', ignoreDuplicates: true })
     if (earningsError) throw new Error(`Failed to insert earnings: ${earningsError.message}`)
-    console.log('[webhook] earnings inserted successfully')
 
-    // ── Credit monetary wallet (wallet_accounts + wallet_ledger_entries) ──────
-    // For each actor with a real user ID, also credit their pending bucket
+    // Credit each real actor's pending wallet balance through a transactional RPC.
     const creditedAt = new Date().toISOString()
     for (const row of earningRows) {
-      if (!row.actor_id) continue // skip Noon's share
+      if (!row.actor_id) continue
 
-      // Upsert wallet_accounts and increment pending
-      await client
-        .from('wallet_accounts' as never)
-        .upsert({ profile_id: row.actor_id, pending: row.amount }, { onConflict: 'profile_id' })
-
-      // If account already exists, add to pending via update
-      await client
-        .from('wallet_accounts' as never)
-        .update({ pending: row.amount, updated_at: creditedAt } as never)
-        .eq('profile_id', row.actor_id)
-
-      await client.from('wallet_ledger_entries' as never).insert({
-        profile_id: row.actor_id,
+      await creditWalletBucket(client, {
+        profileId: row.actor_id,
         amount: row.amount,
         currency: row.currency,
-        entry_type: 'earnings_distribution',
-        balance_bucket: 'pending',
-        status: 'confirmed',
-        reference_type: 'payment',
-        reference_id: payment.id,
-        actor_profile_id: null,
+        entryType: 'earnings_distribution',
+        balanceBucket: 'pending',
+        referenceType: 'payment',
+        referenceId: payment.id,
         metadata: {
           earningType: 'activation',
+          actorRole: row.actor_role,
           channel: leadOrigin ?? 'unknown',
           notes: row.notes,
           paymentId: payment.id,
         },
-        created_at: creditedAt,
-      } as never)
+        idempotencyKey: `stripe:${session.id}:wallet:${row.actor_role}:${row.actor_id}`,
+        createdAt: creditedAt,
+      })
     }
-    console.log('[webhook] wallet_accounts credited successfully')
-  } else {
-    console.log('[webhook] no earning rows to insert')
   }
 
-  // ── Award points ────────────────────────────────────────────────────────────
+  // Award points.
   if (sellerId) {
-    await client.from('points_ledger').insert({
+    await client.from('points_ledger').upsert({
       actor_id: sellerId,
       event_type: 'payment_received',
       points: 50,
       reference_id: payment.id,
-      notes: `Pago confirmado — $${activationAmount} USD`,
-    })
+      idempotency_key: `stripe:${session.id}:points:payment_received:${sellerId}`,
+      notes: `Pago confirmado - $${activationAmount} USD`,
+    }, { onConflict: 'idempotency_key', ignoreDuplicates: true })
   }
 }
 
 async function handleAccountUpdated(
-  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  client: SupabaseAdminClient,
   account: Stripe.Account,
 ) {
   const profileId = account.metadata?.noon_profile_id
@@ -232,11 +260,10 @@ async function handleAccountUpdated(
     .update({ stripe_connect_status: status } as never)
     .eq('stripe_connect_account_id', account.id)
 
-  console.log('[webhook] account.updated — profileId:', profileId, 'status:', status)
 }
 
 async function handleTransferPaid(
-  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  client: SupabaseAdminClient,
   transfer: Stripe.Transfer,
 ) {
   await client
@@ -268,7 +295,7 @@ async function handleTransferPaid(
 }
 
 async function handleTransferReversed(
-  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  client: SupabaseAdminClient,
   transfer: Stripe.Transfer,
 ) {
   const now = new Date().toISOString()
@@ -286,34 +313,23 @@ async function handleTransferReversed(
     .update({ status: 'failed', updated_at: now } as never)
     .eq('id', payoutRow.id)
 
-  // Re-credit wallet
-  await client
-    .from('wallet_accounts' as never)
-    .update({
-      available_to_withdraw: payoutRow.amount,
-      updated_at: now,
-    } as never)
-    .eq('profile_id', payoutRow.profile_id)
-
-  await client.from('wallet_ledger_entries' as never).insert({
-    profile_id: payoutRow.profile_id,
+  await creditWalletBucket(client, {
+    profileId: payoutRow.profile_id,
     amount: payoutRow.amount,
     currency: payoutRow.currency,
-    entry_type: 'payout_reversal',
-    balance_bucket: 'available_to_withdraw',
-    status: 'confirmed',
-    reference_type: 'payout',
-    reference_id: payoutRow.id,
-    actor_profile_id: null,
-    metadata: { transferId: transfer.id },
-    created_at: now,
-  } as never)
+    entryType: 'manual_adjustment',
+    balanceBucket: 'available_to_withdraw',
+    referenceType: 'payout',
+    referenceId: payoutRow.id,
+    metadata: { reason: 'payout_reversal', transferId: transfer.id },
+    idempotencyKey: `stripe:${transfer.id}:wallet:payout_reversal:${payoutRow.profile_id}`,
+    createdAt: now,
+  })
 
-  console.log('[webhook] transfer.reversed — payoutId:', payoutRow.id, 'amount re-credited')
 }
 
 async function handlePaymentIntentFailed(
-  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  client: SupabaseAdminClient,
   paymentIntent: Stripe.PaymentIntent,
 ) {
   await client
@@ -323,7 +339,7 @@ async function handlePaymentIntentFailed(
 }
 
 async function handleChargeRefunded(
-  client: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  client: SupabaseAdminClient,
   charge: Stripe.Charge,
 ) {
   const paymentIntentId = charge.payment_intent as string
@@ -375,7 +391,9 @@ export async function POST(request: Request) {
 
     const client = await createSupabaseAdminClient()
 
-    switch (event.type) {
+    const eventType = event.type as string
+
+    switch (eventType) {
       case 'checkout.session.completed':
         await handleCheckoutSessionCompleted(client, event.data.object as Stripe.Checkout.Session)
         break

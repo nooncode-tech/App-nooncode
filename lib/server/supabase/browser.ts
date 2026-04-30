@@ -3,9 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getPhase1APublicEnv } from '@/lib/env'
 import type { Database } from '@/lib/server/supabase/database.types'
 
-let browserClient: SupabaseClient<Database> | null = null
+type DatabaseClient = SupabaseClient<Database>
 
-export function createSupabaseBrowserClient(): SupabaseClient<Database> {
+let browserClient: DatabaseClient | null = null
+
+export function createSupabaseBrowserClient(): DatabaseClient {
   const env = getPhase1APublicEnv()
 
   if (!browserClient) {

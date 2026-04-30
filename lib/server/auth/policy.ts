@@ -16,7 +16,7 @@ export const teamManagerRoles: AppRole[] = ['admin', 'sales_manager', 'pm']
 export const fullStatsRoles: AppRole[] = ['admin', 'sales_manager']
 
 export const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
-  { prefix: '/dashboard/settings', access: 'authenticated' },
+  { prefix: '/dashboard/settings', access: 'admin' },
   { prefix: '/dashboard/leads', access: 'sales' },
   { prefix: '/dashboard/pipeline', access: 'sales' },
   { prefix: '/dashboard/prototypes', access: 'sales' },

@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { buildLeadDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
@@ -15,7 +15,7 @@ import {
   type LeadSortOption,
   type LeadStatusFilter,
 } from '@/lib/dashboard-selectors'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -52,9 +52,6 @@ import {
   Filter,
   Plus,
   Users,
-  TrendingUp,
-  Clock,
-  Star,
   MapPin,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -76,13 +73,13 @@ export default function LeadsPage() {
   const [isGeoLoading, setIsGeoLoading] = useState(false)
   const requestedLeadId = searchParams.get('leadId')
 
-  const replaceLeadHref = (leadId: string | null) => {
+  const replaceLeadHref = useCallback((leadId: string | null) => {
     const nextHref = leadId
       ? buildLeadDetailHref(leadId, searchParams)
       : clearDashboardEntityHref(pathname, searchParams, 'leadId')
 
     router.replace(nextHref, { scroll: false })
-  }
+  }, [pathname, router, searchParams])
 
   useEffect(() => {
     if (!selectedLead) {
@@ -104,7 +101,7 @@ export default function LeadsPage() {
     if (nextSelectedLead !== selectedLead) {
       setSelectedLead(nextSelectedLead)
     }
-  }, [leads, requestedLeadId, selectedLead])
+  }, [leads, replaceLeadHref, requestedLeadId, selectedLead])
 
   useEffect(() => {
     if (!requestedLeadId || isLeadsLoading) {
@@ -123,7 +120,7 @@ export default function LeadsPage() {
     }
 
     setSelectedLead(requestedLead)
-  }, [isLeadsLoading, leads, requestedLeadId, selectedLead])
+  }, [isLeadsLoading, leads, replaceLeadHref, requestedLeadId, selectedLead])
 
   const handleProximityToggle = () => {
     if (proximityEnabled) {

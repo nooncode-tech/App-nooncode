@@ -123,6 +123,7 @@ export type Database = {
           currency: string
           earning_type: Database["public"]["Enums"]["earning_type"]
           id: string
+          idempotency_key: string | null
           lead_id: string | null
           notes: string | null
           paid_out_at: string | null
@@ -139,6 +140,7 @@ export type Database = {
           currency?: string
           earning_type: Database["public"]["Enums"]["earning_type"]
           id?: string
+          idempotency_key?: string | null
           lead_id?: string | null
           notes?: string | null
           paid_out_at?: string | null
@@ -155,6 +157,7 @@ export type Database = {
           currency?: string
           earning_type?: Database["public"]["Enums"]["earning_type"]
           id?: string
+          idempotency_key?: string | null
           lead_id?: string | null
           notes?: string | null
           paid_out_at?: string | null
@@ -735,6 +738,7 @@ export type Database = {
           created_at: string
           event_type: Database["public"]["Enums"]["points_event_type"]
           id: string
+          idempotency_key: string | null
           notes: string | null
           points: number
           reference_id: string | null
@@ -744,6 +748,7 @@ export type Database = {
           created_at?: string
           event_type: Database["public"]["Enums"]["points_event_type"]
           id?: string
+          idempotency_key?: string | null
           notes?: string | null
           points: number
           reference_id?: string | null
@@ -753,6 +758,7 @@ export type Database = {
           created_at?: string
           event_type?: Database["public"]["Enums"]["points_event_type"]
           id?: string
+          idempotency_key?: string | null
           notes?: string | null
           points?: number
           reference_id?: string | null
@@ -1647,6 +1653,22 @@ export type Database = {
           profile_id: string
           updated_at: string
         }
+      }
+      credit_wallet_bucket: {
+        Args: {
+          p_actor_profile_id?: string | null
+          p_amount: number
+          p_balance_bucket: string
+          p_created_at?: string
+          p_currency: string
+          p_entry_type: Database["public"]["Enums"]["monetary_entry_type"]
+          p_idempotency_key?: string | null
+          p_metadata?: Json
+          p_profile_id: string
+          p_reference_id?: string | null
+          p_reference_type?: string | null
+        }
+        Returns: boolean
       }
       enqueue_user_notification: {
         Args: {

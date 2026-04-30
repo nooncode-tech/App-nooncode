@@ -7,8 +7,8 @@ export function mapUserNotificationRowToWire(
 ): UserNotificationWire {
   return {
     id: row.id,
-    domain: row.domain,
-    sourceKind: row.source_kind,
+    domain: row.domain as UserNotificationWire['domain'],
+    sourceKind: row.source_kind as UserNotificationWire['sourceKind'],
     title: row.title,
     body: row.body,
     href: hrefOverride ?? row.href,

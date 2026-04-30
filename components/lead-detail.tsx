@@ -725,7 +725,7 @@ Total: 8 semanas
         toast.error(json.error ?? 'No se pudo iniciar el pago')
         return
       }
-      window.location.href = json.data.url
+      window.location.assign(json.data.url)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error al iniciar el pago')
     }
@@ -1173,7 +1173,7 @@ Total: 8 semanas
                           Proyecto derivado: {proposal.linkedProject?.name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Originado desde la propuesta "{proposal.title}".
+                          Originado desde la propuesta &quot;{proposal.title}&quot;.
                         </p>
                       </div>
                       <Badge variant="outline">
@@ -1202,7 +1202,7 @@ Total: 8 semanas
                   <p className="font-medium text-foreground">Hand-off listo, pendiente de conversion</p>
                   {handoffReadyPendingProposals.map((proposal) => (
                     <p key={proposal.id}>
-                      "{proposal.title}"{proposal.handoffReadyAt
+                      &quot;{proposal.title}&quot;{proposal.handoffReadyAt
                         ? ` lista desde ${proposal.handoffReadyAt.toLocaleString('es-MX')}`
                         : ' lista para crear proyecto'}
                     </p>

@@ -18,6 +18,14 @@ const preferencesSchema = z.object({
   project_field_changed: z.boolean().optional(),
 })
 
+type NotificationPreferences = z.infer<typeof preferencesSchema>
+
+function isNotificationPreferences(value: unknown): value is NotificationPreferences {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+
+  return Object.values(value).every((preference) => typeof preference === 'boolean')
+}
+
 export async function GET() {
   try {
     const principal = await getCurrentPrincipal()
@@ -62,7 +70,11 @@ export async function PATCH(request: Request) {
       .eq('id', principal.userId)
       .single()
 
-    const merged = { ...(existing?.notification_preferences ?? {}), ...sanitized }
+    const existingPreferences = isNotificationPreferences(existing?.notification_preferences)
+      ? existing.notification_preferences
+      : {}
+
+    const merged = { ...existingPreferences, ...sanitized }
 
     const { error } = await client
       .from('user_profiles')

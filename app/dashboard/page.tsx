@@ -28,15 +28,12 @@ export default function DashboardPage() {
   const { authMode, user } = useAuth()
   const { leads, projectBoardProjects, taskBoardTasks } = useData()
 
-  if (!user) return null
-
   const summary = useMemo(
     () => selectDashboardSummary(leads, projectBoardProjects, taskBoardTasks),
     [leads, projectBoardProjects, taskBoardTasks]
   )
 
   const { sales, delivery } = summary
-  const personalStats = selectPersonalStatsAvailability(authMode, user)
   const dashboardKpiCopy = selectDashboardKpiCopy(authMode)
 
   const [mounted, setMounted] = useState(false)
@@ -108,6 +105,10 @@ export default function DashboardPage() {
   const dateStr = mounted
     ? new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
     : ''
+
+  if (!user) return null
+
+  const personalStats = selectPersonalStatsAvailability(authMode, user)
 
   return (
     <div className="app-page">

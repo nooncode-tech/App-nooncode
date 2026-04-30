@@ -122,7 +122,7 @@ export function TaskFormDialog({ open, onOpenChange, projectId, editTask }: Task
 
       onOpenChange(false)
       setFormData(createEmptyFormData(projectId || ''))
-    } catch (error) {
+    } catch {
       toast.error('Error al guardar la tarea')
     } finally {
       setIsSubmitting(false)

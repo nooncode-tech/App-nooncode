@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -62,6 +62,13 @@ export default function ClientPortalPage() {
   const [sending, setSending] = useState(false)
   const commentRef = useRef<HTMLTextAreaElement>(null)
 
+  const loadComments = useCallback(() => {
+    fetch(`/api/client/comments?token=${token}`)
+      .then((r) => r.json())
+      .then((json) => { if (json.data) setComments(json.data) })
+      .catch(() => {})
+  }, [token])
+
   useEffect(() => {
     if (!token) return
     fetch(`/api/client/resolve?token=${token}`)
@@ -71,19 +78,12 @@ export default function ClientPortalPage() {
           setProject(json.data)
           loadComments()
         } else {
-          setError(json.error ?? 'Enlace inválido o expirado')
+          setError(json.error ?? 'Enlace invalido o expirado')
         }
       })
       .catch(() => setError('Error de red'))
       .finally(() => setLoading(false))
-  }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadComments = () => {
-    fetch(`/api/client/comments?token=${token}`)
-      .then((r) => r.json())
-      .then((json) => { if (json.data) setComments(json.data) })
-      .catch(() => {})
-  }
+  }, [loadComments, token])
 
   const handlePay = async () => {
     if (!project?.proposal_id) return
@@ -102,7 +102,7 @@ export default function ClientPortalPage() {
       })
       const json = await res.json()
       if (json.data?.url) {
-        window.location.href = json.data.url
+        window.location.assign(json.data.url)
       } else {
         setError(json.error ?? 'No se pudo iniciar el pago')
       }

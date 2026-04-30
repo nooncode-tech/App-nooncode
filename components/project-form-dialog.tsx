@@ -134,7 +134,7 @@ export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFo
 
       onOpenChange(false)
       setFormData(createEmptyFormData())
-    } catch (error) {
+    } catch {
       toast.error('Error al guardar el proyecto')
     } finally {
       setIsSubmitting(false)

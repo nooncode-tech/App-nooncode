@@ -28,7 +28,6 @@ import {
   ShoppingBag,
   Sparkles,
   CircleOff,
-  History,
   Loader2,
 } from 'lucide-react'
 

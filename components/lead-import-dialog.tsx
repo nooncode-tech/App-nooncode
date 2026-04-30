@@ -26,8 +26,6 @@ interface ParsedRow {
   notes?: string
 }
 
-const REQUIRED = ['name', 'email'] as const
-const COLUMNS = ['name', 'email', 'phone', 'whatsapp', 'company', 'source', 'value', 'notes'] as const
 const VALID_SOURCES = ['website', 'referral', 'cold_call', 'social', 'event', 'other']
 
 function parseCSV(text: string): ParsedRow[] {

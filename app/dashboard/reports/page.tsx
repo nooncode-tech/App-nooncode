@@ -26,7 +26,7 @@ import {
   Cell,
   Legend,
 } from 'recharts'
-import { BarChart3, DollarSign, Target, Award, Clock } from 'lucide-react'
+import { BarChart3 } from 'lucide-react'
 
 function ReportsChartEmptyState({
   title,
