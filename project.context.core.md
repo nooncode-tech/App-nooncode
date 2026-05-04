@@ -217,6 +217,13 @@
   - leaked-password protection remains a manual Supabase Auth setting, not a repo code change
   - remaining authenticated RPC warnings are intentional for now and should be treated as strict-audit hardening debt
   - do not move proposal review, lead claim/release, wallet/prototype, prototype handoff, or Maxwell radius RPCs behind `service_role` routes without a dedicated security plan and regression validation
+- Production-readiness hardening foundation now exists:
+  - `docs/production-readiness-audit.md` is the current audit baseline
+  - `lib/server/api/rate-limit.ts`, `lib/server/api/logger.ts`, and `lib/server/api/request.ts` provide request guardrails, structured redacted logs, and request IDs for high-risk API routes
+  - `supabase/migrations/0041_phase_17a_stripe_webhook_event_ledger.sql` and `lib/server/stripe/webhook-events.ts` add Stripe webhook event ledger idempotency
+  - `npm test` now covers rate limiting, log redaction, Maxwell validation, Maxwell Lead Engine boundaries, Website HMAC webhooks, Stripe webhook ledger behavior, and `.env.example` runtime key coverage
+  - migration `0041` still requires explicit approval before applying to real Supabase
+  - the in-memory rate limiter is an app-level guard, not a distributed production WAF replacement
 
 ## Confirmed product/data posture
 - Auth/session is partially real.

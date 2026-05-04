@@ -31,6 +31,7 @@ NoonApp is a recoverable production candidate, not a production-complete system.
 - Adds a Stripe webhook event ledger migration and server-side processing guard.
 - Adds an initial `npm test` command using Node's test runner through `tsx`.
 - Adds tests for rate limiting, log sanitization, Maxwell chat request validation, and Maxwell Lead Engine boundaries.
+- Adds tests for Website webhook HMAC validation, Stripe webhook ledger idempotency, and `.env.example` runtime key coverage.
 
 ## Next hardening order
 

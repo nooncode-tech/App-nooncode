@@ -1883,6 +1883,39 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - remaining authenticated RPC warnings after migrations `0039` and `0040` are intentional hardening debt
   - strict-audit closure should be a separate security iteration, not mixed with product/context sync
 
+## Session note: Production readiness hardening foundation
+- Route used: system-backend -> system-security -> system-testing -> system-docs
+- Objective: close the first safe production-readiness slice without touching Supabase production, Website UI, or business-flow architecture
+- Implemented:
+  - `docs/production-readiness-audit.md` records the current production-readiness verdict, blockers, this hardening slice, next hardening order, and manual production tasks
+  - `lib/server/api/rate-limit.ts` adds reusable in-memory rate limiting for high-risk endpoints
+  - `lib/server/api/logger.ts` adds structured server logging with recursive secret/token/signature/cookie/key redaction
+  - `lib/server/api/request.ts` adds request IDs for hardened API responses
+  - `lib/server/maxwell/chat-schema.ts` centralizes Maxwell chat request validation
+  - `supabase/migrations/0041_phase_17a_stripe_webhook_event_ledger.sql` adds the Stripe webhook event ledger schema
+  - `lib/server/stripe/webhook-events.ts` guards Stripe webhook processing with ledger-backed idempotency and retry state
+  - high-risk API routes now use rate-limit and request-ID/error helpers where scoped
+  - `package.json` now has `npm test` through `tsx --test`
+  - `.env.example` now includes the runtime validation keys used by `scripts/validate-runtime-env.ts`
+- Automated coverage added:
+  - API rate limiting
+  - structured log redaction
+  - Maxwell chat schema validation
+  - Maxwell Lead Engine scoring/radius/dedupe-style boundaries
+  - Website webhook HMAC positive and negative paths
+  - Stripe webhook ledger new, processed, failed retry, processed/failed marking, and failure-message truncation
+  - `.env.example` runtime-key coverage
+- Validation evidence:
+  - `npm.cmd run typecheck`
+  - `npm.cmd test`
+  - `npm.cmd run lint`
+  - `npm.cmd run build`
+- Open production tasks:
+  - migration `0041_phase_17a_stripe_webhook_event_ledger.sql` must still be applied to the real App Supabase only after explicit approval
+  - leaked-password protection remains a manual Supabase Auth setting
+  - authenticated RPC warnings remain strict-audit hardening debt
+  - in-memory rate limiting should be replaced or backed by distributed infrastructure before high traffic
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context
