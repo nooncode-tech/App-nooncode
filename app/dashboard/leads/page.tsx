@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { startTransition, useCallback, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { buildLeadDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
@@ -124,7 +124,9 @@ export default function LeadsPage() {
     const nextSelectedLead = leads.find((lead) => lead.id === selectedLead.id) ?? null
 
     if (!nextSelectedLead) {
-      setSelectedLead(null)
+      startTransition(() => {
+        setSelectedLead(null)
+      })
 
       if (requestedLeadId === selectedLead.id) {
         replaceLeadHref(null)
@@ -134,7 +136,9 @@ export default function LeadsPage() {
     }
 
     if (nextSelectedLead !== selectedLead) {
-      setSelectedLead(nextSelectedLead)
+      startTransition(() => {
+        setSelectedLead(nextSelectedLead)
+      })
     }
   }, [leads, replaceLeadHref, requestedLeadId, selectedLead])
 
@@ -154,7 +158,9 @@ export default function LeadsPage() {
       return
     }
 
-    setSelectedLead(requestedLead)
+    startTransition(() => {
+      setSelectedLead(requestedLead)
+    })
   }, [isLeadsLoading, leads, replaceLeadHref, requestedLeadId, selectedLead])
 
   const handleProximityToggle = () => {

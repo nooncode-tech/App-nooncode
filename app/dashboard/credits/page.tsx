@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { ArrowDownToLine, CircleOff, History, Lock, Sparkles, Timer, Wallet } from 'lucide-react'
 import { useAuth, canAccessDashboardPath } from '@/lib/auth-context'
 import type { WalletSummary, WalletEntry } from '@/lib/types'
@@ -90,16 +90,20 @@ export default function CreditsPage() {
     let isActive = true
 
     if (authMode !== 'supabase' || !user) {
-      setWallet(null)
-      setErrorMessage(null)
-      setIsLoading(false)
+      startTransition(() => {
+        setWallet(null)
+        setErrorMessage(null)
+        setIsLoading(false)
+      })
       return () => {
         isActive = false
       }
     }
 
-    setIsLoading(true)
-    setErrorMessage(null)
+    startTransition(() => {
+      setIsLoading(true)
+      setErrorMessage(null)
+    })
 
     fetch('/api/wallet?limit=30', {
       method: 'GET',

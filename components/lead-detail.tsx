@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
 import { buildProjectDetailHref } from '@/lib/dashboard-navigation'
 import { useData } from '@/lib/data-context'
@@ -560,7 +560,9 @@ Total: 8 semanas
   useEffect(() => {
     let isActive = true
 
-    setIsActivityLoading(true)
+    startTransition(() => {
+      setIsActivityLoading(true)
+    })
 
     getLeadActivity(lead.id)
       .then((nextActivities) => {
@@ -587,7 +589,9 @@ Total: 8 semanas
   useEffect(() => {
     let isActive = true
 
-    setIsProposalsLoading(true)
+    startTransition(() => {
+      setIsProposalsLoading(true)
+    })
 
     getLeadProposals(lead.id)
       .then((nextProposals) => {
@@ -612,15 +616,19 @@ Total: 8 semanas
   }, [getLeadProposals, lead.id, lead.updatedAt])
 
   useEffect(() => {
-    setProposalForm((prev) => ({
-      title: prev.title || buildDefaultProposalTitle(lead),
-      amount: prev.amount || lead.value.toString(),
-      body: prev.body,
-    }))
+    startTransition(() => {
+      setProposalForm((prev) => ({
+        title: prev.title || buildDefaultProposalTitle(lead),
+        amount: prev.amount || lead.value.toString(),
+        body: prev.body,
+      }))
+    })
   }, [lead])
 
   useEffect(() => {
-    setFollowUpInput(toDateTimeLocalValue(lead.nextFollowUpAt))
+    startTransition(() => {
+      setFollowUpInput(toDateTimeLocalValue(lead.nextFollowUpAt))
+    })
   }, [lead.nextFollowUpAt])
 
   useEffect(() => {
@@ -628,8 +636,10 @@ Total: 8 semanas
       return
     }
 
-    setIsGenerating(false)
-    setGeneratedContent('')
+    startTransition(() => {
+      setIsGenerating(false)
+      setGeneratedContent('')
+    })
   }, [isSupabaseMode, lead.id])
 
   useEffect(() => {

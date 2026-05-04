@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import {
   Activity,
   Bell,
@@ -161,7 +161,9 @@ export function AppSidebar() {
     let isActive = true
 
     if (authMode !== 'supabase' || !user) {
-      setUnreadNotifications(0)
+      startTransition(() => {
+        setUnreadNotifications(0)
+      })
       return () => { isActive = false }
     }
 

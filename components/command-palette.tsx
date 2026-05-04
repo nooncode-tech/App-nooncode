@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CommandDialog,
@@ -42,12 +42,16 @@ export function CommandPalette() {
 
   useEffect(() => {
     if (!open) {
-      setQuery('')
-      setResults(empty)
+      startTransition(() => {
+        setQuery('')
+        setResults(empty)
+      })
       return
     }
     if (query.length < 2 || authMode !== 'supabase') {
-      setResults(empty)
+      startTransition(() => {
+        setResults(empty)
+      })
       return
     }
 

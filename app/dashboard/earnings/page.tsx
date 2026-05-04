@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -166,8 +166,10 @@ export default function EarningsPage() {
   }
 
   useEffect(() => {
-    loadData()
-    loadConnectStatus()
+    startTransition(() => {
+      loadData()
+      loadConnectStatus()
+    })
   }, [isSupabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleWithdraw = async () => {

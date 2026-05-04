@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { Bell, BellOff, Briefcase, Check, ExternalLink, ListTodo } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import type { UserNotification } from '@/lib/types'
@@ -52,10 +52,18 @@ export default function NotificationsPage() {
   useEffect(() => {
     let isActive = true
     if (authMode !== 'supabase' || !user) {
-      setItems([]); setUnreadCount(0); setError(null); setIsLoading(false)
+      startTransition(() => {
+        setItems([])
+        setUnreadCount(0)
+        setError(null)
+        setIsLoading(false)
+      })
       return () => { isActive = false }
     }
-    setIsLoading(true); setError(null)
+    startTransition(() => {
+      setIsLoading(true)
+      setError(null)
+    })
     fetch('/api/notifications?limit=50', { method: 'GET', cache: 'no-store' })
       .then(async (res) => {
         const payload = await res.json().catch(() => null)

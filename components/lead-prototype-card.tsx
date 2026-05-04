@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Blocks, CheckCircle2, Coins, FolderKanban, Loader2, Sparkles, Wallet } from 'lucide-react'
 import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
@@ -96,20 +96,24 @@ export function LeadPrototypeCard({
     let isActive = true
 
     if (authMode !== 'supabase') {
-      setWallet(null)
-      setPrototype(null)
-      setPrototypeRequestCost(null)
-      setPrototypeRequestsEnabled(false)
-      setErrorMessage(null)
-      setIsLoading(false)
+      startTransition(() => {
+        setWallet(null)
+        setPrototype(null)
+        setPrototypeRequestCost(null)
+        setPrototypeRequestsEnabled(false)
+        setErrorMessage(null)
+        setIsLoading(false)
+      })
       return () => {
         isActive = false
       }
     }
 
     async function loadState() {
-      setIsLoading(true)
-      setErrorMessage(null)
+      startTransition(() => {
+        setIsLoading(true)
+        setErrorMessage(null)
+      })
 
       try {
         const [walletResponse, prototypeResponse] = await Promise.all([

@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState, useEffect } from 'react'
+import { startTransition, useState, useEffect } from 'react'
 import { useAuth, getRoleLabel } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
 import {
@@ -81,7 +81,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!isSupabaseMode) return
-    setPrototypeCostLoading(true)
+    startTransition(() => {
+      setPrototypeCostLoading(true)
+    })
     fetch('/api/prototype-settings')
       .then((r) => r.json())
       .then((json: { data: { requestCost: number | null; updatedAt: string | null } }) => {

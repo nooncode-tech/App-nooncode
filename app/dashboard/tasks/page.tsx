@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth, canManageTeam } from '@/lib/auth-context'
 import { buildTaskDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
@@ -167,7 +167,9 @@ export default function TasksPage() {
       return
     }
 
-    setSelectedTaskId(requestedTask.id)
+    startTransition(() => {
+      setSelectedTaskId(requestedTask.id)
+    })
   }, [replaceTaskHref, requestedTaskId, selectedTaskId, user, visibleTasks])
 
   useEffect(() => {
@@ -182,7 +184,9 @@ export default function TasksPage() {
     const nextSelectedTask = visibleTasks.find((task) => task.id === selectedTaskId) ?? null
 
     if (!nextSelectedTask) {
-      setSelectedTaskId(null)
+      startTransition(() => {
+        setSelectedTaskId(null)
+      })
 
       if (requestedTaskId === selectedTaskId) {
         replaceTaskHref(null)
@@ -460,8 +464,11 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTask
   useEffect(() => {
     let isActive = true
 
-    setIsLoadingActivity(true)
-    getTaskActivity(task.id)
+    startTransition(() => {
+      setIsLoadingActivity(true)
+    })
+    Promise.resolve()
+      .then(() => getTaskActivity(task.id))
       .then((nextActivities) => {
         if (isActive) {
           setActivities(nextActivities)
@@ -484,7 +491,9 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTask
   }, [getTaskActivity, task.id])
 
   useEffect(() => {
-    setHoursWorked(task.actualHours?.toString() || '')
+    startTransition(() => {
+      setHoursWorked(task.actualHours?.toString() || '')
+    })
   }, [task.actualHours, task.id])
 
   const handleSaveProgress = async () => {

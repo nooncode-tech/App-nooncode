@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { useData } from '@/lib/data-context'
 import type { DeliveryUser, Project, ProjectDraft, ProjectStatus, ProjectUpdates } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -91,7 +91,9 @@ export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFo
       return
     }
 
-    setFormData(createFormData(editProject))
+    startTransition(() => {
+      setFormData(createFormData(editProject))
+    })
   }, [editProject, open])
 
   const handleSubmit = async (e: React.FormEvent) => {

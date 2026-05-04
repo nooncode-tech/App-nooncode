@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { Activity, BellOff, Briefcase, ChevronRight, ListTodo } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import type { UpdateFeedItem } from '@/lib/types'
@@ -42,10 +42,17 @@ export default function UpdatesPage() {
   useEffect(() => {
     let isActive = true
     if (authMode !== 'supabase' || !user) {
-      setItems([]); setError(null); setIsLoading(false)
+      startTransition(() => {
+        setItems([])
+        setError(null)
+        setIsLoading(false)
+      })
       return () => { isActive = false }
     }
-    setIsLoading(true); setError(null)
+    startTransition(() => {
+      setIsLoading(true)
+      setError(null)
+    })
     fetch('/api/updates?limit=50', { method: 'GET', cache: 'no-store' })
       .then(async (res) => {
         const payload = await res.json().catch(() => null)

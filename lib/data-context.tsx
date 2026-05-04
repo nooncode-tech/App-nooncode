@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { createContext, startTransition, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import type {
   DeliveryUser,
   Lead,
@@ -556,42 +556,47 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let isActive = true
 
     if (authMode !== 'supabase') {
-      setLeads(mockLeads)
-      setProjects(mockProjects)
-      setPersistedProjects([])
-      setTasks(mockTasks)
-      setPersistedTasks([])
-      setSettingsUsers(mockUsers.map(mapMockUserToSettingsUser))
-      setIsSettingsUsersLoading(false)
-      setSettingsUsersError(null)
-      setDeliveryUsers(
-        mockUsers
-          .filter((currentUser) => ['admin', 'pm', 'developer'].includes(currentUser.role))
-          .map(mapMockUserToDeliveryUser)
-      )
-      setLeadActivityByLeadId(buildInitialMockLeadActivity(mockLeads))
-      setLeadProposalsByLeadId({})
-      setTaskActivityByTaskId({})
-      setIsLeadsLoading(false)
+      startTransition(() => {
+        setLeads(mockLeads)
+        setProjects(mockProjects)
+        setPersistedProjects([])
+        setTasks(mockTasks)
+        setPersistedTasks([])
+        setSettingsUsers(mockUsers.map(mapMockUserToSettingsUser))
+        setIsSettingsUsersLoading(false)
+        setSettingsUsersError(null)
+        setDeliveryUsers(
+          mockUsers
+            .filter((currentUser) => ['admin', 'pm', 'developer'].includes(currentUser.role))
+            .map(mapMockUserToDeliveryUser)
+        )
+        setLeadActivityByLeadId(buildInitialMockLeadActivity(mockLeads))
+        setLeadProposalsByLeadId({})
+        setTaskActivityByTaskId({})
+        setIsLeadsLoading(false)
+      })
       return () => {
         isActive = false
       }
     }
 
-    setIsLeadsLoading(true)
-    setProjects(mockProjects)
-    setPersistedProjects([])
-    setTasks(mockTasks)
-    setPersistedTasks([])
-    setSettingsUsers([])
-    setIsSettingsUsersLoading(false)
-    setSettingsUsersError(null)
-    setDeliveryUsers([])
-    setLeadActivityByLeadId({})
-    setLeadProposalsByLeadId({})
-    setTaskActivityByTaskId({})
+    startTransition(() => {
+      setIsLeadsLoading(true)
+      setProjects(mockProjects)
+      setPersistedProjects([])
+      setTasks(mockTasks)
+      setPersistedTasks([])
+      setSettingsUsers([])
+      setIsSettingsUsersLoading(false)
+      setSettingsUsersError(null)
+      setDeliveryUsers([])
+      setLeadActivityByLeadId({})
+      setLeadProposalsByLeadId({})
+      setTaskActivityByTaskId({})
+    })
 
-    loadLeads()
+    Promise.resolve()
+      .then(loadLeads)
       .catch(() => {
         if (isActive) {
           setLeads([])
@@ -603,7 +608,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-    loadProjects()
+    Promise.resolve()
+      .then(loadProjects)
       .catch(() => {
         if (isActive) {
           setPersistedProjects([])
@@ -611,7 +617,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-    loadTasks()
+    Promise.resolve()
+      .then(loadTasks)
       .catch(() => {
         if (isActive) {
           setPersistedTasks([])
@@ -620,7 +627,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })
 
     if (user && ['admin', 'sales_manager', 'pm', 'developer'].includes(user.role)) {
-      loadDeliveryUsers()
+      Promise.resolve()
+        .then(loadDeliveryUsers)
         .catch(() => {
           if (isActive) {
             setDeliveryUsers([])
@@ -629,10 +637,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     if (user?.role === 'admin') {
-      setIsSettingsUsersLoading(true)
-      setSettingsUsersError(null)
+      startTransition(() => {
+        setIsSettingsUsersLoading(true)
+        setSettingsUsersError(null)
+      })
 
-      loadSettingsUsers()
+      Promise.resolve()
+        .then(loadSettingsUsers)
         .then((nextSettingsUsers) => {
           if (isActive) {
             setSettingsUsers(nextSettingsUsers)

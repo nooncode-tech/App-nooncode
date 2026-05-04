@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -93,7 +93,11 @@ export default function RewardsPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadData() }, [isSupabase]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    startTransition(() => {
+      loadData()
+    })
+  }, [isSupabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRedeem = async () => {
     if (!selectedItem) return

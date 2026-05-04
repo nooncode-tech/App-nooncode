@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, ExternalLink, Loader2, RefreshCw, X } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -273,8 +273,11 @@ export default function PmQueuePage() {
 
   useEffect(() => {
     let active = true
-    setIsLoading(true)
-    loadQueue()
+    startTransition(() => {
+      setIsLoading(true)
+    })
+    Promise.resolve()
+      .then(loadQueue)
       .catch((err) => {
         if (active) setError(err instanceof Error ? err.message : 'No se pudo cargar la bandeja PM.')
       })

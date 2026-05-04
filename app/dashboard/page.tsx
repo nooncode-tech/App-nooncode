@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { startTransition, useMemo, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { useAuth, canAccessSales, canAccessDelivery, getRoleLabel } from '@/lib/auth-context'
@@ -37,7 +37,11 @@ export default function DashboardPage() {
   const dashboardKpiCopy = selectDashboardKpiCopy(authMode)
 
   const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    startTransition(() => {
+      setMounted(true)
+    })
+  }, [])
 
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)

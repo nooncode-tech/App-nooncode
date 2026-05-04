@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { Blocks, CircleOff, FolderKanban, Link2, Sparkles, UserRound, Wand2 } from 'lucide-react'
 import { useAuth, canAccessDashboardPath } from '@/lib/auth-context'
 import type { PrototypeWorkspaceListItem } from '@/lib/types'
@@ -93,16 +93,20 @@ export default function PrototypesPage() {
     let isActive = true
 
     if (authMode !== 'supabase' || !user) {
-      setItems([])
-      setErrorMessage(null)
-      setIsLoading(false)
+      startTransition(() => {
+        setItems([])
+        setErrorMessage(null)
+        setIsLoading(false)
+      })
       return () => {
         isActive = false
       }
     }
 
-    setIsLoading(true)
-    setErrorMessage(null)
+    startTransition(() => {
+      setIsLoading(true)
+      setErrorMessage(null)
+    })
 
     const params = new URLSearchParams({ limit: '30' })
 

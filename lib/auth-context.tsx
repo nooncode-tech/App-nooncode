@@ -75,7 +75,9 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
 
   useEffect(() => {
     if (authMode === 'supabase') {
-      setUser(initialUser)
+      startTransition(() => {
+        setUser(initialUser)
+      })
       return
     }
 
@@ -85,9 +87,13 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
         ? mockUsers.find((mockUser) => mockUser.email.toLowerCase() === storedEmail.toLowerCase())
         : null
 
-      setUser(storedUser ?? null)
+      startTransition(() => {
+        setUser(storedUser ?? null)
+      })
     } finally {
-      setIsLoading(false)
+      startTransition(() => {
+        setIsLoading(false)
+      })
     }
   }, [authMode, initialUser])
 

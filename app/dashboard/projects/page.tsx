@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
 import {
@@ -360,7 +360,9 @@ export default function ProjectsPage() {
       return
     }
 
-    setSelectedProjectId(requestedProject.id)
+    startTransition(() => {
+      setSelectedProjectId(requestedProject.id)
+    })
   }, [replaceProjectHref, requestedProjectId, selectedProjectId, visibleProjects])
 
   useEffect(() => {
@@ -371,7 +373,9 @@ export default function ProjectsPage() {
     const hasSelectedProject = visibleProjects.some((project) => project.id === selectedProjectId)
 
     if (!hasSelectedProject) {
-      setSelectedProjectId(null)
+      startTransition(() => {
+        setSelectedProjectId(null)
+      })
 
       if (requestedProjectId === selectedProjectId) {
         replaceProjectHref(null)
