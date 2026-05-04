@@ -1,10 +1,17 @@
-import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { toErrorResponse } from '@/lib/server/api/errors'
+import { assertRateLimit } from '@/lib/server/api/rate-limit'
+import { errorToLogContext, logger } from '@/lib/server/api/logger'
+import { getRequestId, jsonWithRequestId } from '@/lib/server/api/request'
 import { getStripeClient } from '@/lib/server/stripe/client'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import type { Database, Json } from '@/lib/server/supabase/database.types'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
+import {
+  beginStripeWebhookEvent,
+  markStripeWebhookEventFailed,
+  markStripeWebhookEventProcessed,
+} from '@/lib/server/stripe/webhook-events'
 
 type SupabaseAdminClient = Awaited<ReturnType<typeof createSupabaseAdminClient>>
 type MonetaryEntryType = Database['public']['Enums']['monetary_entry_type']
@@ -249,8 +256,8 @@ async function handleAccountUpdated(
 
   const status = account.charges_enabled ? 'active' : account.details_submitted ? 'restricted' : 'pending'
   await client
-    .from('user_profiles' as never)
-    .update({ stripe_connect_status: status } as never)
+    .from('user_profiles')
+    .update({ stripe_connect_status: status })
     .eq('stripe_connect_account_id', account.id)
 
 }
@@ -323,56 +330,94 @@ async function handleChargeRefunded(
 }
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request)
+  let client: SupabaseAdminClient | null = null
+  let event: Stripe.Event | null = null
+
   try {
+    assertRateLimit(request, {
+      namespace: 'stripe-webhook',
+      limit: 600,
+      windowMs: 60_000,
+    })
+
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
     if (!webhookSecret) {
-      return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 })
+      return jsonWithRequestId({ error: 'Webhook secret not configured' }, { status: 500 }, requestId)
     }
 
     const body = await request.text()
     const signature = request.headers.get('stripe-signature')
 
     if (!signature) {
-      return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 })
+      return jsonWithRequestId({ error: 'Missing stripe-signature header' }, { status: 400 }, requestId)
     }
 
     const stripe = getStripeClient()
-    let event: Stripe.Event
 
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
     } catch {
-      return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 400 })
+      return jsonWithRequestId({ error: 'Invalid webhook signature' }, { status: 400 }, requestId)
     }
 
-    const client = await createSupabaseAdminClient()
+    client = await createSupabaseAdminClient()
+    const ledger = await beginStripeWebhookEvent(client, event)
+
+    if (!ledger.shouldProcess) {
+      logger.info('stripe.webhook.duplicate_ignored', {
+        requestId,
+        eventId: event.id,
+        eventType: event.type,
+      })
+
+      return jsonWithRequestId({ received: true, duplicate: true }, undefined, requestId)
+    }
 
     const eventType = event.type as string
 
-    switch (eventType) {
-      case 'checkout.session.completed':
-        await handleCheckoutSessionCompleted(client, event.data.object as Stripe.Checkout.Session)
-        break
-      case 'payment_intent.payment_failed':
-        await handlePaymentIntentFailed(client, event.data.object as Stripe.PaymentIntent)
-        break
-      case 'charge.refunded':
-        await handleChargeRefunded(client, event.data.object as Stripe.Charge)
-        break
-      case 'account.updated':
-        await handleAccountUpdated(client, event.data.object as Stripe.Account)
-        break
-      case 'transfer.paid':
-        await handleTransferPaid(client, event.data.object as Stripe.Transfer)
-        break
-      case 'transfer.reversed':
-        await handleTransferReversed(client, event.data.object as Stripe.Transfer)
-        break
+    try {
+      switch (eventType) {
+        case 'checkout.session.completed':
+          await handleCheckoutSessionCompleted(client, event.data.object as Stripe.Checkout.Session)
+          break
+        case 'payment_intent.payment_failed':
+          await handlePaymentIntentFailed(client, event.data.object as Stripe.PaymentIntent)
+          break
+        case 'charge.refunded':
+          await handleChargeRefunded(client, event.data.object as Stripe.Charge)
+          break
+        case 'account.updated':
+          await handleAccountUpdated(client, event.data.object as Stripe.Account)
+          break
+        case 'transfer.paid':
+          await handleTransferPaid(client, event.data.object as Stripe.Transfer)
+          break
+        case 'transfer.reversed':
+          await handleTransferReversed(client, event.data.object as Stripe.Transfer)
+          break
+      }
+
+      await markStripeWebhookEventProcessed(client, event.id)
+      logger.info('stripe.webhook.processed', {
+        requestId,
+        eventId: event.id,
+        eventType,
+      })
+    } catch (error) {
+      await markStripeWebhookEventFailed(client, event.id, error)
+      throw error
     }
   } catch (error) {
-    return toErrorResponse(error)
+    logger.error('stripe.webhook.failed', {
+      requestId,
+      eventId: event?.id ?? null,
+      eventType: event?.type ?? null,
+      ...errorToLogContext(error),
+    })
+    return toErrorResponse(error, { requestId })
   }
 
-  return NextResponse.json({ received: true })
+  return jsonWithRequestId({ received: true }, undefined, requestId)
 }

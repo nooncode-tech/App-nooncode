@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { AuthGuardError } from '@/lib/server/auth/guards'
+type ErrorResponseOptions = {
+  requestId?: string
+}
 
 export class ApiError extends Error {
   constructor(
@@ -27,14 +30,37 @@ export class ConflictApiError extends ApiError {
   }
 }
 
-export function toErrorResponse(error: unknown) {
+function buildHeaders(error: unknown, options: ErrorResponseOptions) {
+  const headers = new Headers()
+  if (options.requestId) {
+    headers.set('x-request-id', options.requestId)
+  }
+
+  const retryAfterSeconds =
+    typeof error === 'object' &&
+    error !== null &&
+    'retryAfterSeconds' in error &&
+    typeof error.retryAfterSeconds === 'number'
+      ? error.retryAfterSeconds
+      : null
+
+  if (retryAfterSeconds !== null) {
+    headers.set('retry-after', String(retryAfterSeconds))
+  }
+
+  return headers
+}
+
+export function toErrorResponse(error: unknown, options: ErrorResponseOptions = {}) {
+  const headers = buildHeaders(error, options)
+
   if (error instanceof AuthGuardError) {
     return NextResponse.json(
       {
         error: error.message,
         code: error.code,
       },
-      { status: error.status }
+      { status: error.status, headers }
     )
   }
 
@@ -44,7 +70,7 @@ export function toErrorResponse(error: unknown) {
         error: error.message,
         code: error.code,
       },
-      { status: error.status }
+      { status: error.status, headers }
     )
   }
 
@@ -55,7 +81,7 @@ export function toErrorResponse(error: unknown) {
         code: 'INVALID_REQUEST',
         issues: error.flatten(),
       },
-      { status: 400 }
+      { status: 400, headers }
     )
   }
 
@@ -64,6 +90,6 @@ export function toErrorResponse(error: unknown) {
       error: 'Unexpected server error.',
       code: 'INTERNAL_ERROR',
     },
-    { status: 500 }
+    { status: 500, headers }
   )
 }

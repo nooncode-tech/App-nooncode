@@ -15,38 +15,53 @@ import { requireRole } from '@/lib/server/auth/guards'
 import { getLeadById } from '@/lib/server/leads/repository'
 import { assertSalesLeadOwnership } from '@/lib/server/leads/permissions'
 import { toErrorResponse } from '@/lib/server/api/errors'
+import { assertRateLimit } from '@/lib/server/api/rate-limit'
+import { errorToLogContext, logger } from '@/lib/server/api/logger'
+import { getRequestId } from '@/lib/server/api/request'
+import { maxwellChatRequestSchema } from '@/lib/server/maxwell/chat-schema'
 
 export const maxDuration = 60
 
 export async function POST(req: Request) {
+  const requestId = getRequestId(req)
+
   try {
-  const {
-    messages,
-    leadId,
-    leadName,
-    channel,
-  }: {
-    messages: UIMessage[]
-    leadId?: string
-    leadName?: string
-    channel?: string
-  } = await req.json()
+    assertRateLimit(req, {
+      namespace: 'maxwell-chat',
+      limit: 20,
+      windowMs: 60_000,
+    })
 
-  const serverClient = await createSupabaseServerClient()
-  const principal = await requireRole(['admin', 'sales_manager', 'sales', 'pm'])
-
-  if (leadId) {
-    const lead = await getLeadById(serverClient, leadId)
-    if (!lead) {
-      return new Response(JSON.stringify({ error: 'Lead not found' }), { status: 404 })
+    const {
+      messages,
+      leadId,
+      leadName,
+      channel,
+    } = maxwellChatRequestSchema.parse(await req.json()) as {
+      messages: UIMessage[]
+      leadId?: string
+      leadName?: string
+      channel?: string
     }
-    assertSalesLeadOwnership(principal, lead)
-  }
 
-  const systemPrompt = buildMaxwellSystemPrompt({ leadId, leadName, channel })
+    const serverClient = await createSupabaseServerClient()
+    const principal = await requireRole(['admin', 'sales_manager', 'sales', 'pm'])
 
-  const tools = leadId
-    ? {
+    if (leadId) {
+      const lead = await getLeadById(serverClient, leadId)
+      if (!lead) {
+        return new Response(JSON.stringify({ error: 'Lead not found' }), {
+          status: 404,
+          headers: { 'x-request-id': requestId },
+        })
+      }
+      assertSalesLeadOwnership(principal, lead)
+    }
+
+    const systemPrompt = buildMaxwellSystemPrompt({ leadId, leadName, channel })
+
+    const tools = leadId
+      ? {
         create_proposal: dynamicTool({
           description: 'Crea y guarda una propuesta comercial en el sistema para el lead actual',
           inputSchema: z.object({
@@ -113,22 +128,36 @@ export async function POST(req: Request) {
           },
         }),
       }
-    : undefined
+      : undefined
 
-  const result = streamText({
-    model: openai('gpt-4o-mini'),
-    system: systemPrompt,
-    messages: await convertToModelMessages(messages),
-    abortSignal: req.signal,
-    tools,
-    stopWhen: stepCountIs(leadId ? 5 : 1),
-  })
+    const result = streamText({
+      model: openai('gpt-4o-mini'),
+      system: systemPrompt,
+      messages: await convertToModelMessages(messages),
+      abortSignal: req.signal,
+      tools,
+      stopWhen: stepCountIs(leadId ? 5 : 1),
+    })
 
-  return result.toUIMessageStreamResponse({
-    originalMessages: messages,
-    consumeSseStream: consumeStream,
-  })
+    logger.info('maxwell.chat.started', {
+      requestId,
+      userId: principal.userId,
+      role: principal.role,
+      leadId: leadId ?? null,
+      channel: channel ?? null,
+    })
+
+    const response = result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      consumeSseStream: consumeStream,
+    })
+    response.headers.set('x-request-id', requestId)
+    return response
   } catch (error) {
-    return toErrorResponse(error)
+    logger.warn('maxwell.chat.failed', {
+      requestId,
+      ...errorToLogContext(error),
+    })
+    return toErrorResponse(error, { requestId })
   }
 }

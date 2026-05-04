@@ -686,6 +686,45 @@ export type Database = {
           },
         ]
       }
+      stripe_webhook_events: {
+        Row: {
+          api_version: string | null
+          attempt_count: number
+          event_id: string
+          event_type: string
+          failed_at: string | null
+          last_error: string | null
+          livemode: boolean
+          processed_at: string | null
+          received_at: string
+          status: 'processing' | 'processed' | 'failed'
+        }
+        Insert: {
+          api_version?: string | null
+          attempt_count?: number
+          event_id: string
+          event_type: string
+          failed_at?: string | null
+          last_error?: string | null
+          livemode?: boolean
+          processed_at?: string | null
+          received_at?: string
+          status?: 'processing' | 'processed' | 'failed'
+        }
+        Update: {
+          api_version?: string | null
+          attempt_count?: number
+          event_id?: string
+          event_type?: string
+          failed_at?: string | null
+          last_error?: string | null
+          livemode?: boolean
+          processed_at?: string | null
+          received_at?: string
+          status?: 'processing' | 'processed' | 'failed'
+        }
+        Relationships: []
+      }
       payout_batches: {
         Row: {
           created_at: string

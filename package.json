@@ -6,6 +6,7 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
+    "test": "tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "validate:env": "tsx scripts/validate-runtime-env.ts",
     "seed:phase1a-users": "tsx scripts/seed-phase-1a-users.ts",

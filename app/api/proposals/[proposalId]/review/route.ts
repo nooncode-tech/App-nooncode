@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
+import { assertRateLimit } from '@/lib/server/api/rate-limit'
+import { getRequestId, jsonWithRequestId } from '@/lib/server/api/request'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { getLeadProposalById } from '@/lib/server/leads/proposal-repository'
 import { mapLeadProposalRowToWire } from '@/lib/server/leads/proposal-mappers'
@@ -19,7 +20,15 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ proposalId: string }> }
 ) {
+  const requestId = getRequestId(request)
+
   try {
+    assertRateLimit(request, {
+      namespace: 'proposal-review',
+      limit: 30,
+      windowMs: 60_000,
+    })
+
     const principal = await requireRole(['admin', 'pm'])
 
     const { proposalId } = paramsSchema.parse(await context.params)
@@ -35,13 +44,13 @@ export async function POST(
     if (error) {
       const msg = error.message ?? ''
       if (msg.includes('PROPOSAL_NOT_FOUND')) {
-        return NextResponse.json({ error: 'Proposal not found.', code: 'NOT_FOUND' }, { status: 404 })
+        return jsonWithRequestId({ error: 'Proposal not found.', code: 'NOT_FOUND' }, { status: 404 }, requestId)
       }
       if (msg.includes('FORBIDDEN')) {
-        return NextResponse.json({ error: 'Forbidden.', code: 'FORBIDDEN' }, { status: 403 })
+        return jsonWithRequestId({ error: 'Forbidden.', code: 'FORBIDDEN' }, { status: 403 }, requestId)
       }
       if (msg.includes('PROPOSAL_NOT_REVIEWABLE')) {
-        return NextResponse.json({ error: 'Proposal is not in a reviewable state.', code: 'NOT_REVIEWABLE' }, { status: 422 })
+        return jsonWithRequestId({ error: 'Proposal is not in a reviewable state.', code: 'NOT_REVIEWABLE' }, { status: 422 }, requestId)
       }
       throw new Error(msg)
     }
@@ -49,7 +58,7 @@ export async function POST(
     // Re-fetch with linked_project join
     const proposal = await getLeadProposalById(client, proposalId)
     if (!proposal) {
-      return NextResponse.json({ error: 'Proposal not found.', code: 'NOT_FOUND' }, { status: 404 })
+      return jsonWithRequestId({ error: 'Proposal not found.', code: 'NOT_FOUND' }, { status: 404 }, requestId)
     }
 
     const inboundReview = await recordInboundReviewOutcome(proposalId, action)
@@ -59,14 +68,14 @@ export async function POST(
       role: principal.role,
     })
 
-    return NextResponse.json({
+    return jsonWithRequestId({
       data: mapLeadProposalRowToWire(proposal),
       meta: {
         inboundReview,
         reviewWebhook,
       },
-    })
+    }, undefined, requestId)
   } catch (err) {
-    return toErrorResponse(err)
+    return toErrorResponse(err, { requestId })
   }
 }

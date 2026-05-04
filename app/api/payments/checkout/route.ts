@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/server/auth/guards'
 import { ApiError, ConflictApiError, NotFoundApiError } from '@/lib/server/api/errors'
 import { toErrorResponse } from '@/lib/server/api/errors'
+import { assertRateLimit } from '@/lib/server/api/rate-limit'
+import { getRequestId, jsonWithRequestId } from '@/lib/server/api/request'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { createCheckoutSession } from '@/lib/server/stripe/service'
@@ -15,7 +16,15 @@ const bodySchema = z.object({
 }).passthrough()
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request)
+
   try {
+    assertRateLimit(request, {
+      namespace: 'payments-checkout',
+      limit: 20,
+      windowMs: 60_000,
+    })
+
     const principal = await requireRole(['admin', 'sales_manager', 'sales', 'pm'])
     const body = bodySchema.parse(await request.json())
     const client = await createSupabaseServerClient()
@@ -81,8 +90,8 @@ export async function POST(request: Request) {
       appUrl,
     )
 
-    return NextResponse.json({ data: { url, paymentId, checkoutSessionId } })
+    return jsonWithRequestId({ data: { url, paymentId, checkoutSessionId } }, undefined, requestId)
   } catch (error) {
-    return toErrorResponse(error)
+    return toErrorResponse(error, { requestId })
   }
 }

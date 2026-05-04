@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { toErrorResponse } from '@/lib/server/api/errors'
+import { assertRateLimit } from '@/lib/server/api/rate-limit'
+import { getRequestId, jsonWithRequestId } from '@/lib/server/api/request'
 
 const postSchema = z.object({
   token: z.string().min(1),
@@ -9,11 +10,18 @@ const postSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request)
+
   try {
+    assertRateLimit(request, {
+      namespace: 'client-comments-post',
+      limit: 20,
+      windowMs: 60_000,
+    })
+
     const { token, body } = postSchema.parse(await request.json())
     const client = await createSupabaseAdminClient()
 
-    // Validate token exists and is not expired
     const { data: tokenRow } = await client
       .from('client_access_tokens')
       .select('id')
@@ -22,7 +30,7 @@ export async function POST(request: Request) {
       .maybeSingle() as { data: { id: string } | null }
 
     if (!tokenRow) {
-      return NextResponse.json({ error: 'Token inválido o expirado' }, { status: 401 })
+      return jsonWithRequestId({ error: 'Token invalido o expirado' }, { status: 401 }, requestId)
     }
 
     const { data: comment, error } = await client
@@ -33,17 +41,25 @@ export async function POST(request: Request) {
 
     if (error || !comment) throw new Error('Failed to save comment')
 
-    return NextResponse.json({ data: comment }, { status: 201 })
+    return jsonWithRequestId({ data: comment }, { status: 201 }, requestId)
   } catch (err) {
-    return toErrorResponse(err)
+    return toErrorResponse(err, { requestId })
   }
 }
 
 export async function GET(request: Request) {
+  const requestId = getRequestId(request)
+
   try {
+    assertRateLimit(request, {
+      namespace: 'client-comments-get',
+      limit: 60,
+      windowMs: 60_000,
+    })
+
     const { searchParams } = new URL(request.url)
     const token = searchParams.get('token')
-    if (!token) return NextResponse.json({ error: 'token required' }, { status: 400 })
+    if (!token) return jsonWithRequestId({ error: 'token required' }, { status: 400 }, requestId)
 
     const client = await createSupabaseAdminClient()
 
@@ -55,7 +71,7 @@ export async function GET(request: Request) {
       .maybeSingle() as { data: { id: string } | null }
 
     if (!tokenRow) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 })
+      return jsonWithRequestId({ error: 'Token invalido' }, { status: 401 }, requestId)
     }
 
     const { data: comments } = await client
@@ -64,8 +80,8 @@ export async function GET(request: Request) {
       .eq('token_id', tokenRow.id)
       .order('created_at', { ascending: false }) as { data: Array<{ id: string; body: string; created_at: string }> | null }
 
-    return NextResponse.json({ data: comments ?? [] })
+    return jsonWithRequestId({ data: comments ?? [] }, undefined, requestId)
   } catch (err) {
-    return toErrorResponse(err)
+    return toErrorResponse(err, { requestId })
   }
 }
