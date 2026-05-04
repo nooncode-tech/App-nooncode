@@ -147,6 +147,16 @@ function normalizeLocale(locale: string | undefined): string {
   return normalized.slice(0, 20)
 }
 
+function assertMaxwellAiConfigured() {
+  if (!process.env.OPENAI_API_KEY?.trim()) {
+    throw new ApiError(
+      'MAXWELL_AI_NOT_CONFIGURED',
+      'OPENAI_API_KEY is required before Maxwell Lead Engine can audit and publish leads.',
+      503
+    )
+  }
+}
+
 export function radiusKmForConfirmedSales(confirmedSales: number): number {
   if (confirmedSales <= 2) return 5
   if (confirmedSales <= 7) return 10
@@ -561,6 +571,7 @@ export async function runMaxwellLeadSearch(params: {
   const { request, principal, serverClient, adminClient } = params
   const locale = normalizeLocale(request.locale ?? params.acceptLanguage?.split(',')[0])
 
+  assertMaxwellAiConfigured()
   await assertDailySearchLimit(serverClient, principal)
 
   const radiusKm = await getAllowedRadiusKm(serverClient, principal)

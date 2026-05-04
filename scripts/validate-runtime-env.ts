@@ -14,6 +14,7 @@ const coreKeys = [
   'STRIPE_SECRET_KEY',
   'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY',
   'STRIPE_WEBHOOK_SECRET',
+  'OPENAI_API_KEY',
   'V0_API_KEY',
 ] as const
 
