@@ -48,6 +48,11 @@ const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
   lost: { label: 'Perdido', color: 'bg-red-500/10 text-red-700 border-red-200' },
 }
 
+const priorityLabels = {
+  high: 'Alta prioridad',
+  medium: 'Oportunidad valida',
+} as const
+
 const nextStatus: Partial<Record<LeadStatus, LeadStatus>> = {
   new: 'contacted',
   contacted: 'qualified',
@@ -117,6 +122,10 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
       return
     }
 
+    if (!lead.email) {
+      return
+    }
+
     window.open(buildGmailComposeUrl(lead.email), '_blank', 'noopener,noreferrer')
   }
 
@@ -152,6 +161,11 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
                   {lead.company}
                 </p>
               )}
+              {lead.source === 'maxwell' && lead.maxwellSnapshot && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {lead.maxwellSnapshot.business.industry}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {lead.assignmentStatus !== 'owned' && (
@@ -170,10 +184,12 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
 
           {/* Contact Info */}
           <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Mail className="size-3" />
-              {lead.email}
-            </span>
+            {lead.email && (
+              <span className="flex items-center gap-1">
+                <Mail className="size-3" />
+                {lead.email}
+              </span>
+            )}
             {lead.phone && (
               <span className="flex items-center gap-1">
                 <Phone className="size-3" />
@@ -193,6 +209,26 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
               </a>
             )}
           </div>
+
+          {lead.source === 'maxwell' && lead.maxwellSnapshot && (
+            <div className="mt-3 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm">
+              <p className="font-medium text-foreground">
+                {lead.maxwellSnapshot.audit.mainPain}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {lead.maxwellSnapshot.opportunity.noonOpportunity}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1">
+                <Badge variant="secondary" className="text-xs">Maxwell</Badge>
+                <Badge variant="secondary" className="text-xs">
+                  {priorityLabels[lead.maxwellSnapshot.scoring.priority]}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  Confianza {lead.maxwellSnapshot.confidence}
+                </Badge>
+              </div>
+            </div>
+          )}
 
           {/* Tags */}
           {lead.tags.length > 0 && (

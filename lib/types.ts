@@ -38,15 +38,88 @@ export interface SettingsUser {
 
 // Lead Types
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost'
-export type LeadSource = 'website' | 'referral' | 'cold_call' | 'social' | 'event' | 'other'
+export type LeadSource = 'website' | 'referral' | 'cold_call' | 'social' | 'event' | 'other' | 'maxwell'
 export type LeadSourceInput = LeadSource | 'cold_outreach' | 'social_media'
 export type LeadOrigin = 'inbound' | 'outbound'
 export type LeadAssignmentStatus = 'owned' | 'proposal_locked' | 'released_no_response'
+export type MaxwellPublicationStatus = 'published' | 'needs_review' | 'rejected' | 'refresh_needed'
+export type MaxwellConfidence = 'high' | 'medium' | 'low'
+export type MaxwellFeedbackRating = 'good' | 'bad' | 'duplicate' | 'not_relevant'
+
+export interface MaxwellSalesSpeech {
+  language: string
+  tone: 'consultative_helpful_local'
+  inPerson: string
+  phoneCall: string
+  whatsapp: string
+  audioEnabled: boolean
+  audioProvider: 'device_tts'
+  mustNotSoundLikeSales: boolean
+  estimatedDurationSeconds: {
+    inPerson: number
+    phoneCall: number
+  }
+}
+
+export interface MaxwellLeadSnapshot {
+  business: {
+    name: string
+    industry: string
+    description?: string
+    address?: string
+    website?: string
+    phone?: string
+    email?: string
+    socials?: string[]
+  }
+  audit: {
+    summary: string
+    mainPain: string
+    pains: Array<{
+      title: string
+      evidence: string
+      impact: string
+      confidence: MaxwellConfidence
+    }>
+    sourcesChecked: string[]
+    competitorNotes?: string
+  }
+  opportunity: {
+    noonOpportunity: string
+    suggestedSolution: string
+    developmentType: string
+    prototypeIdea: string
+    recommendedNextAction: string
+  }
+  scoring: {
+    total: number
+    priority: 'high' | 'medium'
+    digitalPain: number
+    operationalPain: number
+    commercialPotential: number
+    contactQuality: number
+    distance: number
+    competitiveGap: number
+    rationale: string
+  }
+  confidence: MaxwellConfidence
+  objections: Array<{
+    objection: string
+    response: string
+  }>
+  salesSpeech: MaxwellSalesSpeech
+  source: {
+    provider: string
+    externalId?: string
+    dedupeKey: string
+    generatedAt: string
+  }
+}
 
 export interface Lead {
   id: string
   name: string
-  email: string
+  email?: string
   phone?: string
   whatsapp?: string
   company?: string
@@ -65,6 +138,13 @@ export interface Lead {
   latitude?: number
   longitude?: number
   leadOrigin?: LeadOrigin
+  publicationStatus?: MaxwellPublicationStatus
+  maxwellSnapshot?: MaxwellLeadSnapshot
+  maxwellSearchRunId?: string
+  maxwellExpiresAt?: Date
+  maxwellLastRefreshedAt?: Date
+  maxwellDedupeKey?: string
+  maxwellConfidence?: MaxwellConfidence
   createdAt: Date
   updatedAt: Date
   lastContactedAt?: Date
@@ -74,7 +154,21 @@ export interface Lead {
 
 export interface LeadDraft extends Omit<
   Lead,
-  'id' | 'createdAt' | 'updatedAt' | 'source' | 'assignmentStatus' | 'lockedByProposalId' | 'lockedAt' | 'releasedAt'
+  | 'id'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'source'
+  | 'assignmentStatus'
+  | 'lockedByProposalId'
+  | 'lockedAt'
+  | 'releasedAt'
+  | 'publicationStatus'
+  | 'maxwellSnapshot'
+  | 'maxwellSearchRunId'
+  | 'maxwellExpiresAt'
+  | 'maxwellLastRefreshedAt'
+  | 'maxwellDedupeKey'
+  | 'maxwellConfidence'
 > {
   source: LeadSourceInput
   leadOrigin: LeadOrigin

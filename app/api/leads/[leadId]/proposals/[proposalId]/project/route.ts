@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/server/auth/guards'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
+import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { getLeadById } from '@/lib/server/leads/repository'
 import { getLeadProposalById } from '@/lib/server/leads/proposal-repository'
@@ -10,6 +11,7 @@ import {
   getProjectByProposalId,
   getProjectById,
 } from '@/lib/server/projects/repository'
+import { activatePaidProposal } from '@/lib/server/payments/activation'
 import {
   mapLeadAndProposalToProjectInsert,
   mapProjectRowToWire,
@@ -51,6 +53,7 @@ export async function POST(
     const principal = await requireRole(allowedProjectCreateRoles)
     const { leadId, proposalId } = routeParamsSchema.parse(await context.params)
     const client = await createSupabaseServerClient()
+    const adminClient = createSupabaseAdminClient()
 
     const lead = await getLeadById(client, leadId)
 
@@ -68,9 +71,31 @@ export async function POST(
       return conflictResponse('Only handoff-ready proposals can be converted into projects.')
     }
 
+    const { data: succeededPayment, error: paymentError } = await client
+      .from('payments')
+      .select('id, project_id')
+      .eq('proposal_id', proposalId)
+      .eq('status', 'succeeded')
+      .maybeSingle()
+
+    if (paymentError) {
+      throw new Error(`Failed to verify proposal payment: ${paymentError.message}`)
+    }
+
+    if (!succeededPayment) {
+      return conflictResponse('Payment must be confirmed before creating a project.')
+    }
+
     const existingProject = await getProjectByProposalId(client, proposalId)
 
     if (existingProject) {
+      if (!succeededPayment.project_id) {
+        await activatePaidProposal(adminClient, {
+          paymentId: succeededPayment.id,
+          actorProfileId: principal.userId,
+        })
+      }
+
       await linkVisibleLeadPrototypeWorkspaceToProject(client, leadId, existingProject.id)
       const reloadedProject = await getProjectById(client, existingProject.id)
 
@@ -80,6 +105,25 @@ export async function POST(
           created: false,
         },
       })
+    }
+
+    await activatePaidProposal(adminClient, {
+      paymentId: succeededPayment.id,
+      actorProfileId: principal.userId,
+    })
+
+    const activatedProject = await getProjectByProposalId(client, proposalId)
+
+    if (activatedProject) {
+      return NextResponse.json(
+        {
+          data: mapProjectRowToWire(activatedProject),
+          meta: {
+            created: true,
+          },
+        },
+        { status: 201 }
+      )
     }
 
     const project = await createProject(

@@ -1,81 +1,87 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/server/auth/guards'
+import { ApiError, ConflictApiError, NotFoundApiError } from '@/lib/server/api/errors'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
+import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { createCheckoutSession } from '@/lib/server/stripe/service'
+import { getLeadById } from '@/lib/server/leads/repository'
+import { getLeadProposalById } from '@/lib/server/leads/proposal-repository'
+import { assertSalesLeadOwnership } from '@/lib/server/leads/permissions'
 
 const bodySchema = z.object({
   proposalId: z.string().uuid(),
-  leadId: z.string().uuid(),
-  projectId: z.string().uuid().nullable(),
-  clientName: z.string().min(1),
-  clientEmail: z.string().email().nullable(),
-})
+}).passthrough()
 
 export async function POST(request: Request) {
   try {
-    const principal = await requireRole(['admin', 'sales_manager', 'sales'])
+    const principal = await requireRole(['admin', 'sales_manager', 'sales', 'pm'])
     const body = bodySchema.parse(await request.json())
     const client = await createSupabaseServerClient()
+    const adminClient = createSupabaseAdminClient()
 
-    // Load the proposal to get amount, currency, title
-    const { data: proposal, error: proposalError } = await client
-      .from('lead_proposals')
-      .select('id, title, amount, currency, status, lead_id')
-      .eq('id', body.proposalId)
-      .maybeSingle()
-
-    if (proposalError || !proposal) {
-      return NextResponse.json({ error: 'Proposal not found' }, { status: 404 })
+    const proposal = await getLeadProposalById(client, body.proposalId)
+    if (!proposal) {
+      throw new NotFoundApiError('Proposal not found.')
     }
 
-    if (proposal.lead_id !== body.leadId) {
-      return NextResponse.json({ error: 'Proposal does not belong to this lead' }, { status: 400 })
+    const lead = await getLeadById(client, proposal.lead_id)
+    if (!lead) {
+      throw new NotFoundApiError('Lead not found.')
+    }
+
+    assertSalesLeadOwnership(principal, lead)
+
+    if (lead.lead_origin === 'inbound') {
+      throw new ConflictApiError(
+        'Inbound payment links are created by the website after PM approval.',
+        'INBOUND_PAYMENT_LINK_OWNED_BY_WEBSITE'
+      )
+    }
+
+    if (proposal.review_status !== 'approved') {
+      throw new ApiError(
+        'PROPOSAL_REQUIRES_PM_APPROVAL',
+        'Proposal must be approved by PM before payment.',
+        422
+      )
     }
 
     if (!['sent', 'accepted', 'handoff_ready'].includes(proposal.status)) {
-      return NextResponse.json(
-        { error: 'Proposal must be sent or accepted before payment' },
-        { status: 400 }
+      throw new ApiError(
+        'PROPOSAL_NOT_READY_FOR_PAYMENT',
+        'Proposal must be sent before payment.',
+        422
       )
     }
 
     if (proposal.amount <= 0) {
-      return NextResponse.json({ error: 'Proposal amount must be greater than zero' }, { status: 400 })
-    }
-
-    // Check for existing succeeded payment
-    const { data: existingPayment } = await client
-      .from('payments')
-      .select('id, status')
-      .eq('proposal_id', body.proposalId)
-      .eq('status', 'succeeded')
-      .maybeSingle()
-
-    if (existingPayment) {
-      return NextResponse.json({ error: 'This proposal has already been paid' }, { status: 409 })
+      throw new ApiError(
+        'PROPOSAL_AMOUNT_MUST_BE_POSITIVE',
+        'Proposal amount must be greater than zero.',
+        422
+      )
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.headers.get('origin') ?? 'http://localhost:3000'
 
-    const { url, paymentId } = await createCheckoutSession(
-      client,
+    const { url, paymentId, checkoutSessionId } = await createCheckoutSession(
+      adminClient,
       principal,
       {
         proposalId: proposal.id,
-        leadId: body.leadId,
-        projectId: body.projectId,
+        leadId: lead.id,
         amount: Number(proposal.amount),
         currency: proposal.currency,
-        clientName: body.clientName,
-        clientEmail: body.clientEmail,
+        clientName: lead.company ?? lead.name,
+        clientEmail: lead.email || null,
         proposalTitle: proposal.title,
       },
       appUrl,
     )
 
-    return NextResponse.json({ data: { url, paymentId } })
+    return NextResponse.json({ data: { url, paymentId, checkoutSessionId } })
   } catch (error) {
     return toErrorResponse(error)
   }

@@ -4,6 +4,7 @@ import { toErrorResponse } from '@/lib/server/api/errors'
 import { getStripeClient } from '@/lib/server/stripe/client'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import type { Database, Json } from '@/lib/server/supabase/database.types'
+import { activatePaidProposal } from '@/lib/server/payments/activation'
 
 type SupabaseAdminClient = Awaited<ReturnType<typeof createSupabaseAdminClient>>
 type MonetaryEntryType = Database['public']['Enums']['monetary_entry_type']
@@ -49,66 +50,58 @@ async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
 ) {
   const proposalId = session.metadata?.noon_proposal_id
-  const projectId = session.metadata?.noon_project_id || null
+  const paymentIdFromMetadata = session.metadata?.noon_payment_id
 
-  if (!proposalId) {
+  if (!proposalId && !paymentIdFromMetadata) {
     return
   }
 
-  const now = new Date().toISOString()
-
-  const { data: payment, error: paymentLookupError } = await client
+  let paymentQuery = client
     .from('payments')
-    .select('id, amount')
-    .eq('stripe_checkout_session_id', session.id)
-    .maybeSingle()
+    .select('id, amount, proposal_id, project_id')
+
+  paymentQuery = paymentIdFromMetadata
+    ? paymentQuery.eq('id', paymentIdFromMetadata)
+    : paymentQuery.eq('stripe_checkout_session_id', session.id)
+
+  const { data: paymentBeforeActivation, error: paymentLookupError } = await paymentQuery.maybeSingle()
 
   if (paymentLookupError) {
     throw new Error(`Failed to resolve payment: ${paymentLookupError.message}`)
   }
 
-  const { error: paymentUpdateError } = await client
-    .from('payments')
-    .update({
-      stripe_payment_intent_id: session.payment_intent as string,
-      status: 'succeeded',
-      paid_at: now,
-    })
-    .eq('stripe_checkout_session_id', session.id)
-
-  if (paymentUpdateError) {
-    throw new Error(`Failed to update payment: ${paymentUpdateError.message}`)
+  if (!paymentBeforeActivation) {
+    throw new Error('Payment record not found for completed checkout session.')
   }
 
-  // Update proposal payment status
-  await client
-    .from('lead_proposals')
-    .update({ payment_status: 'succeeded', paid_at: now })
-    .eq('id', proposalId)
+  const paidAt =
+    typeof session.created === 'number'
+      ? new Date(session.created * 1000).toISOString()
+      : new Date().toISOString()
+  const paymentIntentId =
+    typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null
 
-  // Activate project if linked
-  if (projectId) {
-    await client
-      .from('projects')
-      .update({
-        payment_activated: true,
-        payment_activated_at: now,
-        status: 'in_progress',
-      })
-      .eq('id', projectId)
-      .eq('payment_activated', false)
-  }
+  const activation = await activatePaidProposal(client, {
+    paymentId: paymentBeforeActivation.id,
+    providerPaymentIntentId: paymentIntentId,
+    paidAt,
+    actorProfileId: session.metadata?.noon_actor_id ?? null,
+    metadata: {
+      stripeCheckoutSessionId: session.id,
+      stripePaymentStatus: session.payment_status,
+      stripeCustomerId: typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null,
+    },
+  })
 
-  // Credit earnings.
-  if (!payment) {
-    return
-  }
+  const projectId = activation.project_id
 
   // Fetch proposal separately to avoid PostgREST join ambiguity.
   const { data: proposal } = await client
     .from('lead_proposals')
     .select('id, lead_id, amount')
-    .eq('id', proposalId)
+    .eq('id', activation.proposal_id)
     .maybeSingle()
 
   if (!proposal) return
@@ -124,7 +117,7 @@ async function handleCheckoutSessionCompleted(
 
   const leadOrigin = leadRow.lead_origin as 'inbound' | 'outbound' | null
   const sellerId = leadRow.assigned_to ?? leadRow.created_by
-  const activationAmount = Number(payment.amount)
+  const activationAmount = Number(paymentBeforeActivation.amount)
 
   // Fetch developer from project if linked
   let developerUserId: string | null = null
@@ -163,8 +156,8 @@ async function handleCheckoutSessionCompleted(
       amount: 100,
       currency: 'USD',
       lead_id: proposal.lead_id,
-      proposal_id: proposalId,
-      payment_id: payment.id,
+      proposal_id: activation.proposal_id,
+      payment_id: activation.payment_id,
       idempotency_key: `stripe:${session.id}:earning:seller:${sellerId}`,
       notes: 'Outbound activation - $100 fixed',
     })
@@ -179,8 +172,8 @@ async function handleCheckoutSessionCompleted(
       amount: parseFloat((base * 0.5).toFixed(2)),
       currency: 'USD',
       lead_id: proposal.lead_id,
-      proposal_id: proposalId,
-      payment_id: payment.id,
+      proposal_id: activation.proposal_id,
+      payment_id: activation.payment_id,
       idempotency_key: `stripe:${session.id}:earning:developer:${developerUserId ?? 'unassigned'}`,
       notes: developerUserId
         ? `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation - 50% of base $${base}`
@@ -195,8 +188,8 @@ async function handleCheckoutSessionCompleted(
       amount: parseFloat((base * 0.5).toFixed(2)),
       currency: 'USD',
       lead_id: proposal.lead_id,
-      proposal_id: proposalId,
-      payment_id: payment.id,
+      proposal_id: activation.proposal_id,
+      payment_id: activation.payment_id,
       idempotency_key: `stripe:${session.id}:earning:noon`,
       notes: `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation - 50% of base $${base}`,
     })
@@ -219,15 +212,15 @@ async function handleCheckoutSessionCompleted(
         currency: row.currency,
         entryType: 'earnings_distribution',
         balanceBucket: 'pending',
-        referenceType: 'payment',
-        referenceId: payment.id,
-        metadata: {
-          earningType: 'activation',
-          actorRole: row.actor_role,
-          channel: leadOrigin ?? 'unknown',
-          notes: row.notes,
-          paymentId: payment.id,
-        },
+          referenceType: 'payment',
+          referenceId: activation.payment_id,
+          metadata: {
+            earningType: 'activation',
+            actorRole: row.actor_role,
+            channel: leadOrigin ?? 'unknown',
+            notes: row.notes,
+            paymentId: activation.payment_id,
+          },
         idempotencyKey: `stripe:${session.id}:wallet:${row.actor_role}:${row.actor_id}`,
         createdAt: creditedAt,
       })
@@ -240,7 +233,7 @@ async function handleCheckoutSessionCompleted(
       actor_id: sellerId,
       event_type: 'payment_received',
       points: 50,
-      reference_id: payment.id,
+      reference_id: activation.payment_id,
       idempotency_key: `stripe:${session.id}:points:payment_received:${sellerId}`,
       notes: `Pago confirmado - $${activationAmount} USD`,
     }, { onConflict: 'idempotency_key', ignoreDuplicates: true })
@@ -266,31 +259,14 @@ async function handleTransferPaid(
   client: SupabaseAdminClient,
   transfer: Stripe.Transfer,
 ) {
-  await client
-    .from('payouts' as never)
-    .update({ status: 'completed', updated_at: new Date().toISOString() } as never)
-    .eq('external_reference', transfer.id)
+  const payoutId = transfer.metadata?.noon_payout_id ?? null
+  const { error } = await client.rpc('complete_wallet_payout', {
+    p_external_reference: transfer.id,
+    p_payout_id: payoutId,
+  })
 
-  // Also mark payout_batch as completed if all payouts in batch are done
-  const { data: payout } = await client
-    .from('payouts' as never)
-    .select('batch_id')
-    .eq('external_reference', transfer.id)
-    .maybeSingle() as { data: { batch_id: string } | null }
-
-  if (payout?.batch_id) {
-    const { data: pending } = await client
-      .from('payouts' as never)
-      .select('id')
-      .eq('batch_id', payout.batch_id)
-      .neq('status', 'completed') as { data: { id: string }[] | null }
-
-    if (!pending || pending.length === 0) {
-      await client
-        .from('payout_batches' as never)
-        .update({ status: 'completed', updated_at: new Date().toISOString() } as never)
-        .eq('id', payout.batch_id)
-    }
+  if (error) {
+    throw new Error(`Failed to complete payout: ${error.message}`)
   }
 }
 
@@ -298,34 +274,15 @@ async function handleTransferReversed(
   client: SupabaseAdminClient,
   transfer: Stripe.Transfer,
 ) {
-  const now = new Date().toISOString()
-
-  const { data: payoutRow } = await client
-    .from('payouts' as never)
-    .select('id, profile_id, amount, currency, batch_id')
-    .eq('external_reference', transfer.id)
-    .maybeSingle() as { data: { id: string; profile_id: string; amount: number; currency: string; batch_id: string } | null }
-
-  if (!payoutRow) return
-
-  await client
-    .from('payouts' as never)
-    .update({ status: 'failed', updated_at: now } as never)
-    .eq('id', payoutRow.id)
-
-  await creditWalletBucket(client, {
-    profileId: payoutRow.profile_id,
-    amount: payoutRow.amount,
-    currency: payoutRow.currency,
-    entryType: 'manual_adjustment',
-    balanceBucket: 'available_to_withdraw',
-    referenceType: 'payout',
-    referenceId: payoutRow.id,
-    metadata: { reason: 'payout_reversal', transferId: transfer.id },
-    idempotencyKey: `stripe:${transfer.id}:wallet:payout_reversal:${payoutRow.profile_id}`,
-    createdAt: now,
+  const payoutId = transfer.metadata?.noon_payout_id ?? null
+  const { error } = await client.rpc('reverse_wallet_payout_by_transfer', {
+    p_external_reference: transfer.id,
+    p_payout_id: payoutId,
   })
 
+  if (error) {
+    throw new Error(`Failed to reverse payout: ${error.message}`)
+  }
 }
 
 async function handlePaymentIntentFailed(

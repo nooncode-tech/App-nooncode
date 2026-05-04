@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  CreditCard,
   MessageSquare,
   Send,
   Sparkles,
@@ -55,7 +54,6 @@ export default function ClientPortalPage() {
   const [project, setProject] = useState<ClientProject | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [paying, setPaying] = useState(false)
 
   const [comments, setComments] = useState<Comment[]>([])
   const [commentBody, setCommentBody] = useState('')
@@ -84,34 +82,6 @@ export default function ClientPortalPage() {
       .catch(() => setError('Error de red'))
       .finally(() => setLoading(false))
   }, [loadComments, token])
-
-  const handlePay = async () => {
-    if (!project?.proposal_id) return
-    setPaying(true)
-    try {
-      const res = await fetch('/api/payments/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proposalId: project.proposal_id,
-          leadId: project.lead_id,
-          projectId: project.project_id,
-          clientName: project.client_name ?? 'Cliente',
-          clientEmail: project.client_email,
-        }),
-      })
-      const json = await res.json()
-      if (json.data?.url) {
-        window.location.assign(json.data.url)
-      } else {
-        setError(json.error ?? 'No se pudo iniciar el pago')
-      }
-    } catch {
-      setError('Error al iniciar el pago')
-    } finally {
-      setPaying(false)
-    }
-  }
 
   const handleSendComment = async () => {
     if (!commentBody.trim() || sending) return
@@ -157,7 +127,6 @@ export default function ClientPortalPage() {
 
   const statusInfo = statusConfig[project.project_status] ?? { label: project.project_status, color: 'bg-muted text-muted-foreground' }
   const isPaid = project.payment_status === 'succeeded' || project.payment_activated
-  const canPay = !isPaid && !!project.proposal_id && project.proposal_amount && project.proposal_amount > 0
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center px-4 py-8 gap-6 max-w-lg mx-auto">
@@ -203,12 +172,6 @@ export default function ClientPortalPage() {
                   </span>
                 )}
               </div>
-              {canPay && (
-                <Button className="w-full" onClick={handlePay} disabled={paying}>
-                  {paying ? <Loader2 className="size-4 mr-2 animate-spin" /> : <CreditCard className="size-4 mr-2" />}
-                  Pagar ahora
-                </Button>
-              )}
             </div>
           )}
 
@@ -223,7 +186,7 @@ export default function ClientPortalPage() {
       </Card>
 
       {/* Latest Update */}
-      {project.latest_update_text && (
+      {isPaid && project.latest_update_text && (
         <Card className="w-full border-primary/20 bg-primary/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -251,6 +214,7 @@ export default function ClientPortalPage() {
       )}
 
       {/* Comments */}
+      {isPaid ? (
       <Card className="w-full">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -300,6 +264,13 @@ export default function ClientPortalPage() {
           </p>
         </CardContent>
       </Card>
+      ) : (
+        <Card className="w-full">
+          <CardContent className="py-6 text-sm text-muted-foreground">
+            Este workspace se activa cuando Noon confirma el pago del proyecto.
+          </CardContent>
+        </Card>
+      )}
 
       <p className="text-xs text-muted-foreground text-center">
         Este es tu espacio privado de seguimiento con Noon.

@@ -67,6 +67,11 @@ import {
   ShieldCheck,
   ShieldX,
   Timer,
+  ExternalLink,
+  Volume2,
+  Square,
+  ThumbsUp,
+  Flag,
 } from 'lucide-react'
 
 interface LeadDetailProps {
@@ -91,6 +96,7 @@ const sourceLabels: Record<string, string> = {
   social: 'Redes Sociales',
   event: 'Evento',
   other: 'Otro',
+  maxwell: 'Maxwell',
 }
 
 const leadFieldLabels: Record<string, string> = {
@@ -131,6 +137,14 @@ const reviewStatusConfig: Record<ProposalReviewStatus, { label: string; color: s
   expired:        { label: 'Expirada',           color: 'bg-slate-500/10 text-slate-500' },
   cancelled:      { label: 'Cancelada',          color: 'bg-slate-500/10 text-slate-500' },
 }
+
+const speechVariantLabels = {
+  inPerson: 'Presencial',
+  phoneCall: 'Llamada',
+  whatsapp: 'WhatsApp',
+} as const
+
+type SpeechVariant = keyof typeof speechVariantLabels
 
 function getVigenciaLabel(expiresAt: Date | undefined, firstOpenedAt: Date | undefined): string | null {
   if (!firstOpenedAt || !expiresAt) return null
@@ -366,8 +380,12 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const [isMutatingAssignment, setIsMutatingAssignment] = useState(false)
   const [creatingProjectProposalId, setCreatingProjectProposalId] = useState<string | null>(null)
   const [checkoutLoadingProposalId, setCheckoutLoadingProposalId] = useState<string | null>(null)
+  const [checkoutLinksByProposalId, setCheckoutLinksByProposalId] = useState<Record<string, string>>({})
   const [prototypeRefreshKey, setPrototypeRefreshKey] = useState(0)
   const [activeTab, setActiveTab] = useState('activity')
+  const [speechVariant, setSpeechVariant] = useState<SpeechVariant>('inPerson')
+  const [isSpeechPlaying, setIsSpeechPlaying] = useState(false)
+  const [isSavingMaxwellFeedback, setIsSavingMaxwellFeedback] = useState(false)
   const [followUpInput, setFollowUpInput] = useState(toDateTimeLocalValue(lead.nextFollowUpAt))
   const [proposalForm, setProposalForm] = useState({
     title: buildDefaultProposalTitle(lead),
@@ -376,7 +394,7 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   })
   const isSupabaseMode = authMode === 'supabase'
   const hasValidEmail = isValidLeadEmail(lead.email)
-  const gmailComposeUrl = hasValidEmail ? buildGmailComposeUrl(lead.email) : null
+  const gmailComposeUrl = hasValidEmail && lead.email ? buildGmailComposeUrl(lead.email) : null
   const phoneCallUrl = lead.phone?.trim() ? buildPhoneCallUrl(lead.phone) : null
   const whatsAppContact = (lead.whatsapp?.trim() || lead.phone?.trim()) ?? null
   const whatsAppUrl = whatsAppContact ? buildWhatsAppUrl(whatsAppContact) : null
@@ -399,6 +417,8 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
     user?.role === 'sales' &&
     lead.assignmentStatus === 'released_no_response' &&
     lead.assignedTo !== user.id
+  const maxwellSnapshot = lead.maxwellSnapshot
+  const currentSpeech = maxwellSnapshot?.salesSpeech[speechVariant] ?? ''
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-emerald-700 bg-emerald-500/10'
@@ -465,11 +485,76 @@ Total: 8 semanas
   }
 
   const handleOpenGmail = () => {
-    if (!hasValidEmail) {
+    if (!hasValidEmail || !lead.email) {
       return
     }
 
     window.open(buildGmailComposeUrl(lead.email), '_blank', 'noopener,noreferrer')
+  }
+
+  const handleCopyText = async (text: string, successMessage = 'Copiado al portapapeles') => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success(successMessage)
+    } catch {
+      toast.error('No se pudo copiar el texto')
+    }
+  }
+
+  const handlePlaySpeech = () => {
+    if (!currentSpeech.trim()) {
+      return
+    }
+
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      toast.info('La reproduccion de voz no esta disponible en este navegador.')
+      return
+    }
+
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(currentSpeech)
+    utterance.lang = maxwellSnapshot?.salesSpeech.language ?? navigator.language ?? 'es-MX'
+    utterance.onend = () => setIsSpeechPlaying(false)
+    utterance.onerror = () => setIsSpeechPlaying(false)
+    setIsSpeechPlaying(true)
+    window.speechSynthesis.speak(utterance)
+  }
+
+  const handleStopSpeech = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+    }
+    setIsSpeechPlaying(false)
+  }
+
+  const handleMaxwellFeedback = async (
+    rating: 'good' | 'bad' | 'duplicate' | 'not_relevant',
+    note?: string
+  ) => {
+    setIsSavingMaxwellFeedback(true)
+
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/maxwell-feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating, note }),
+      })
+      const json = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          json && typeof json.error === 'string'
+            ? json.error
+            : 'No se pudo registrar el feedback.'
+        )
+      }
+
+      toast.success('Feedback de Maxwell registrado')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo registrar el feedback.')
+    } finally {
+      setIsSavingMaxwellFeedback(false)
+    }
   }
 
   useEffect(() => {
@@ -546,6 +631,14 @@ Total: 8 semanas
     setIsGenerating(false)
     setGeneratedContent('')
   }, [isSupabaseMode, lead.id])
+
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [lead.id])
 
   const handleSaveNote = async () => {
     const trimmedNote = noteText.trim()
@@ -707,30 +800,6 @@ Total: 8 semanas
     }
   }
 
-  const handleStartPayment = async (proposal: LeadProposal) => {
-    try {
-      const res = await fetch('/api/payments/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proposalId: proposal.id,
-          leadId: lead.id,
-          projectId: proposal.linkedProject?.id ?? null,
-          clientName: lead.name,
-          clientEmail: lead.email || null,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        toast.error(json.error ?? 'No se pudo iniciar el pago')
-        return
-      }
-      window.location.assign(json.data.url)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error al iniciar el pago')
-    }
-  }
-
   const handleReleaseLead = async () => {
     setIsMutatingAssignment(true)
 
@@ -778,16 +847,11 @@ Total: 8 semanas
     setCheckoutLoadingProposalId(proposal.id)
 
     try {
-      const linkedProject = proposal.linkedProject ?? null
       const response = await fetch('/api/payments/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           proposalId: proposal.id,
-          leadId: lead.id,
-          projectId: linkedProject?.id ?? null,
-          clientName: lead.company || lead.name,
-          clientEmail: lead.email || null,
         }),
       })
 
@@ -797,9 +861,25 @@ Total: 8 semanas
         throw new Error(json.error ?? 'No se pudo crear la sesion de pago')
       }
 
-      window.location.href = json.data.url
+      const checkoutUrl = json.data?.url as string | undefined
+      if (!checkoutUrl) {
+        throw new Error('La sesion de pago no regreso un link.')
+      }
+
+      setCheckoutLinksByProposalId((current) => ({
+        ...current,
+        [proposal.id]: checkoutUrl,
+      }))
+
+      try {
+        await navigator.clipboard.writeText(checkoutUrl)
+        toast.success('Link de pago copiado al portapapeles')
+      } catch {
+        toast.success('Link de pago creado')
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error al iniciar el pago')
+    } finally {
       setCheckoutLoadingProposalId(null)
     }
   }
@@ -929,21 +1009,23 @@ Total: 8 semanas
 
       {/* Contact Info */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="flex items-center gap-2 text-sm">
-          <Mail className="size-4 text-muted-foreground" />
-          {gmailComposeUrl ? (
-            <a
-              href={gmailComposeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              {lead.email}
-            </a>
-          ) : (
-            <span>{lead.email}</span>
-          )}
-        </div>
+        {lead.email && (
+          <div className="flex items-center gap-2 text-sm">
+            <Mail className="size-4 text-muted-foreground" />
+            {gmailComposeUrl ? (
+              <a
+                href={gmailComposeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                {lead.email}
+              </a>
+            ) : (
+              <span>{lead.email}</span>
+            )}
+          </div>
+        )}
         {lead.phone && (
           <div className="flex items-center gap-2 text-sm">
             <Phone className="size-4 text-muted-foreground" />
@@ -1012,11 +1094,179 @@ Total: 8 semanas
       {/* Actions Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full">
+          {maxwellSnapshot && (
+            <TabsTrigger value="maxwell" className="flex-1">Maxwell</TabsTrigger>
+          )}
           <TabsTrigger value="activity" className="flex-1">Seguimiento</TabsTrigger>
           <TabsTrigger value="proposal" className="flex-1">Propuesta</TabsTrigger>
           <TabsTrigger value="status" className="flex-1">Estado</TabsTrigger>
           <TabsTrigger value="ai" className="flex-1">IA Asistente</TabsTrigger>
         </TabsList>
+
+        {maxwellSnapshot && (
+          <TabsContent value="maxwell" className="space-y-4 pt-4">
+            <Card className="gap-4 py-4">
+              <CardHeader className="px-4">
+                <CardTitle className="text-base">Auditoria Maxwell</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 space-y-4">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-md border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Industria</p>
+                    <p className="text-sm font-medium">{maxwellSnapshot.business.industry}</p>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Prioridad</p>
+                    <p className="text-sm font-medium">
+                      {maxwellSnapshot.scoring.priority === 'high' ? 'Alta prioridad' : 'Oportunidad valida'}
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Confianza</p>
+                    <p className="text-sm font-medium capitalize">{maxwellSnapshot.confidence}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Dolor principal</p>
+                  <p className="text-sm text-muted-foreground">{maxwellSnapshot.audit.mainPain}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Evidencia y posible impacto</p>
+                  <div className="space-y-2">
+                    {maxwellSnapshot.audit.pains.map((pain) => (
+                      <div key={`${pain.title}-${pain.evidence}`} className="rounded-md border p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-medium">{pain.title}</p>
+                          <Badge variant="outline" className="capitalize">
+                            {pain.confidence}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">{pain.evidence}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{pain.impact}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-md border p-3">
+                    <p className="text-sm font-medium">Oportunidad Noon</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {maxwellSnapshot.opportunity.noonOpportunity}
+                    </p>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <p className="text-sm font-medium">Idea de prototipo</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {maxwellSnapshot.opportunity.prototypeIdea}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border p-3">
+                  <p className="text-sm font-medium">Objeciones probables</p>
+                  <div className="mt-2 space-y-2">
+                    {maxwellSnapshot.objections.map((item) => (
+                      <div key={`${item.objection}-${item.response}`}>
+                        <p className="text-sm">{item.objection}</p>
+                        <p className="text-xs text-muted-foreground">{item.response}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="gap-4 py-4">
+              <CardHeader className="px-4">
+                <CardTitle className="text-base">Speech sugerido</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(speechVariantLabels) as SpeechVariant[]).map((variant) => (
+                    <Button
+                      key={variant}
+                      type="button"
+                      size="sm"
+                      variant={speechVariant === variant ? 'default' : 'outline'}
+                      onClick={() => {
+                        handleStopSpeech()
+                        setSpeechVariant(variant)
+                      }}
+                    >
+                      {speechVariantLabels[variant]}
+                    </Button>
+                  ))}
+                </div>
+
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{currentSpeech}</p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={handlePlaySpeech}>
+                    <Volume2 className="size-4 mr-2" />
+                    Reproducir
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleStopSpeech}
+                    disabled={!isSpeechPlaying}
+                  >
+                    <Square className="size-4 mr-2" />
+                    Detener
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleCopyText(currentSpeech, 'Speech copiado')}
+                  >
+                    <Copy className="size-4 mr-2" />
+                    Copiar
+                  </Button>
+                </div>
+
+                <Separator />
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-muted-foreground">Calificar calidad del lead:</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isSavingMaxwellFeedback}
+                    onClick={() => void handleMaxwellFeedback('good')}
+                  >
+                    <ThumbsUp className="size-3.5 mr-1.5" />
+                    Bueno
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isSavingMaxwellFeedback}
+                    onClick={() => void handleMaxwellFeedback('duplicate', 'Marcado como posible duplicado desde Detalles.')}
+                  >
+                    <Flag className="size-3.5 mr-1.5" />
+                    Duplicado
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isSavingMaxwellFeedback}
+                    onClick={() => void handleMaxwellFeedback('bad', 'Lead reportado como baja calidad.')}
+                  >
+                    Mala calidad
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="activity" className="space-y-4 pt-4">
           <Card className="gap-4 py-4">
@@ -1397,23 +1647,6 @@ Total: 8 semanas
                       </div>
                     )}
 
-                    {/* Botón de pago */}
-                    {isSupabaseMode &&
-                      proposal.reviewStatus === 'approved' &&
-                      ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
-                      proposal.paymentStatus !== 'succeeded' && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="default"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => handleStartPayment(proposal)}
-                      >
-                        <CreditCard className="size-3.5 mr-1.5" />
-                        Pagar propuesta
-                      </Button>
-                    )}
-
                     {/* Revisión admin/pm */}
                     {isReviewable && (
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1483,7 +1716,7 @@ Total: 8 semanas
                       </Select>
                     </div>
 
-                    {proposal.status === 'handoff_ready' && (
+                    {proposal.status === 'handoff_ready' && proposal.paymentStatus === 'succeeded' && (
                       <Button
                         type="button"
                         variant={proposal.linkedProject ? 'secondary' : 'default'}
@@ -1503,7 +1736,16 @@ Total: 8 semanas
                       </Button>
                     )}
 
-                    {isSupabaseMode && ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) && (
+                    {proposal.status === 'handoff_ready' && proposal.paymentStatus !== 'succeeded' && (
+                      <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                        El proyecto se activa automaticamente cuando Stripe confirma el pago.
+                      </div>
+                    )}
+
+                    {isSupabaseMode &&
+                      proposal.reviewStatus === 'approved' &&
+                      ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
+                      proposal.paymentStatus !== 'succeeded' && (
                       <Button
                         type="button"
                         variant="outline"
@@ -1518,7 +1760,19 @@ Total: 8 semanas
                         ) : (
                           <CreditCard className="size-4 mr-2" />
                         )}
-                        Cobrar propuesta
+                        Crear/copiar link de pago
+                      </Button>
+                    )}
+                    {checkoutLinksByProposalId[proposal.id] && (
+                      <Button asChild type="button" variant="ghost" size="sm">
+                        <a
+                          href={checkoutLinksByProposalId[proposal.id]}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <ExternalLink className="size-3.5 mr-1.5" />
+                          Abrir link
+                        </a>
                       </Button>
                     )}
                   </div>

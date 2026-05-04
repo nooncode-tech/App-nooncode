@@ -47,12 +47,13 @@ async function seedPhase2ALeads() {
   for (const mockLead of mockLeads) {
     const assignedProfile =
       (mockLead.assignedTo ? profilesByLegacyId.get(mockLead.assignedTo) : null) ?? fallbackOwner
+    const email = mockLead.email ?? `${mockLead.id}@example.invalid`
 
     const { error } = await admin.from('leads').upsert(
       {
         legacy_mock_id: mockLead.id,
         name: mockLead.name,
-        email: mockLead.email.toLowerCase(),
+        email: email.toLowerCase(),
         phone: mockLead.phone ?? null,
         company: mockLead.company ?? null,
         source: mockLead.source,
@@ -72,7 +73,7 @@ async function seedPhase2ALeads() {
 
     if (error) {
       throw new Error(
-        `Failed to upsert lead ${mockLead.email.toLowerCase()}: ${error.message}`
+        `Failed to upsert lead ${email.toLowerCase()}: ${error.message}`
       )
     }
   }

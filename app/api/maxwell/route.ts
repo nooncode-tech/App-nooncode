@@ -11,10 +11,15 @@ import {
 import { buildMaxwellSystemPrompt } from '@/lib/maxwell/system-prompt'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
+import { requireRole } from '@/lib/server/auth/guards'
+import { getLeadById } from '@/lib/server/leads/repository'
+import { assertSalesLeadOwnership } from '@/lib/server/leads/permissions'
+import { toErrorResponse } from '@/lib/server/api/errors'
 
 export const maxDuration = 60
 
 export async function POST(req: Request) {
+  try {
   const {
     messages,
     leadId,
@@ -27,11 +32,15 @@ export async function POST(req: Request) {
     channel?: string
   } = await req.json()
 
-  // Auth check
   const serverClient = await createSupabaseServerClient()
-  const { data: { user } } = await serverClient.auth.getUser()
-  if (!user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+  const principal = await requireRole(['admin', 'sales_manager', 'sales', 'pm'])
+
+  if (leadId) {
+    const lead = await getLeadById(serverClient, leadId)
+    if (!lead) {
+      return new Response(JSON.stringify({ error: 'Lead not found' }), { status: 404 })
+    }
+    assertSalesLeadOwnership(principal, lead)
   }
 
   const systemPrompt = buildMaxwellSystemPrompt({ leadId, leadName, channel })
@@ -41,14 +50,20 @@ export async function POST(req: Request) {
         create_proposal: dynamicTool({
           description: 'Crea y guarda una propuesta comercial en el sistema para el lead actual',
           inputSchema: z.object({
-            title: z.string().describe('Título descriptivo de la propuesta'),
-            body: z.string().describe('Texto completo de la propuesta en markdown'),
-            amount: z.number().describe('Precio de activación en USD'),
-            currency: z.string().optional(),
+            title: z.string().trim().min(1).max(160).describe('Titulo descriptivo de la propuesta'),
+            body: z.string().trim().min(1).max(12000).describe('Texto completo de la propuesta en markdown'),
+            amount: z.number().positive().describe('Precio de activacion en USD'),
+            currency: z.string().trim().min(3).max(8).optional(),
           }),
           execute: async (input) => {
-            const { title, body, amount, currency: cur } = input as { title: string; body: string; amount: number; currency?: string }
-            const currency = cur ?? 'USD'
+            const {
+              title,
+              body,
+              amount,
+              currency: cur,
+            } = input as { title: string; body: string; amount: number; currency?: string }
+            const currency = (cur ?? 'USD').toUpperCase()
+
             try {
               const adminClient = await createSupabaseAdminClient()
 
@@ -56,7 +71,7 @@ export async function POST(req: Request) {
                 .from('lead_proposals')
                 .insert({
                   lead_id: leadId,
-                  created_by: user.id,
+                  created_by: principal.userId,
                   title,
                   body,
                   amount,
@@ -73,7 +88,6 @@ export async function POST(req: Request) {
                 return { success: false, error: 'No se pudo guardar la propuesta' }
               }
 
-              // Notify admin/pm
               const { data: admins } = await adminClient
                 .from('user_profiles' as never)
                 .select('id')
@@ -85,7 +99,7 @@ export async function POST(req: Request) {
                   admins.map((a: { id: string }) => ({
                     profile_id: a.id,
                     title: 'Nueva propuesta generada por Maxwell',
-                    body: `"${title}" — pendiente de revisión`,
+                    body: `"${title}" - pendiente de revision`,
                     source_kind: 'proposal_review',
                     source_id: proposal.id,
                   })) as never
@@ -114,4 +128,7 @@ export async function POST(req: Request) {
     originalMessages: messages,
     consumeSseStream: consumeStream,
   })
+  } catch (error) {
+    return toErrorResponse(error)
+  }
 }

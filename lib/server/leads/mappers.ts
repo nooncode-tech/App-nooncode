@@ -25,6 +25,19 @@ export function mapLeadRowToWire(row: LeadRowWithProfiles): LeadWire {
     latitude: row.latitude,
     longitude: row.longitude,
     leadOrigin: row.lead_origin,
+    publicationStatus: row.publication_status,
+    maxwellSnapshot:
+      row.maxwell_snapshot &&
+      typeof row.maxwell_snapshot === 'object' &&
+      !Array.isArray(row.maxwell_snapshot) &&
+      Object.keys(row.maxwell_snapshot).length > 0
+        ? row.maxwell_snapshot as unknown as LeadWire['maxwellSnapshot']
+        : null,
+    maxwellSearchRunId: row.maxwell_search_run_id,
+    maxwellExpiresAt: row.maxwell_expires_at,
+    maxwellLastRefreshedAt: row.maxwell_last_refreshed_at,
+    maxwellDedupeKey: row.maxwell_dedupe_key,
+    maxwellConfidence: row.maxwell_confidence as LeadWire['maxwellConfidence'],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastContactedAt: row.last_contacted_at,

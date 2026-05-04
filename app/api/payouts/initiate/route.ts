@@ -12,12 +12,11 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    await requireRole(['admin'])
+    const principal = await requireRole(['admin'])
     const { profileId, notes } = bodySchema.parse(await request.json())
 
     const client = await createSupabaseAdminClient()
 
-    // Get profile + connect account
     const { data: profile } = await client
       .from('user_profiles' as never)
       .select('id, full_name, email, stripe_connect_account_id, stripe_connect_status')
@@ -42,87 +41,67 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get available_to_withdraw balance
-    const { data: wallet } = await client
-      .from('wallet_accounts' as never)
-      .select('available_to_withdraw, currency')
-      .eq('profile_id', profileId)
-      .maybeSingle() as { data: { available_to_withdraw: number; currency: string } | null }
+    const { data: reservedRows, error: reserveError } = await client.rpc('reserve_wallet_payout', {
+      p_profile_id: profileId,
+      p_actor_profile_id: principal.userId,
+      p_notes: notes ?? null,
+    })
 
-    const amount = Number(wallet?.available_to_withdraw ?? 0)
-    if (amount <= 0) {
-      return NextResponse.json({ error: 'No balance available to withdraw' }, { status: 422 })
+    if (reserveError) {
+      if (reserveError.message.includes('NO_BALANCE_AVAILABLE')) {
+        return NextResponse.json({ error: 'No balance available to withdraw' }, { status: 422 })
+      }
+      throw new Error(`Failed to reserve payout: ${reserveError.message}`)
     }
 
-    const currency = wallet?.currency ?? 'USD'
+    const reserved = Array.isArray(reservedRows) ? reservedRows[0] : reservedRows
+    if (!reserved) {
+      throw new Error('Payout reservation did not return a result')
+    }
+
+    const amount = Number(reserved.amount)
+    const currency = reserved.currency ?? 'USD'
     const amountCents = Math.round(amount * 100)
-    const now = new Date().toISOString()
-    const periodStart = new Date(now)
-    periodStart.setDate(1)
 
-    // Create payout batch
-    const { data: batch, error: batchError } = await client
-      .from('payout_batches' as never)
-      .insert({
-        period_start: periodStart.toISOString().slice(0, 10),
-        period_end: now.slice(0, 10),
-        status: 'processing',
-        total_amount: amount,
+    let transferId: string
+    try {
+      transferId = await createTransfer(
+        profile.stripe_connect_account_id,
+        amountCents,
         currency,
-        notes: notes ?? null,
-      } as never)
-      .select('id')
-      .single() as { data: { id: string } | null; error: unknown }
+        {
+          noon_profile_id: profileId,
+          noon_batch_id: reserved.batch_id,
+          noon_payout_id: reserved.payout_id,
+        },
+        `payout:${reserved.payout_id}`,
+      )
+    } catch (error) {
+      await client.rpc('release_wallet_payout', {
+        p_payout_id: reserved.payout_id,
+        p_reason: 'stripe_transfer_failed',
+      })
+      throw error
+    }
 
-    if (batchError || !batch) throw new Error('Failed to create payout batch')
+    const { error: attachError } = await client.rpc('attach_payout_transfer', {
+      p_payout_id: reserved.payout_id,
+      p_external_reference: transferId,
+    })
 
-    // Create Stripe Transfer
-    const transferId = await createTransfer(
-      profile.stripe_connect_account_id,
-      amountCents,
-      currency,
-      { noon_profile_id: profileId, noon_batch_id: batch.id },
-    )
+    if (attachError) {
+      throw new Error(`Failed to attach payout transfer: ${attachError.message}`)
+    }
 
-    // Record payout
-    const { data: payout, error: payoutError } = await client
-      .from('payouts' as never)
-      .insert({
-        batch_id: batch.id,
-        profile_id: profileId,
+    return NextResponse.json({
+      data: {
+        payoutId: reserved.payout_id,
+        batchId: reserved.batch_id,
+        transferId,
         amount,
         currency,
-        status: 'processing',
-        external_reference: transferId,
-        metadata: { notes: notes ?? null },
-      } as never)
-      .select('id')
-      .single() as { data: { id: string } | null; error: unknown }
-
-    if (payoutError || !payout) throw new Error('Failed to record payout')
-
-    // Debit wallet — set available_to_withdraw to 0
-    await client
-      .from('wallet_accounts' as never)
-      .update({ available_to_withdraw: 0, updated_at: now } as never)
-      .eq('profile_id', profileId)
-
-    // Ledger entry for the payout
-    await client.from('wallet_ledger_entries' as never).insert({
-      profile_id: profileId,
-      amount: -amount,
-      currency,
-      entry_type: 'payout',
-      balance_bucket: 'available_to_withdraw',
-      status: 'confirmed',
-      reference_type: 'payout',
-      reference_id: payout.id,
-      actor_profile_id: null,
-      metadata: { transferId, batchId: batch.id, notes: notes ?? null },
-      created_at: now,
-    } as never)
-
-    return NextResponse.json({ data: { payoutId: payout.id, transferId, amount, currency } })
+      },
+    })
   } catch (err) {
     return toErrorResponse(err)
   }

@@ -62,6 +62,7 @@ export async function createTransfer(
   amountCents: number,
   currency: string,
   metadata: Record<string, string>,
+  idempotencyKey?: string,
 ): Promise<string> {
   const stripe = getStripeClient()
   const transfer = await stripe.transfers.create({
@@ -69,6 +70,6 @@ export async function createTransfer(
     currency: currency.toLowerCase(),
     destination: destinationAccountId,
     metadata,
-  })
+  }, idempotencyKey ? { idempotencyKey } : undefined)
   return transfer.id
 }

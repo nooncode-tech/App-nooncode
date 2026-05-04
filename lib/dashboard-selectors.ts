@@ -225,11 +225,11 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
 }
 
 export function getRadiusKmForWonLeads(wonCount: number): number | null {
-  if (wonCount <= 2) return 10
-  if (wonCount <= 7) return 25
-  if (wonCount <= 15) return 50
-  if (wonCount <= 30) return 100
-  return null
+  if (wonCount <= 2) return 5
+  if (wonCount <= 7) return 10
+  if (wonCount <= 15) return 20
+  if (wonCount <= 30) return 35
+  return 50
 }
 
 export const leadStatusLabels: Record<Lead['status'], string> = {
@@ -349,6 +349,7 @@ const reportsSourceLabels: Record<string, string> = {
   cold_outreach: 'Contacto Frio',
   event: 'Eventos',
   other: 'Otros',
+  maxwell: 'Maxwell',
 }
 
 const reportsProjectStatusLabels: Record<string, string> = {
@@ -482,10 +483,13 @@ export function selectLeadList(leads: Lead[], options: LeadListOptions): Lead[] 
 
   return leads
     .filter((lead) => {
-      const matchesSearch =
+      const matchesSearch = Boolean(
         lead.name.toLowerCase().includes(normalizedSearchQuery) ||
         lead.company?.toLowerCase().includes(normalizedSearchQuery) ||
-        lead.email.toLowerCase().includes(normalizedSearchQuery)
+        lead.email?.toLowerCase().includes(normalizedSearchQuery) ||
+        lead.maxwellSnapshot?.audit.mainPain.toLowerCase().includes(normalizedSearchQuery) ||
+        lead.maxwellSnapshot?.opportunity.noonOpportunity.toLowerCase().includes(normalizedSearchQuery)
+      )
       const matchesStatus =
         options.statusFilter === 'all' || lead.status === options.statusFilter
 

@@ -6,6 +6,7 @@ import {
   getProposalReviewDecisionWebhookUrl,
   signWebsitePayload,
 } from '@/lib/server/website-webhook-auth'
+import { activatePaidProposal } from '@/lib/server/payments/activation'
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>
 
@@ -391,7 +392,7 @@ async function createPaymentRecordIfMissing(
   client: SupabaseAdminClient,
   input: {
     proposalId: string
-    projectId: string
+    projectId?: string | null
     amount: number
     currency: string
     paidAt: string
@@ -416,7 +417,7 @@ async function createPaymentRecordIfMissing(
   const { data: payment, error } = await table(client, 'payments')
     .insert({
       proposal_id: input.proposalId,
-      project_id: input.projectId,
+      project_id: input.projectId ?? null,
       payment_type: 'full_project',
       amount: input.amount,
       currency: normalizeCurrency(input.currency),
@@ -440,21 +441,16 @@ async function createPaymentRecordIfMissing(
   return payment.id as string
 }
 
-async function ensureProjectForPaidInboundProposal(
+async function getApprovedInboundProposalForPayment(
   client: SupabaseAdminClient,
-  link: WebsiteInboundLinkRow,
-  payload: WebsitePaymentConfirmedPayload
+  proposalId: string
 ) {
-  if (link.project_id) {
-    return link.project_id
-  }
-
-  const { data: proposal, error: proposalError } = await table(client, 'lead_proposals')
+  const { data: proposal, error } = await table(client, 'lead_proposals')
     .select('id, title, body, amount, currency, lead_id, review_status')
-    .eq('id', link.proposal_id)
+    .eq('id', proposalId)
     .single()
 
-  if (proposalError || !proposal) {
+  if (error || !proposal) {
     throw new NotFoundApiError('Inbound proposal was not found.', 'INBOUND_PROPOSAL_NOT_FOUND')
   }
 
@@ -465,56 +461,15 @@ async function ensureProjectForPaidInboundProposal(
     )
   }
 
-  const { data: existingProject, error: existingProjectError } = await table(client, 'projects')
-    .select('id')
-    .eq('source_proposal_id', link.proposal_id)
-    .maybeSingle()
-
-  if (existingProjectError) {
-    throw new ApiError('INBOUND_PROJECT_LOOKUP_FAILED', existingProjectError.message, 500)
+  return proposal as {
+    id: string
+    title: string
+    body: string | null
+    amount: number
+    currency: string
+    lead_id: string
+    review_status: string
   }
-
-  if (existingProject?.id) {
-    return existingProject.id as string
-  }
-
-  const { data: lead, error: leadError } = await table(client, 'leads')
-    .select('id, name, company')
-    .eq('id', link.lead_id)
-    .single()
-
-  if (leadError || !lead) {
-    throw new NotFoundApiError('Inbound lead was not found.', 'INBOUND_LEAD_NOT_FOUND')
-  }
-
-  const actorId = await resolveIntegrationActorId(client)
-  const paidAt = payload.payment?.paid_at ?? new Date().toISOString()
-  const amount = payload.payment?.amount ?? payload.proposal?.amount ?? proposal.amount
-
-  const { data: project, error: projectError } = await table(client, 'projects')
-    .insert({
-      source_lead_id: link.lead_id,
-      source_proposal_id: link.proposal_id,
-      created_by: actorId,
-      name: payload.proposal?.title ?? proposal.title,
-      description: buildProjectDescription(payload, proposal),
-      client_name: payload.customer?.company ?? payload.customer?.name ?? lead.company ?? lead.name,
-      status: 'backlog',
-      budget: amount,
-      team_legacy_user_ids: [],
-      pm_legacy_user_id: null,
-      handoff_ready_at: paidAt,
-      payment_activated: true,
-      payment_activated_at: paidAt,
-    })
-    .select('id')
-    .single()
-
-  if (projectError || !project?.id) {
-    throw new ApiError('INBOUND_PROJECT_CREATE_FAILED', projectError?.message ?? 'Project was not created.', 500)
-  }
-
-  return project.id as string
 }
 
 export async function receiveWebsitePaymentConfirmed(payload: WebsitePaymentConfirmedPayload) {
@@ -555,20 +510,11 @@ export async function receiveWebsitePaymentConfirmed(payload: WebsitePaymentConf
     throw new ConflictApiError('Inbound proposal already has a different payment id.')
   }
 
-  const projectId = await ensureProjectForPaidInboundProposal(client, link, payload)
+  const proposalForPayment = await getApprovedInboundProposalForPayment(client, link.proposal_id)
   const paidAt = payload.payment?.paid_at ?? new Date().toISOString()
-  const { data: proposalForPayment, error: proposalPaymentError } = await table(client, 'lead_proposals')
-    .select('amount, currency')
-    .eq('id', link.proposal_id)
-    .single()
 
-  if (proposalPaymentError || !proposalForPayment) {
-    throw new NotFoundApiError('Inbound proposal was not found.', 'INBOUND_PROPOSAL_NOT_FOUND')
-  }
-
-  await createPaymentRecordIfMissing(client, {
+  const paymentId = await createPaymentRecordIfMissing(client, {
     proposalId: link.proposal_id,
-    projectId,
     amount: payload.payment?.amount ?? payload.proposal?.amount ?? proposalForPayment.amount,
     currency: payload.payment?.currency ?? payload.proposal?.currency ?? proposalForPayment.currency,
     paidAt,
@@ -576,35 +522,30 @@ export async function receiveWebsitePaymentConfirmed(payload: WebsitePaymentConf
     payload,
   })
 
-  const [{ error: proposalError }, { error: leadError }, { error: linkError }] = await Promise.all([
-    table(client, 'lead_proposals')
-      .update({
-        status: 'handoff_ready',
-        review_status: 'approved',
-        payment_status: 'succeeded',
-        paid_at: paidAt,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', link.proposal_id),
-    table(client, 'leads')
-      .update({
-        status: 'won',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', link.lead_id),
-    table(client, 'website_inbound_links')
-      .update({
-        external_payment_id: payload.external_payment_id,
-        project_id: projectId,
-        current_status: 'project_activated',
-        payment_confirmed_at: paidAt,
-        payment_payload: payload,
-      })
-      .eq('id', link.id),
-  ])
+  const actorId = await resolveIntegrationActorId(client)
+  const activation = await activatePaidProposal(client, {
+    paymentId,
+    paidAt,
+    actorProfileId: actorId,
+    metadata: {
+      source: 'noon_website',
+      external_payment_id: payload.external_payment_id,
+      external_session_id: payload.external_session_id,
+      external_proposal_id: payload.external_proposal_id,
+    },
+    projectDescription: buildProjectDescription(payload, proposalForPayment),
+  })
 
-  if (proposalError) throw new ApiError('INBOUND_PROPOSAL_PAYMENT_UPDATE_FAILED', proposalError.message, 500)
-  if (leadError) throw new ApiError('INBOUND_LEAD_PAYMENT_UPDATE_FAILED', leadError.message, 500)
+  const { error: linkError } = await table(client, 'website_inbound_links')
+    .update({
+      external_payment_id: payload.external_payment_id,
+      project_id: activation.project_id,
+      current_status: 'project_activated',
+      payment_confirmed_at: paidAt,
+      payment_payload: payload,
+    })
+    .eq('id', link.id)
+
   if (linkError) throw new ApiError('INBOUND_LINK_PAYMENT_UPDATE_FAILED', linkError.message, 500)
 
   return {
@@ -612,7 +553,7 @@ export async function receiveWebsitePaymentConfirmed(payload: WebsitePaymentConf
     linkId: link.id,
     leadId: link.lead_id,
     proposalId: link.proposal_id,
-    projectId,
+    projectId: activation.project_id,
     status: 'project_activated',
   }
 }

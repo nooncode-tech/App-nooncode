@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getStripeClient } from './client'
 import type { AuthenticatedPrincipal } from '@/lib/server/profiles/types'
+import { ApiError, ConflictApiError } from '@/lib/server/api/errors'
 
 export async function getOrCreateStripeCustomer(
   client: SupabaseClient,
@@ -23,12 +24,24 @@ export async function getOrCreateStripeCustomer(
     metadata: { noon_lead_id: leadId },
   })
 
-  await client.from('stripe_customers').insert({
+  const { error } = await client.from('stripe_customers').insert({
     lead_id: leadId,
     stripe_customer_id: customer.id,
     email: clientEmail,
     name: clientName,
   })
+
+  if (error) {
+    const { data: racedCustomer } = await client
+      .from('stripe_customers')
+      .select('stripe_customer_id')
+      .eq('lead_id', leadId)
+      .maybeSingle()
+
+    if (racedCustomer?.stripe_customer_id) return racedCustomer.stripe_customer_id
+
+    throw new Error(`Failed to store Stripe customer: ${error.message}`)
+  }
 
   return customer.id
 }
@@ -39,7 +52,6 @@ export async function createCheckoutSession(
   params: {
     proposalId: string
     leadId: string
-    projectId: string | null
     amount: number
     currency: string
     clientName: string
@@ -47,7 +59,7 @@ export async function createCheckoutSession(
     proposalTitle: string
   },
   appUrl: string,
-): Promise<{ url: string; paymentId: string }> {
+): Promise<{ url: string; paymentId: string; checkoutSessionId: string }> {
   const stripe = getStripeClient()
   const stripeCustomerId = await getOrCreateStripeCustomer(
     client,
@@ -57,6 +69,94 @@ export async function createCheckoutSession(
   )
 
   const amountInCents = Math.round(params.amount * 100)
+
+  const { data: existingSucceeded, error: succeededLookupError } = await client
+    .from('payments')
+    .select('id')
+    .eq('proposal_id', params.proposalId)
+    .eq('status', 'succeeded')
+    .maybeSingle()
+
+  if (succeededLookupError) {
+    throw new Error(`Failed to verify payment state: ${succeededLookupError.message}`)
+  }
+
+  if (existingSucceeded) {
+    throw new ConflictApiError('This proposal has already been paid.', 'PROPOSAL_ALREADY_PAID')
+  }
+
+  const { data: existingPending, error: pendingLookupError } = await client
+    .from('payments')
+    .select('id, stripe_checkout_session_id')
+    .eq('proposal_id', params.proposalId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (pendingLookupError) {
+    throw new Error(`Failed to verify pending payment state: ${pendingLookupError.message}`)
+  }
+
+  if (existingPending?.stripe_checkout_session_id) {
+    const session = await stripe.checkout.sessions.retrieve(existingPending.stripe_checkout_session_id)
+
+    if (session.status === 'open' && session.url) {
+      return {
+        url: session.url,
+        paymentId: existingPending.id,
+        checkoutSessionId: session.id,
+      }
+    }
+
+    await client
+      .from('payments')
+      .update({
+        status: 'failed',
+        metadata: {
+          checkoutSessionStatus: session.status,
+          replacedByNewCheckout: true,
+        },
+      })
+      .eq('id', existingPending.id)
+  }
+
+  const paymentId = existingPending?.stripe_checkout_session_id
+    ? null
+    : existingPending?.id ?? null
+
+  let pendingPaymentId = paymentId
+
+  if (!pendingPaymentId) {
+    const { data: payment, error: paymentError } = await client
+      .from('payments')
+      .insert({
+        proposal_id: params.proposalId,
+        project_id: null,
+        stripe_customer_id: stripeCustomerId,
+        payment_type: 'full_project',
+        amount: params.amount,
+        currency: params.currency,
+        status: 'pending',
+        metadata: {
+          source: 'outbound',
+          actorProfileId: principal.profile.id,
+          actorRole: principal.role,
+        },
+      })
+      .select('id')
+      .single()
+
+    if (paymentError || !payment) {
+      throw new Error(`Failed to create payment record: ${paymentError?.message ?? 'No payment returned.'}`)
+    }
+
+    pendingPaymentId = payment.id
+  }
+
+  if (!pendingPaymentId) {
+    throw new ApiError('PAYMENT_RECORD_NOT_READY', 'Payment record could not be prepared.', 500)
+  }
 
   const session = await stripe.checkout.sessions.create({
     customer: stripeCustomerId,
@@ -75,34 +175,46 @@ export async function createCheckoutSession(
       },
     ],
     mode: 'payment',
-    success_url: `${appUrl}/dashboard/leads?leadId=${params.leadId}&payment=success`,
-    cancel_url: `${appUrl}/dashboard/leads?leadId=${params.leadId}&payment=cancelled`,
+    success_url: `${appUrl}/payment/success?paymentId=${pendingPaymentId}`,
+    cancel_url: `${appUrl}/payment/cancel?paymentId=${pendingPaymentId}`,
     metadata: {
+      noon_payment_id: pendingPaymentId,
       noon_proposal_id: params.proposalId,
       noon_lead_id: params.leadId,
-      noon_project_id: params.projectId ?? '',
       noon_actor_id: principal.profile.id,
+      noon_source: 'outbound',
     },
+  }, {
+    idempotencyKey: `checkout:${pendingPaymentId}`,
   })
 
-  const { data: payment, error } = await client
+  const { error } = await client
     .from('payments')
-    .insert({
-      proposal_id: params.proposalId,
-      project_id: params.projectId,
-      stripe_customer_id: stripeCustomerId,
+    .update({
       stripe_checkout_session_id: session.id,
-      payment_type: 'full_project',
-      amount: params.amount,
-      currency: params.currency,
-      status: 'pending',
+      metadata: {
+        source: 'outbound',
+        actorProfileId: principal.profile.id,
+        actorRole: principal.role,
+        checkoutSessionId: session.id,
+        checkoutCreatedAt: new Date().toISOString(),
+      },
     })
-    .select('id')
-    .single()
+    .eq('id', pendingPaymentId)
 
-  if (error || !payment) {
-    throw new Error('Failed to create payment record')
+  if (error) {
+    try {
+      await stripe.checkout.sessions.expire(session.id)
+    } catch {
+      // Stripe may reject expiration if the session already changed state.
+    }
+
+    throw new Error(`Failed to attach checkout session to payment: ${error.message}`)
   }
 
-  return { url: session.url!, paymentId: payment.id }
+  if (!session.url) {
+    throw new Error('Stripe did not return a checkout URL.')
+  }
+
+  return { url: session.url, paymentId: pendingPaymentId, checkoutSessionId: session.id }
 }

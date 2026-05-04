@@ -61,6 +61,7 @@ interface DataContextType {
   // Leads
   isLeadsLoading: boolean
   leads: Lead[]
+  refreshLeads: () => Promise<void>
   addLead: (lead: LeadDraft) => Promise<Lead>
   updateLead: (id: string, updates: LeadUpdates) => Promise<Lead>
   deleteLead: (id: string) => Promise<void>
@@ -255,8 +256,9 @@ function createMockProjectFromProposal(lead: Lead, proposal: LeadProposal): Proj
 function mapLeadDraftToRequest(leadData: LeadDraft) {
   return {
     name: leadData.name,
-    email: leadData.email,
+    email: leadData.email ?? null,
     phone: leadData.phone ?? null,
+    whatsapp: leadData.whatsapp ?? null,
     company: leadData.company ?? null,
     source: leadData.source,
     status: leadData.status,
@@ -280,6 +282,7 @@ function mapLeadUpdatesToRequest(updates: LeadUpdates) {
   if (updates.name !== undefined) payload.name = updates.name
   if (updates.email !== undefined) payload.email = updates.email
   if (updates.phone !== undefined) payload.phone = updates.phone ?? null
+  if (updates.whatsapp !== undefined) payload.whatsapp = updates.whatsapp ?? null
   if (updates.company !== undefined) payload.company = updates.company ?? null
   if (updates.source !== undefined) payload.source = updates.source
   if (updates.status !== undefined) payload.status = updates.status
@@ -477,6 +480,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const payload = await readApiResponse<LeadWire[]>(response)
     setLeads(payload.map(deserializeLead))
   }, [])
+
+  const refreshLeads = useCallback(async () => {
+    if (authMode !== 'supabase') {
+      setLeads(mockLeads)
+      return
+    }
+
+    await loadLeads()
+  }, [authMode, loadLeads])
 
   const replaceLead = useCallback((nextLead: Lead) => {
     setLeads((prev) => replaceLeadInCollection(prev, nextLead))
@@ -1786,6 +1798,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       value={{
         isLeadsLoading,
         leads,
+        refreshLeads,
         addLead,
         updateLead,
         deleteLead,

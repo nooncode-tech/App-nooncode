@@ -17,6 +17,7 @@ const leadSourceSchema = z.enum([
   'social',
   'event',
   'other',
+  'maxwell',
   'cold_outreach',
   'social_media',
 ])

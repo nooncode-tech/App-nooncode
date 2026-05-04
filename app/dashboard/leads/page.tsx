@@ -10,14 +10,16 @@ import {
   leadStatusLabels,
   selectLeadList,
   selectLeadsSummary,
-  getRadiusKmForWonLeads,
   haversineKm,
   type LeadSortOption,
   type LeadStatusFilter,
 } from '@/lib/dashboard-selectors'
+import type { LeadWire } from '@/lib/leads/serialization'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -53,12 +55,40 @@ import {
   Plus,
   Users,
   MapPin,
+  Sparkles,
+  Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+const maxwellStages = [
+  'Detectando ubicacion',
+  'Buscando candidatos',
+  'Auditando negocios',
+  'Filtrando leads',
+  'Generando lead cards',
+  'Guardando leads',
+] as const
+
+interface MaxwellSearchResponse {
+  data: {
+    runId: string
+    status: 'completed' | 'insufficient' | 'needs_review' | 'failed'
+    leads: LeadWire[]
+    counts: {
+      candidatesFound: number
+      candidatesAudited: number
+      duplicatesFound: number
+      rejected: number
+      published: number
+    }
+    radiusKm: number
+    message: string
+  }
+}
+
 export default function LeadsPage() {
   const { user } = useAuth()
-  const { leads, isLeadsLoading, updateLeadStatus, deleteLead } = useData()
+  const { leads, isLeadsLoading, refreshLeads, updateLeadStatus, deleteLead } = useData()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -71,6 +101,11 @@ export default function LeadsPage() {
   const [proximityEnabled, setProximityEnabled] = useState(false)
   const [vendorLocation, setVendorLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [isGeoLoading, setIsGeoLoading] = useState(false)
+  const [isMaxwellSearching, setIsMaxwellSearching] = useState(false)
+  const [maxwellStageIndex, setMaxwellStageIndex] = useState(0)
+  const [manualZoneOpen, setManualZoneOpen] = useState(false)
+  const [manualZoneText, setManualZoneText] = useState('')
+  const [lastMaxwellResult, setLastMaxwellResult] = useState<MaxwellSearchResponse['data'] | null>(null)
   const requestedLeadId = searchParams.get('leadId')
 
   const replaceLeadHref = useCallback((leadId: string | null) => {
@@ -149,10 +184,104 @@ export default function LeadsPage() {
     )
   }
 
+  const runMaxwellSearch = async (
+    payload:
+      | { mode: 'current_location'; latitude: number; longitude: number; locale: string }
+      | { mode: 'manual_zone'; zoneText: string; locale: string }
+  ) => {
+    setIsMaxwellSearching(true)
+    setMaxwellStageIndex(0)
+    setLastMaxwellResult(null)
+
+    const stageTimer = window.setInterval(() => {
+      setMaxwellStageIndex((current) => Math.min(current + 1, maxwellStages.length - 1))
+    }, 1600)
+
+    try {
+      const response = await fetch('/api/maxwell/lead-searches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          json && typeof json.error === 'string'
+            ? json.error
+            : 'Maxwell no pudo completar la busqueda.'
+        )
+      }
+
+      const result = (json as MaxwellSearchResponse).data
+      setLastMaxwellResult(result)
+      await refreshLeads()
+
+      if (result.status === 'completed') {
+        toast.success(result.message)
+      } else {
+        toast.info(result.message)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Maxwell no pudo completar la busqueda.')
+    } finally {
+      window.clearInterval(stageTimer)
+      setMaxwellStageIndex(maxwellStages.length - 1)
+      setIsMaxwellSearching(false)
+    }
+  }
+
+  const handleMaxwellCurrentLocationSearch = () => {
+    if (!navigator.geolocation) {
+      setManualZoneOpen(true)
+      toast.info('Tu navegador no soporta geolocalizacion. Usa una zona manual.')
+      return
+    }
+
+    setIsGeoLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setIsGeoLoading(false)
+        void runMaxwellSearch({
+          mode: 'current_location',
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          locale: navigator.language || 'es-MX',
+        })
+      },
+      () => {
+        setIsGeoLoading(false)
+        setManualZoneOpen(true)
+        toast.info('No se pudo obtener tu ubicacion. Usa una zona manual.')
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 120000 }
+    )
+  }
+
+  const handleManualZoneSearch = () => {
+    const zoneText = manualZoneText.trim()
+    if (!zoneText) {
+      toast.error('Escribe una zona para buscar leads.')
+      return
+    }
+
+    setManualZoneOpen(false)
+    void runMaxwellSearch({
+      mode: 'manual_zone',
+      zoneText,
+      locale: navigator.language || 'es-MX',
+    })
+  }
+
   if (!user) return null
 
-  const wonLeadsCount = leads.filter((l) => l.status === 'won' && l.assignedTo === user.id).length
-  const radiusKm = getRadiusKmForWonLeads(wonLeadsCount)
+  const radiusKm =
+    lastMaxwellResult?.radiusKm ??
+    (user.role === 'admin' || user.role === 'pm'
+      ? 100
+      : user.role === 'sales_manager'
+        ? 75
+        : 5)
 
   const filteredLeads = selectLeadList(leads, {
     searchQuery,
@@ -225,6 +354,26 @@ export default function LeadsPage() {
           <p className="app-page-subtitle">Cola comercial, prioridad por score y seguimiento activo.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="default"
+            onClick={handleMaxwellCurrentLocationSearch}
+            disabled={isGeoLoading || isMaxwellSearching}
+          >
+            {isGeoLoading || isMaxwellSearching ? (
+              <Loader2 className="size-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="size-4 mr-2" />
+            )}
+            Buscar leads cerca de mi
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setManualZoneOpen(true)}
+            disabled={isMaxwellSearching}
+          >
+            <MapPin className="size-4 mr-2" />
+            Buscar por zona
+          </Button>
           <LeadImportDialog onImported={() => {}} />
           <Button onClick={() => setShowNewDialog(true)}>
             <Plus className="size-4 mr-2" />
@@ -233,6 +382,37 @@ export default function LeadsPage() {
         </div>
       </div>
       <div className="app-section">
+
+      {(isMaxwellSearching || lastMaxwellResult) && (
+        <Card className="p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-medium">
+                {isMaxwellSearching ? maxwellStages[maxwellStageIndex] : 'Busqueda Maxwell completada'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {isMaxwellSearching
+                  ? 'Maxwell audita negocios cercanos y descarta oportunidades sin evidencia suficiente.'
+                  : lastMaxwellResult?.message}
+              </p>
+            </div>
+            {lastMaxwellResult && !isMaxwellSearching && (
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>Radio: {lastMaxwellResult.radiusKm} km</span>
+                <span>Candidatos: {lastMaxwellResult.counts.candidatesFound}</span>
+                <span>Auditados: {lastMaxwellResult.counts.candidatesAudited}</span>
+                <span>Publicados: {lastMaxwellResult.counts.published}</span>
+              </div>
+            )}
+          </div>
+          {isMaxwellSearching && (
+            <Progress
+              className="mt-3"
+              value={((maxwellStageIndex + 1) / maxwellStages.length) * 100}
+            />
+          )}
+        </Card>
+      )}
 
       {/* Stats row */}
       <div className="metric-grid">
@@ -365,6 +545,34 @@ export default function LeadsPage() {
 
       {/* New Lead Dialog */}
       <LeadFormDialog open={showNewDialog} onOpenChange={setShowNewDialog} />
+
+      <Dialog open={manualZoneOpen} onOpenChange={setManualZoneOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Buscar leads por zona</DialogTitle>
+            <DialogDescription>
+              Maxwell usara esta zona como centro y respetara tu radio permitido en servidor.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="maxwell-zone">Zona</Label>
+            <Input
+              id="maxwell-zone"
+              value={manualZoneText}
+              onChange={(event) => setManualZoneText(event.target.value)}
+              placeholder="Ej. Downtown Austin, TX"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setManualZoneOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleManualZoneSearch} disabled={isMaxwellSearching}>
+              Buscar leads
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!leadToDelete} onOpenChange={() => setLeadToDelete(null)}>

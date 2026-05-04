@@ -29,6 +29,7 @@ next-env.d.ts
 
 # local validation artifacts
 /.tmp-runtime-validation/
+/.tmp-server/
 /supabase/.temp/
 /.tmp-dev-server*.log
 /.tmp-start-server*.log

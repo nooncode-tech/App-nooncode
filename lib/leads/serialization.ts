@@ -1,9 +1,15 @@
-import type { Lead, LeadOrigin } from '@/lib/types'
+import type {
+  Lead,
+  LeadOrigin,
+  MaxwellConfidence,
+  MaxwellLeadSnapshot,
+  MaxwellPublicationStatus,
+} from '@/lib/types'
 
 export interface LeadWire {
   id: string
   name: string
-  email: string
+  email: string | null
   phone: string | null
   whatsapp: string | null
   company: string | null
@@ -22,6 +28,13 @@ export interface LeadWire {
   latitude: number | null
   longitude: number | null
   leadOrigin: LeadOrigin | null
+  publicationStatus: MaxwellPublicationStatus | null
+  maxwellSnapshot: MaxwellLeadSnapshot | null
+  maxwellSearchRunId: string | null
+  maxwellExpiresAt: string | null
+  maxwellLastRefreshedAt: string | null
+  maxwellDedupeKey: string | null
+  maxwellConfidence: MaxwellConfidence | null
   createdAt: string
   updatedAt: string
   lastContactedAt: string | null
@@ -33,7 +46,7 @@ export function deserializeLead(lead: LeadWire): Lead {
   return {
     id: lead.id,
     name: lead.name,
-    email: lead.email,
+    email: lead.email ?? undefined,
     phone: lead.phone ?? undefined,
     whatsapp: lead.whatsapp ?? undefined,
     company: lead.company ?? undefined,
@@ -52,6 +65,15 @@ export function deserializeLead(lead: LeadWire): Lead {
     latitude: lead.latitude ?? undefined,
     longitude: lead.longitude ?? undefined,
     leadOrigin: lead.leadOrigin ?? undefined,
+    publicationStatus: lead.publicationStatus ?? undefined,
+    maxwellSnapshot: lead.maxwellSnapshot ?? undefined,
+    maxwellSearchRunId: lead.maxwellSearchRunId ?? undefined,
+    maxwellExpiresAt: lead.maxwellExpiresAt ? new Date(lead.maxwellExpiresAt) : undefined,
+    maxwellLastRefreshedAt: lead.maxwellLastRefreshedAt
+      ? new Date(lead.maxwellLastRefreshedAt)
+      : undefined,
+    maxwellDedupeKey: lead.maxwellDedupeKey ?? undefined,
+    maxwellConfidence: lead.maxwellConfidence ?? undefined,
     createdAt: new Date(lead.createdAt),
     updatedAt: new Date(lead.updatedAt),
     lastContactedAt: lead.lastContactedAt ? new Date(lead.lastContactedAt) : undefined,

@@ -29,6 +29,13 @@ const leadSelect = `
   latitude,
   longitude,
   lead_origin,
+  publication_status,
+  maxwell_snapshot,
+  maxwell_search_run_id,
+  maxwell_expires_at,
+  maxwell_last_refreshed_at,
+  maxwell_dedupe_key,
+  maxwell_confidence,
   created_at,
   updated_at,
   assigned_profile:user_profiles!leads_assigned_to_fkey(legacy_mock_id, full_name)

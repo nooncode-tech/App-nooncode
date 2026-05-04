@@ -26,10 +26,35 @@ export async function POST(request: Request) {
     const body = createSchema.parse(await request.json())
     const client = await createSupabaseServerClient()
 
+    const { data: project, error: projectError } = await client
+      .from('projects')
+      .select('id, source_lead_id, payment_activated')
+      .eq('id', body.projectId)
+      .maybeSingle()
+
+    if (projectError) {
+      throw new Error(`Failed to verify project: ${projectError.message}`)
+    }
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    if (!project.payment_activated) {
+      return NextResponse.json(
+        { error: 'Client workspace is available only after confirmed payment' },
+        { status: 409 }
+      )
+    }
+
+    if (body.leadId && project.source_lead_id && body.leadId !== project.source_lead_id) {
+      return NextResponse.json({ error: 'Lead does not belong to this project' }, { status: 400 })
+    }
+
     const token = await createClientToken(
       client,
       body.projectId,
-      body.leadId ?? null,
+      body.leadId ?? project.source_lead_id ?? null,
       body.clientName ?? null,
       body.clientEmail ?? null,
       principal.userId,

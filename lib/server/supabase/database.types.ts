@@ -355,7 +355,7 @@ export type Database = {
           company: string | null
           created_at: string
           created_by: string
-          email: string
+          email: string | null
           id: string
           last_contacted_at: string | null
           latitude: number | null
@@ -365,10 +365,17 @@ export type Database = {
           locked_at: string | null
           locked_by_proposal_id: string | null
           longitude: number | null
+          maxwell_confidence: string | null
+          maxwell_dedupe_key: string | null
+          maxwell_expires_at: string | null
+          maxwell_last_refreshed_at: string | null
+          maxwell_search_run_id: string | null
+          maxwell_snapshot: Json
           name: string
           next_follow_up_at: string | null
           notes: string | null
           phone: string | null
+          publication_status: Database["public"]["Enums"]["maxwell_publication_status"]
           released_at: string | null
           score: number
           source: Database["public"]["Enums"]["lead_source"]
@@ -385,7 +392,7 @@ export type Database = {
           company?: string | null
           created_at?: string
           created_by: string
-          email: string
+          email?: string | null
           id?: string
           last_contacted_at?: string | null
           latitude?: number | null
@@ -395,10 +402,17 @@ export type Database = {
           locked_at?: string | null
           locked_by_proposal_id?: string | null
           longitude?: number | null
+          maxwell_confidence?: string | null
+          maxwell_dedupe_key?: string | null
+          maxwell_expires_at?: string | null
+          maxwell_last_refreshed_at?: string | null
+          maxwell_search_run_id?: string | null
+          maxwell_snapshot?: Json
           name: string
           next_follow_up_at?: string | null
           notes?: string | null
           phone?: string | null
+          publication_status?: Database["public"]["Enums"]["maxwell_publication_status"]
           released_at?: string | null
           score: number
           source: Database["public"]["Enums"]["lead_source"]
@@ -415,7 +429,7 @@ export type Database = {
           company?: string | null
           created_at?: string
           created_by?: string
-          email?: string
+          email?: string | null
           id?: string
           last_contacted_at?: string | null
           latitude?: number | null
@@ -425,10 +439,17 @@ export type Database = {
           locked_at?: string | null
           locked_by_proposal_id?: string | null
           longitude?: number | null
+          maxwell_confidence?: string | null
+          maxwell_dedupe_key?: string | null
+          maxwell_expires_at?: string | null
+          maxwell_last_refreshed_at?: string | null
+          maxwell_search_run_id?: string | null
+          maxwell_snapshot?: Json
           name?: string
           next_follow_up_at?: string | null
           notes?: string | null
           phone?: string | null
+          publication_status?: Database["public"]["Enums"]["maxwell_publication_status"]
           released_at?: string | null
           score?: number
           source?: Database["public"]["Enums"]["lead_source"]
@@ -459,6 +480,139 @@ export type Database = {
             columns: ["locked_by_proposal_id"]
             isOneToOne: false
             referencedRelation: "lead_proposals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_maxwell_search_run_id_fkey"
+            columns: ["maxwell_search_run_id"]
+            isOneToOne: false
+            referencedRelation: "maxwell_search_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maxwell_lead_feedback: {
+        Row: {
+          created_at: string
+          id: string
+          lead_id: string
+          note: string | null
+          profile_id: string
+          rating: Database["public"]["Enums"]["maxwell_feedback_rating"]
+          search_run_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lead_id: string
+          note?: string | null
+          profile_id: string
+          rating: Database["public"]["Enums"]["maxwell_feedback_rating"]
+          search_run_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lead_id?: string
+          note?: string | null
+          profile_id?: string
+          rating?: Database["public"]["Enums"]["maxwell_feedback_rating"]
+          search_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maxwell_lead_feedback_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maxwell_lead_feedback_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maxwell_lead_feedback_search_run_id_fkey"
+            columns: ["search_run_id"]
+            isOneToOne: false
+            referencedRelation: "maxwell_search_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maxwell_search_runs: {
+        Row: {
+          candidates_audited: number
+          candidates_found: number
+          center_latitude: number | null
+          center_longitude: number | null
+          completed_at: string | null
+          created_at: string
+          duplicates_found: number
+          error_message: string | null
+          id: string
+          leads_published: number
+          leads_rejected: number
+          locale: string
+          message: string | null
+          mode: Database["public"]["Enums"]["maxwell_search_mode"]
+          radius_km: number
+          requested_by: string
+          stage: string
+          status: Database["public"]["Enums"]["maxwell_search_status"]
+          zone_text: string | null
+        }
+        Insert: {
+          candidates_audited?: number
+          candidates_found?: number
+          center_latitude?: number | null
+          center_longitude?: number | null
+          completed_at?: string | null
+          created_at?: string
+          duplicates_found?: number
+          error_message?: string | null
+          id?: string
+          leads_published?: number
+          leads_rejected?: number
+          locale?: string
+          message?: string | null
+          mode: Database["public"]["Enums"]["maxwell_search_mode"]
+          radius_km: number
+          requested_by: string
+          stage?: string
+          status?: Database["public"]["Enums"]["maxwell_search_status"]
+          zone_text?: string | null
+        }
+        Update: {
+          candidates_audited?: number
+          candidates_found?: number
+          center_latitude?: number | null
+          center_longitude?: number | null
+          completed_at?: string | null
+          created_at?: string
+          duplicates_found?: number
+          error_message?: string | null
+          id?: string
+          leads_published?: number
+          leads_rejected?: number
+          locale?: string
+          message?: string | null
+          mode?: Database["public"]["Enums"]["maxwell_search_mode"]
+          radius_km?: number
+          requested_by?: string
+          stage?: string
+          status?: Database["public"]["Enums"]["maxwell_search_status"]
+          zone_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maxwell_search_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1604,6 +1758,24 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      activate_paid_proposal: {
+        Args: {
+          p_actor_profile_id?: string | null
+          p_paid_at?: string
+          p_payment_id: string
+          p_payment_metadata?: Json
+          p_project_description?: string | null
+          p_provider_payment_intent_id?: string | null
+        }
+        Returns: {
+          activated_now: boolean
+          lead_id: string
+          payment_id: string
+          payment_was_already_succeeded: boolean
+          project_id: string
+          proposal_id: string
+        }[]
+      }
       admin_credit_earnings: {
         Args: {
           channel: string
@@ -1640,6 +1812,14 @@ export type Database = {
       collect_profile_names_by_legacy_mock_ids: {
         Args: { target_legacy_mock_ids: string[] }
         Returns: Json
+      }
+      attach_payout_transfer: {
+        Args: { p_external_reference: string; p_payout_id: string }
+        Returns: boolean
+      }
+      complete_wallet_payout: {
+        Args: { p_external_reference: string | null; p_payout_id?: string | null }
+        Returns: boolean
       }
       consolidate_pending_earnings: {
         Args: { consolidate_amount: number; target_profile_id: string }
@@ -1709,6 +1889,10 @@ export type Database = {
       find_profile_name_by_legacy_mock_id: {
         Args: { target_legacy_mock_id: string }
         Returns: string
+      }
+      maxwell_confirmed_sales_count: {
+        Args: { p_profile_id: string }
+        Returns: number
       }
       handoff_prototype_workspace_to_delivery: {
         Args: { target_workspace_id: string }
@@ -1799,9 +1983,27 @@ export type Database = {
         Args: { status_value: Database["public"]["Enums"]["task_status"] }
         Returns: string
       }
+      release_wallet_payout: {
+        Args: { p_payout_id: string; p_reason?: string | null }
+        Returns: boolean
+      }
       release_lead_as_no_response: {
         Args: { target_lead_id: string }
         Returns: string
+      }
+      reserve_wallet_payout: {
+        Args: {
+          p_actor_profile_id: string
+          p_notes?: string | null
+          p_profile_id: string
+        }
+        Returns: {
+          amount: number
+          batch_id: string
+          currency: string
+          payout_id: string
+          profile_id: string
+        }[]
       }
       request_lead_prototype: {
         Args: { target_lead_id: string }
@@ -1861,6 +2063,10 @@ export type Database = {
           version_number: number
         }
       }
+      reverse_wallet_payout_by_transfer: {
+        Args: { p_external_reference: string | null; p_payout_id?: string | null }
+        Returns: boolean
+      }
       touch_client_token: { Args: { p_token: string }; Returns: undefined }
     }
     Enums: {
@@ -1890,6 +2096,7 @@ export type Database = {
         | "social"
         | "event"
         | "other"
+        | "maxwell"
       lead_status:
         | "new"
         | "contacted"
@@ -1898,6 +2105,25 @@ export type Database = {
         | "negotiation"
         | "won"
         | "lost"
+      maxwell_feedback_rating:
+        | "good"
+        | "bad"
+        | "duplicate"
+        | "not_relevant"
+      maxwell_publication_status:
+        | "published"
+        | "needs_review"
+        | "rejected"
+        | "refresh_needed"
+      maxwell_search_mode:
+        | "current_location"
+        | "manual_zone"
+      maxwell_search_status:
+        | "running"
+        | "completed"
+        | "insufficient"
+        | "needs_review"
+        | "failed"
       monetary_entry_type:
         | "deposit"
         | "earnings_distribution"
@@ -2124,6 +2350,7 @@ export const Constants = {
         "social",
         "event",
         "other",
+        "maxwell",
       ],
       lead_status: [
         "new",
@@ -2133,6 +2360,26 @@ export const Constants = {
         "negotiation",
         "won",
         "lost",
+      ],
+      maxwell_feedback_rating: [
+        "good",
+        "bad",
+        "duplicate",
+        "not_relevant",
+      ],
+      maxwell_publication_status: [
+        "published",
+        "needs_review",
+        "rejected",
+        "refresh_needed",
+      ],
+      maxwell_search_mode: ["current_location", "manual_zone"],
+      maxwell_search_status: [
+        "running",
+        "completed",
+        "insufficient",
+        "needs_review",
+        "failed",
       ],
       monetary_entry_type: [
         "deposit",

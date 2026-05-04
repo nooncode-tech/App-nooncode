@@ -73,6 +73,7 @@ export async function listProjects(client: DatabaseClient): Promise<ProjectRowWi
   const { data, error } = await client
     .from('projects')
     .select(projectSelect)
+    .eq('payment_activated', true)
     .order('created_at', { ascending: false })
 
   if (error) {
