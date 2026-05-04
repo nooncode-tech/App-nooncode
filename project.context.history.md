@@ -1857,6 +1857,32 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - Noon App requires `NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL`
   - the shared HMAC secret remains `NOON_WEBSITE_WEBHOOK_SECRET`
 
+## Session note: Maxwell Lead Engine V1 source context sync
+- Route used: system-docs -> system-audit
+- Objective: preserve new Maxwell Lead Engine V1 product source documents and reconcile them against current App repo reality
+- Source documents added:
+  - `docs/product/source/LeadEngine_Codex_FIXED.pdf`
+  - `docs/product/source/NoonApp_Seller_Speech_Codex_Addendum.pdf`
+- Operational digest added:
+  - `docs/product/maxwell-lead-engine-v1.md`
+- Product boundary confirmed:
+  - Maxwell Lead Engine V1 belongs only to NoonApp outbound and the seller lead board
+  - it is not the website inbound Maxwell
+  - website, inbound, payments, client workspace, developer board, post-payment handoff, earnings rules, and sensitive permissions remain out of scope unless a future plan explicitly scopes them
+- Current implementation reality recorded:
+  - `supabase/migrations/0038_phase_16a_maxwell_lead_engine_v1.sql` adds the Maxwell search/feedback schema and lead metadata foundation
+  - `/api/maxwell/lead-searches` provides the App-side outbound lead search entrypoint
+  - `lib/server/maxwell/lead-engine.ts` implements allowed radius, free candidate sourcing, GPT-first audit, dedupe, score filtering, batch limits, structured lead snapshots, and seller speech generation
+  - `/dashboard/leads`, `components/lead-card.tsx`, and `components/lead-detail.tsx` expose compact cards, lead details, speech variants, browser/device TTS, copy, feedback, and prototype integration
+- Gap classification:
+  - implemented: current-location search, manual-zone fallback, role/sales radius, Overpass/Nominatim candidate sourcing, GPT structured audit, score >= 60, dedupe, 3-batch/60-candidate cap, 3-5 lead semantics, details speech, TTS, copy, feedback, and prototype request path
+  - partial: "take lead" as a separate published-lead marketplace, server-streamed search stages, and full analytics event coverage
+  - needs runtime validation: latest PDF-context sync should be followed by build/type/lint plus `/dashboard/leads` browser smoke
+- Security pending recorded:
+  - leaked-password protection is a manual Supabase Auth setting
+  - remaining authenticated RPC warnings after migrations `0039` and `0040` are intentional hardening debt
+  - strict-audit closure should be a separate security iteration, not mixed with product/context sync
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context

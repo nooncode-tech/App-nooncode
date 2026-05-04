@@ -5,6 +5,10 @@
   - `tmp_roadmap.txt`
   - `tmp_recap.txt`
   - `tmp_faltantes.txt`
+- Contexto fuente agregado el 2026-05-04:
+  - `docs/product/source/LeadEngine_Codex_FIXED.pdf`
+  - `docs/product/source/NoonApp_Seller_Speech_Codex_Addendum.pdf`
+  - `docs/product/maxwell-lead-engine-v1.md`
 - Estado real confirmado en el repo:
   - auth/session Supabase
   - middleware de dashboard
@@ -58,18 +62,19 @@
     - email directo por Gmail
     - telefono visible/usable en detalle
     - ficha visual del lead ya existe
+    - Maxwell Lead Engine V1 ya implementa busqueda por ubicacion actual, zona manual, radio permitido por ventas/rol, coordenadas del negocio y filtro visual de cercania en `/dashboard/leads`
   - Pendiente:
-    - ubicacion del negocio
-    - radio aproximado de 10 km
-    - leads cercanos por vendedor
     - WhatsApp directo
     - flujo explicito para oportunidad presencial
   - Estado real: `PARCIAL`
 
 - `Fase 4 - Maxwell funcional`
   - Existe `/api/maxwell`
-  - No esta probado como asistente con contexto comercial real
-  - Estado real: `PARCIAL / SCAFFOLD`
+  - Existe `/api/maxwell/lead-searches` como entrypoint real del Maxwell Lead Engine V1 outbound para sellers
+  - El motor outbound ya tiene schema/migracion, busqueda por ubicacion/zona, radio permitido, fuentes gratuitas, auditoria GPT estructurada, score minimo, dedupe, limites de batch, speech del seller, TTS/copia y feedback
+  - El chat global `/api/maxwell` sigue siendo asistente general sin grounding automatico
+  - Pendiente: validacion runtime fresca de `/dashboard/leads`, etapas server-streamed y analitica completa de eventos
+  - Estado real: `PARCIAL CON FOUNDATION REAL`
 
 ## Fases aun no iniciadas de forma real
 - `Fase 5 - Prototipos y creditos`
@@ -102,15 +107,15 @@
   - crear y actualizar tareas durables para proyectos reales
   - estado actual del repo: `VALIDADA EN RUNTIME`
 6. `Fase 3A - Ubicacion y cercania`
-   - solo despues de tener leads reales
+   - foundation ya implementada por Maxwell Lead Engine V1; requiere smoke runtime fresco antes de cerrarla completamente
 
 ## Modulo recomendado para arrancar ahora
-- la siguiente persistencia de delivery, sin reabrir 2E
+- validar y cerrar el foundation real de Maxwell Lead Engine V1 antes de agregar mas comportamiento
 
 ## Por que este es el siguiente modulo correcto
-- El roadmap original prioriza base real y flujo comercial antes de cercania, creditos o notificaciones.
-- El repo ya resolvio auth/session, leads/pipeline, hand-off comercial, conversion a proyecto y base persistente de tareas; el siguiente hueco real es ampliar delivery sin romper el modo mixto.
-- Arrancar por proximidad o Maxwell encima de delivery aun mixto volveria a abrir deuda base en lugar de cerrarla.
+- El nuevo documento fuente define Maxwell Lead Engine V1 como App/outbound/seller-only.
+- El repo ya contiene una foundation real para ese modulo, por lo que el siguiente paso responsable no es inventar mas alcance sino validar lo existente contra la especificacion.
+- Cualquier gap debe resolverse como slice pequeno dentro de Leads/Maxwell, sin tocar website, inbound, pagos, workspace ni developers.
 
 ## Criterio de listo del slice ya implementado
 - Un PM/admin puede crear una tarea sobre un proyecto real
@@ -128,6 +133,5 @@
 - Repetir el fix de Gmail
 - Pagos, comisiones, rewards
 - Notificaciones
-- Geolocalizacion/cercania
 - Modulo de actualizaciones
-- Maxwell con contexto real
+- Website, inbound, pagos, workspace, developer board y post-pago para cualquier trabajo de Maxwell Lead Engine V1

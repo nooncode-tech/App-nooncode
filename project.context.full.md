@@ -7,9 +7,9 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
 ## Project identity
 - Project: `nooncode-app`
 - Product name in the UI: `NoonApp`
-- Repo path: `C:\Users\melan\Downloads\nooncode-app`
+- Repo path: `C:\Users\white\Documents\Codex\2026-04-23-quiero-que-trabajemos-sobre-este-repo`
 - Application type: Next.js App Router web application
-- Current observed stage: hybrid MVP with real Supabase auth/session, durable commercial flow into hand-off projects, and mock-backed remaining delivery/finance data
+- Current observed stage: hybrid MVP with real Supabase auth/session, durable commercial flow into hand-off projects, multiple persisted finance/delivery foundations, and active Maxwell Lead Engine V1 consolidation
 
 ## Confirmed product truth
 - The app is a role-based workspace spanning:
@@ -17,6 +17,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - delivery/project execution
   - personal earnings/rewards/reporting
   - an AI copilot named Maxwell
+  - outbound Maxwell Lead Engine V1 for seller-side lead generation
 - Confirmed primary roles:
   - `admin`
   - `sales_manager`
@@ -36,6 +37,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - reports
   - settings
   - Maxwell chat
+  - Maxwell Lead Engine V1 inside `/dashboard/leads`
 
 ## Corrected architecture overview
 - `app/layout.tsx`
@@ -499,6 +501,23 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - shows an explicit context-required disclosure in `supabase`
   - replaces lead-aware suggested prompts with generic writing/planning prompts in `supabase`
   - keeps the chat input active because `/api/maxwell` still exists as a general-purpose route
+- Maxwell Lead Engine V1 context and implementation baseline:
+  - source PDFs are versioned under `docs/product/source/`
+  - operational digest lives in `docs/product/maxwell-lead-engine-v1.md`
+  - product boundary is App/outbound/seller-only; it is not the website inbound Maxwell
+  - explicitly excluded unless separately scoped: website, inbound, payments, client workspace, developer board, post-payment handoff, earnings rules, and sensitive permission rewrites
+  - `supabase/migrations/0038_phase_16a_maxwell_lead_engine_v1.sql` adds `maxwell_search_runs`, `maxwell_lead_feedback`, Maxwell publication/search/feedback enums, lead Maxwell metadata columns, dedupe index, RLS, and `maxwell_confirmed_sales_count(uuid)`
+  - `app/api/maxwell/lead-searches/route.ts` provides the seller/admin/PM/sales-manager search entrypoint
+  - `lib/server/maxwell/lead-engine.ts` implements allowed-radius calculation, location/manual-zone center handling, Overpass/Nominatim candidate sourcing, duplicate filtering, GPT-first structured audit, score >= 60 publishing, 20-candidate chunks, 3-batch/60-candidate cap, and 3-5 lead success semantics
+  - `components/lead-detail.tsx` exposes Maxwell audit details, speech variants, browser/device TTS playback, stop, copy, and feedback controls
+  - `app/api/leads/[leadId]/maxwell-feedback/route.ts` persists seller feedback for Maxwell leads
+  - current status: broad foundation implemented in code, but latest source-PDF sync still requires fresh runtime validation on `/dashboard/leads`
+- Supabase Advisor security posture:
+  - `supabase/migrations/0039_phase_16b_rpc_and_client_portal_security.sql` moves multiple service-only RPCs away from direct `authenticated` execution while keeping intentionally auth-aware RPCs callable by `authenticated`
+  - `supabase/migrations/0040_phase_16c_trigger_rpc_security_hardening.sql` removes direct anon/authenticated execution from trigger/helper functions and pins helper search paths
+  - remaining authenticated RPC warnings are intentional hardening debt for now, not accidental exposure
+  - leaked-password protection is a manual Supabase Auth setting and cannot be closed through repo code alone
+  - strict-audit closure would require a dedicated security iteration that moves selected authenticated RPCs behind Next.js server routes using `service_role`, revokes direct `authenticated` execute, and validates proposal review, lead claim/release, wallet/prototype, prototype handoff, and Maxwell radius flows
 - `QA_AUTH_RUNTIME_CHECKLIST.md` documents runtime validation steps for:
   - login
   - dashboard access with session
@@ -768,14 +787,16 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
     - Gmail compose shortcut
     - phone visibility/action in detail
     - clearer lead detail UI already exists
+    - Maxwell Lead Engine V1 now implements seller current-location search, manual-zone fallback, server-side allowed-radius calculation, lead latitude/longitude persistence, nearby candidate sourcing, and visible distance filtering in `/dashboard/leads`
   - Open slice:
-    - proximity/radius logic
-    - location fields and map/address handling
     - WhatsApp shortcut
     - explicit presencial-opportunity flow
 - Phase 4 - Maxwell funcional
-  - Status: partial scaffold only
-  - `/api/maxwell` exists, but real lead-aware or proposal-aware grounding was not proven.
+  - Status: partial with real outbound Lead Engine V1 foundation
+  - `/api/maxwell` still exists as a general dashboard assistant route and should not be confused with the outbound Lead Engine.
+  - `/api/maxwell/lead-searches` now exists as the real outbound seller lead-generation entrypoint.
+  - The Lead Engine foundation includes location/manual-zone search, role/sales-based radius, Overpass/Nominatim free candidate sourcing, GPT-first strict audit, structured lead snapshots, score filtering, dedupe, seller speech generation, TTS playback, copy, feedback, and prototype request integration.
+  - Remaining gaps are runtime smoke evidence after the latest PDF sync, server-streamed search stages, full analytics event coverage, and a separate "take published Maxwell lead" marketplace model if product later requires it.
   - `components/lead-detail.tsx` no longer presents its local simulated IA tab as a real `supabase` capability; that tab is now non-operational in `supabase` and the old simulation remains only in `mock`.
   - `components/maxwell-chat.tsx` now also keeps the global dashboard chat honest in `supabase`: it remains usable as a general assistant, but the UI now states that manual context is required and no longer suggests automatic access to real leads or workspace state.
 - Phases 5-13

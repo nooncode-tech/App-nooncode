@@ -5,9 +5,12 @@ const eslintConfig = [
   {
     ignores: [
       '.next/**',
+      '.tmp-*/**',
+      '.vercel/**',
       'node_modules/**',
       'out/**',
       'build/**',
+      'coverage/**',
       'next-env.d.ts',
       'lib/server/supabase/database.types.ts',
     ],

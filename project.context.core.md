@@ -4,8 +4,8 @@
 - Project: `nooncode-app`
 - Product name in UI: `NoonApp`
 - Type: Next.js web application
-- Primary repo path: `C:\Users\melan\Downloads\nooncode-app`
-- Current stage: hybrid MVP under active migration from demo data to real auth/runtime
+- Primary repo path: `C:\Users\white\Documents\Codex\2026-04-23-quiero-que-trabajemos-sobre-este-repo`
+- Current stage: hybrid MVP with real Supabase auth/session, multiple persisted business slices, and active Maxwell Lead Engine V1 consolidation
 
 ## Primary purpose
 - Confirmed: the app is a role-based sales-to-delivery workspace that combines lead management, delivery/project tracking, personal earnings/rewards, reporting, and an embedded AI copilot.
@@ -16,6 +16,7 @@
 - Internal updates feed: `/dashboard/updates`
 - Sales modules: `/dashboard/leads`, `/dashboard/pipeline`
 - PM inbound review module: `/dashboard/pm-queue`
+- Outbound Maxwell Lead Engine V1: `/dashboard/leads`, `POST /api/maxwell/lead-searches`, and lead detail speech/feedback surfaces
 - Delivery modules: `/dashboard/projects`, `/dashboard/tasks`
 - Finance/personal modules: `/dashboard/earnings`, `/dashboard/rewards`, `/dashboard/reports`
 - Admin module: `/dashboard/settings`
@@ -36,6 +37,8 @@
 - Business-domain data for leads, projects, tasks, rewards, users, and points still lives in `lib/data-context.tsx`.
 - `lib/dashboard-selectors.ts` remains the main selector/view-model layer over client data.
 - Noon Website and Noon App are separate products. The website owns the public inbound/client/payment experience; Noon App owns collaborator operations and receives website handoffs through server-to-server webhooks.
+- Maxwell Lead Engine V1 is App/outbound/seller-only. It must not be treated as the website inbound Maxwell, and it must not modify website, inbound, payments, workspace, developer board, post-payment handoff, earnings rules, or sensitive permissions unless explicitly scoped.
+- Durable product context for Maxwell Lead Engine V1 now lives in `docs/product/maxwell-lead-engine-v1.md`; source PDFs are versioned under `docs/product/source/`.
 
 ## Confirmed auth and data reality
 - Supabase auth/session has been implemented for the active real-auth path.
@@ -198,6 +201,22 @@
   - `/dashboard/rewards` now renders honest disabled/empty states in `supabase`
 - `components/maxwell-chat.tsx` now keeps the global Maxwell surface honest in `supabase` by framing it as a general assistant without automatic workspace grounding and by removing lead-aware suggested prompts that imply access to real account data
 - Global `users` remains mock-backed for demo-only surfaces, but `/dashboard/settings` now has a separate real `settingsUsers` directory in `supabase` mode.
+- Maxwell Lead Engine V1 now has a real App-side outbound foundation:
+  - `docs/product/maxwell-lead-engine-v1.md`
+  - `docs/product/source/LeadEngine_Codex_FIXED.pdf`
+  - `docs/product/source/NoonApp_Seller_Speech_Codex_Addendum.pdf`
+  - `supabase/migrations/0038_phase_16a_maxwell_lead_engine_v1.sql`
+  - `/api/maxwell/lead-searches`
+  - `/api/leads/[leadId]/maxwell-feedback`
+  - `lib/server/maxwell/lead-engine.ts`
+  - `/dashboard/leads`
+  - `components/lead-detail.tsx`
+  - seller location/manual-zone search, allowed-radius calculation, Overpass/Nominatim candidate sourcing, GPT-first structured audit, score >= 60 filtering, dedupe by `maxwell_dedupe_key`, 3-batch/60-candidate cap, durable `maxwell_search_runs`, durable `maxwell_lead_feedback`, and `salesSpeech` variants with browser/device TTS are implemented in code
+  - still requires fresh runtime validation after the source-PDF context sync
+- Supabase Advisor security posture after migrations `0039` and `0040`:
+  - leaked-password protection remains a manual Supabase Auth setting, not a repo code change
+  - remaining authenticated RPC warnings are intentional for now and should be treated as strict-audit hardening debt
+  - do not move proposal review, lead claim/release, wallet/prototype, prototype handoff, or Maxwell radius RPCs behind `service_role` routes without a dedicated security plan and regression validation
 
 ## Confirmed product/data posture
 - Auth/session is partially real.
@@ -246,7 +265,7 @@
 - Runtime evidence now also exists for settings notifications realism cleanup in `/dashboard/settings`: in browser runtime as `admin@noon.app`, the `Notificaciones` tab no longer rendered switches or `Guardar preferencias` in `supabase` and instead showed informational-only rows.
 - Runtime evidence now also exists for personal stats realism alignment in `supabase`: in browser runtime as `ana@noon.app`, `/dashboard` no longer showed fake balance/points in the header, the user-menu dropdown no longer showed fake balance/points, `/dashboard/earnings` rendered honest unavailable states without demo commissions/transactions, and `/dashboard/rewards` rendered honest unavailable states without demo points/store/history content.
 - Remaining non-project commercial and delivery domain data is still demo-state.
-- Maxwell has a real route shape but still lacks confirmed real business context wiring.
+- Maxwell now has two distinct surfaces: dashboard chat remains a general assistant without automatic workspace grounding, while Maxwell Lead Engine V1 has a real outbound seller lead-generation foundation that still needs fresh browser/runtime smoke after the latest source-PDF context sync.
 - Leads support Gmail compose shortcuts from card/detail UI and now have a server-backed persistence path.
 - Runtime evidence now also exists for manual lead follow-up scheduling: migration `0012_phase_2i_lead_follow_up.sql` is applied to the linked Supabase project, app-route validation already confirmed schedule/reschedule/clear/readback plus activity logging for `nextFollowUpAt`, and browser-level validation now also confirms that `/dashboard/leads` cards and lead detail render the persisted `scheduled`, `Vence hoy`, and `Atrasado` follow-up states and keep them after reload.
 - Runtime evidence now also exists for lead-detail IA realism cleanup in `supabase`: in browser runtime as `juan@noon.app`, the `IA Asistente` tab no longer rendered simulated generation CTAs or `Enviar al cliente` and instead showed an explicit non-operational state.
