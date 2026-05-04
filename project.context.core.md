@@ -213,16 +213,18 @@
   - `components/lead-detail.tsx`
   - seller location/manual-zone search, allowed-radius calculation, Overpass/Nominatim candidate sourcing, GPT-first structured audit, score >= 60 filtering, dedupe by `maxwell_dedupe_key`, 3-batch/60-candidate cap, durable `maxwell_search_runs`, durable `maxwell_lead_feedback`, and `salesSpeech` variants with browser/device TTS are implemented in code
   - still requires fresh runtime validation after the source-PDF context sync
-- Supabase Advisor security posture after migrations `0039` and `0040`:
-  - leaked-password protection remains a manual Supabase Auth setting, not a repo code change
-  - remaining authenticated RPC warnings are intentional for now and should be treated as strict-audit hardening debt
-  - do not move proposal review, lead claim/release, wallet/prototype, prototype handoff, or Maxwell radius RPCs behind `service_role` routes without a dedicated security plan and regression validation
+- Supabase Advisor security posture after migrations `0039`, `0040`, and code-ready `0042`:
+  - leaked-password protection remains a Supabase Auth setting gated by project plan, not a repo code change
+  - `0042_phase_17b_wallet_maxwell_rpc_hardening.sql` moves wallet ensure and Maxwell confirmed-sales radius count behind service-role server calls
+  - remaining authenticated RPC warnings are intentional for now and should be treated as strict-audit hardening debt for proposal review, lead claim/release, prototype request, prototype handoff, and prototype-project linkage
+  - do not move the remaining sensitive RPCs behind `service_role` routes without a dedicated security plan and regression validation
 - Production-readiness hardening foundation now exists:
   - `docs/production-readiness-audit.md` is the current audit baseline
   - `lib/server/api/rate-limit.ts`, `lib/server/api/logger.ts`, and `lib/server/api/request.ts` provide request guardrails, structured redacted logs, and request IDs for high-risk API routes
   - `supabase/migrations/0041_phase_17a_stripe_webhook_event_ledger.sql` and `lib/server/stripe/webhook-events.ts` add Stripe webhook event ledger idempotency
-  - `npm test` now covers rate limiting, log redaction, Maxwell validation, Maxwell Lead Engine boundaries, Website HMAC webhooks, Stripe webhook ledger behavior, and `.env.example` runtime key coverage
-  - migration `0041` still requires explicit approval before applying to real Supabase
+  - `supabase/migrations/0042_phase_17b_wallet_maxwell_rpc_hardening.sql` adds server-only wallet ensure helpers and revokes direct authenticated execution for 3 low-coupling RPCs
+  - `npm test` now covers rate limiting, log redaction, Maxwell validation, Maxwell Lead Engine boundaries, Website HMAC webhooks, Stripe webhook ledger behavior, wallet service-role ensure calls, and `.env.example` runtime key coverage
+  - migration `0042` still requires explicit approval before applying to real Supabase
   - the in-memory rate limiter is an app-level guard, not a distributed production WAF replacement
 
 ## Confirmed product/data posture

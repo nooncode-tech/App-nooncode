@@ -21,7 +21,7 @@ import {
   listPrototypeWorkspaces,
 } from '@/lib/server/prototypes/repository'
 import {
-  ensureCurrentUserWallet,
+  getWalletByProfileId,
   getPrototypeCreditSettings,
   requestLeadPrototype,
 } from '@/lib/server/wallet/repository'
@@ -202,11 +202,15 @@ export async function requestVisibleLeadPrototype(
 
   const [workspace, wallet] = await Promise.all([
     getPrototypeWorkspaceByLeadId(client, leadId),
-    ensureCurrentUserWallet(client),
+    getWalletByProfileId(client, principal.profile.id),
   ])
 
   if (!workspace) {
     throw new Error('Prototype workspace was not created.')
+  }
+
+  if (!wallet) {
+    throw new Error('Wallet was not found after prototype request.')
   }
 
   return {

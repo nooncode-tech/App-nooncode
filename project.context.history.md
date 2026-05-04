@@ -1916,6 +1916,28 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - authenticated RPC warnings remain strict-audit hardening debt
   - in-memory rate limiting should be replaced or backed by distributed infrastructure before high traffic
 
+## Session note: RPC hardening slice 1 - wallet ensure and Maxwell radius
+- Route used: system-security -> system-backend -> system-testing -> system-docs
+- Objective: reduce direct authenticated RPC exposure without touching proposal review, lead claim/release, prototype request, prototype handoff, or prototype-project linkage.
+- Implemented:
+  - `supabase/migrations/0042_phase_17b_wallet_maxwell_rpc_hardening.sql` adds `ensure_user_wallet_for_profile(uuid)` and `ensure_monetary_wallet_for_profile(uuid)` as service-role-only helpers
+  - migration `0042` revokes direct `authenticated` execution for `ensure_current_user_wallet()`, `ensure_monetary_wallet()`, and `maxwell_confirmed_sales_count(uuid)`
+  - `/api/wallet` now uses the user client for RLS reads and an admin client only for wallet initialization
+  - `requestVisibleLeadPrototype` no longer re-ensures the wallet after `request_lead_prototype`; it reloads the wallet by profile id
+  - Maxwell seller radius now calls `maxwell_confirmed_sales_count(uuid)` through the admin client supplied to `runMaxwellLeadSearch`
+- Automated coverage added:
+  - wallet service uses `*_for_profile` RPCs through the admin client and normalizes `PROFILE_NOT_FOUND`
+  - Maxwell seller radius uses the supplied admin client while privileged roles bypass the sales-count RPC
+- Validation evidence:
+  - `npm.cmd run typecheck`
+  - `npm.cmd test`
+  - `npm.cmd run lint`
+  - `npm.cmd run build`
+- Open production tasks:
+  - apply migration `0042_phase_17b_wallet_maxwell_rpc_hardening.sql` to the real App Supabase after explicit approval
+  - validate `/dashboard/credits`, lead prototype request debit/balance refresh, and Maxwell Lead Engine radius behavior after migration
+  - remaining authenticated RPC warnings should be handled in later slices, not bundled with this one
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context

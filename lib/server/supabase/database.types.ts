@@ -1912,8 +1912,31 @@ export type Database = {
           updated_at: string
         }
       }
+      ensure_user_wallet_for_profile: {
+        Args: { p_profile_id: string }
+        Returns: {
+          created_at: string
+          earned_credits_balance: number
+          free_credits_balance: number
+          profile_id: string
+          updated_at: string
+        }
+      }
       ensure_monetary_wallet: {
         Args: never
+        Returns: {
+          available_to_spend: number
+          available_to_withdraw: number
+          created_at: string
+          currency: string
+          locked: number
+          pending: number
+          profile_id: string
+          updated_at: string
+        }
+      }
+      ensure_monetary_wallet_for_profile: {
+        Args: { p_profile_id: string }
         Returns: {
           available_to_spend: number
           available_to_withdraw: number

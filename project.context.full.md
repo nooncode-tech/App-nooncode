@@ -515,9 +515,10 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
 - Supabase Advisor security posture:
   - `supabase/migrations/0039_phase_16b_rpc_and_client_portal_security.sql` moves multiple service-only RPCs away from direct `authenticated` execution while keeping intentionally auth-aware RPCs callable by `authenticated`
   - `supabase/migrations/0040_phase_16c_trigger_rpc_security_hardening.sql` removes direct anon/authenticated execution from trigger/helper functions and pins helper search paths
+  - `supabase/migrations/0042_phase_17b_wallet_maxwell_rpc_hardening.sql` hardens the first low-coupling RPC slice by adding service-only wallet ensure helpers, routing `/api/wallet` wallet creation through `createSupabaseAdminClient()`, loading post-prototype balances by profile id instead of re-ensuring the wallet through an authenticated RPC, and calculating Maxwell seller radius through the admin client
   - remaining authenticated RPC warnings are intentional hardening debt for now, not accidental exposure
-  - leaked-password protection is a manual Supabase Auth setting and cannot be closed through repo code alone
-  - strict-audit closure would require a dedicated security iteration that moves selected authenticated RPCs behind Next.js server routes using `service_role`, revokes direct `authenticated` execute, and validates proposal review, lead claim/release, wallet/prototype, prototype handoff, and Maxwell radius flows
+  - leaked-password protection is a Supabase Auth setting gated by project plan and cannot be closed through repo code alone
+  - strict-audit closure would require dedicated security iterations that move selected authenticated RPCs behind Next.js server routes using `service_role`, revoke direct `authenticated` execute, and validate proposal review, lead claim/release, prototype request, prototype handoff, and prototype-project linkage flows
 - `QA_AUTH_RUNTIME_CHECKLIST.md` documents runtime validation steps for:
   - login
   - dashboard access with session

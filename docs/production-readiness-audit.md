@@ -9,9 +9,9 @@ NoonApp is a recoverable production candidate, not a production-complete system.
 ## Verified state
 
 - Stack: Next.js 16 App Router, React 19, TypeScript, pnpm, Tailwind v4, Supabase, Stripe, OpenAI and v0 SDK.
-- Current executable checks before this hardening slice: `typecheck`, `lint`, and `build` pass.
-- Test surface before this slice: no `npm test` script and no App-owned test files.
-- Database surface: 44 migrations before `0041`, with RLS broadly enabled and remaining authenticated RPC warnings documented as security debt.
+- Current executable checks: `typecheck`, `test`, `lint`, and `build` pass.
+- Test surface: `npm test` exists with initial App-owned coverage for API guardrails, Maxwell, wallet hardening helpers, Stripe webhook ledger behavior, Website HMAC webhooks, and env examples.
+- Database surface: migrations exist through `0042`, with RLS broadly enabled and remaining authenticated RPC warnings documented as security debt.
 - Repo boundary: NoonApp and Noon Website remain separate products. Website owns public inbound/client/payment UI; App owns collaborator operations.
 
 ## Production blockers
@@ -21,17 +21,18 @@ NoonApp is a recoverable production candidate, not a production-complete system.
 - Observability: server logs were not structured around request IDs or sanitized context.
 - Stripe: webhook processing had signature verification and downstream idempotency, but no first-class event ledger to prevent duplicate side effects across retries.
 - Architecture: `lib/data-context.tsx` remains a large client-side provider and should be split by domain.
-- RPC hardening: direct authenticated RPC exposure remains intentional short-term debt and should be moved behind service-role-backed Next routes only in a dedicated security iteration.
+- RPC hardening: the first low-coupling slice is code-ready for wallet ensure and Maxwell radius. Direct authenticated RPC exposure remains intentional short-term debt for proposal review, lead claim/release, prototype request, prototype handoff, and prototype-project linkage.
 
-## This slice
+## Hardening completed so far
 
 - Adds a reusable in-memory rate-limit foundation for high-risk API routes. This is a per-instance guard, not a distributed WAF replacement.
 - Adds request IDs to hardened API responses.
 - Adds a structured logger with recursive redaction for secrets, tokens, signatures, cookies and keys.
 - Adds a Stripe webhook event ledger migration and server-side processing guard.
+- Adds a wallet/Maxwell RPC hardening migration for 3 low-coupling RPCs and routes the corresponding App calls through service-role server code.
 - Adds an initial `npm test` command using Node's test runner through `tsx`.
 - Adds tests for rate limiting, log sanitization, Maxwell chat request validation, and Maxwell Lead Engine boundaries.
-- Adds tests for Website webhook HMAC validation, Stripe webhook ledger idempotency, and `.env.example` runtime key coverage.
+- Adds tests for Website webhook HMAC validation, Stripe webhook ledger idempotency, wallet service-role ensure calls, Maxwell admin-client radius calculation, and `.env.example` runtime key coverage.
 
 ## Next hardening order
 
@@ -39,11 +40,11 @@ NoonApp is a recoverable production candidate, not a production-complete system.
 2. Replace in-memory rate-limit storage with a distributed production provider before high traffic.
 3. Move Stripe event ledger review into an admin-only operational surface or alerting pipeline.
 4. Split `lib/data-context.tsx` by domain and reduce global dashboard payloads.
-5. Move authenticated RPCs behind dedicated Next routes with `service_role`, one flow at a time, with regression tests.
+5. Continue moving authenticated RPCs behind dedicated Next routes with `service_role`, one flow at a time, with regression tests.
 6. Add production monitoring/alerting provider integration once the provider is chosen.
 
 ## Manual production tasks
 
-- Enable leaked password protection in Supabase Auth.
-- Apply migration `0041_phase_17a_stripe_webhook_event_ledger.sql` to the real App Supabase only after preview validation.
+- Enable leaked password protection in Supabase Auth if the Supabase plan supports it.
+- Apply migration `0042_phase_17b_wallet_maxwell_rpc_hardening.sql` to the real App Supabase only after preview validation.
 - Confirm Vercel production env vars before rollout: Supabase, Stripe, OpenAI, v0, Website webhook secret and app URLs.

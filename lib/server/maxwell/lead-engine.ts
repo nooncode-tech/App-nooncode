@@ -171,11 +171,14 @@ function privilegedRadiusForRole(role: AuthenticatedPrincipal['role']): number |
   return null
 }
 
-async function getAllowedRadiusKm(client: DatabaseClient, principal: AuthenticatedPrincipal): Promise<number> {
+export async function getAllowedRadiusKm(
+  adminClient: DatabaseClient,
+  principal: AuthenticatedPrincipal
+): Promise<number> {
   const privilegedRadius = privilegedRadiusForRole(principal.role)
   if (privilegedRadius) return privilegedRadius
 
-  const { data, error } = await client.rpc('maxwell_confirmed_sales_count', {
+  const { data, error } = await adminClient.rpc('maxwell_confirmed_sales_count', {
     p_profile_id: principal.userId,
   })
 
@@ -574,7 +577,7 @@ export async function runMaxwellLeadSearch(params: {
   assertMaxwellAiConfigured()
   await assertDailySearchLimit(serverClient, principal)
 
-  const radiusKm = await getAllowedRadiusKm(serverClient, principal)
+  const radiusKm = await getAllowedRadiusKm(adminClient, principal)
   const baseCenter: CenterPoint | null = request.mode === 'current_location'
     ? { latitude: request.latitude, longitude: request.longitude }
     : await geocodeZone(request.zoneText)

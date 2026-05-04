@@ -3,7 +3,9 @@ import type { Database } from '@/lib/server/supabase/database.types'
 import type {
   PrototypeCreditSettingsRow,
   RequestLeadPrototypeRpcRow,
+  WalletAccountRow,
   WalletEntryRowWithActor,
+  WalletLedgerEntryRowWithActor,
   WalletRow,
 } from '@/lib/server/wallet/types'
 
@@ -32,8 +34,13 @@ const walletEntrySelect = `
   actor_profile:user_profiles!user_wallet_entries_actor_profile_id_fkey(full_name)
 `
 
-export async function ensureCurrentUserWallet(client: DatabaseClient): Promise<WalletRow> {
-  const { data, error } = await client.rpc('ensure_current_user_wallet')
+export async function ensureUserWalletForProfile(
+  client: DatabaseClient,
+  profileId: string
+): Promise<WalletRow> {
+  const { data, error } = await client.rpc('ensure_user_wallet_for_profile', {
+    p_profile_id: profileId,
+  })
 
   if (error || !data) {
     throw new Error(`Failed to ensure wallet: ${error?.message ?? 'No wallet returned.'}`)
@@ -136,11 +143,6 @@ export async function requestLeadPrototype(
 
 // ── Wallet monetaria (migration 0024) ──────────────────────────────────────
 
-import type {
-  WalletAccountRow,
-  WalletLedgerEntryRowWithActor,
-} from '@/lib/server/wallet/types'
-
 const monetaryLedgerSelect = `
   id,
   profile_id,
@@ -157,14 +159,17 @@ const monetaryLedgerSelect = `
   actor_profile:user_profiles!wallet_ledger_entries_actor_profile_id_fkey(full_name)
 `
 
-export async function ensureMonetaryWallet(
-  client: DatabaseClient
+export async function ensureMonetaryWalletForProfile(
+  client: DatabaseClient,
+  profileId: string
 ): Promise<WalletAccountRow | null> {
-  const { data, error } = await client.rpc('ensure_monetary_wallet')
+  const { data, error } = await client.rpc('ensure_monetary_wallet_for_profile', {
+    p_profile_id: profileId,
+  })
 
   if (error) {
     // Si la función no existe aún (migración no aplicada), retornamos null sin romper el flujo
-    if (error.code === 'PGRST202' || error.message?.includes('ensure_monetary_wallet')) {
+    if (error.code === 'PGRST202' || error.message?.includes('ensure_monetary_wallet_for_profile')) {
       return null
     }
     throw new Error(`Failed to ensure monetary wallet: ${error.message}`)
