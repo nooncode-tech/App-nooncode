@@ -39,16 +39,16 @@ const maxwellAuditSchema = z.object({
   results: z.array(z.object({
     candidateId: z.string(),
     publishable: z.boolean(),
-    rejectionReason: z.string().optional(),
+    rejectionReason: z.string().nullable(),
     business: z.object({
       name: z.string().min(1),
       industry: z.string().min(1),
-      description: z.string().optional(),
-      address: z.string().optional(),
-      website: z.string().optional(),
-      phone: z.string().optional(),
-      email: z.string().optional(),
-      socials: z.array(z.string()).default([]),
+      description: z.string().nullable(),
+      address: z.string().nullable(),
+      website: z.string().nullable(),
+      phone: z.string().nullable(),
+      email: z.string().nullable(),
+      socials: z.array(z.string()),
     }),
     audit: z.object({
       summary: z.string().min(1),
@@ -60,7 +60,7 @@ const maxwellAuditSchema = z.object({
         confidence: z.enum(['high', 'medium', 'low']),
       })).min(1).max(4),
       sourcesChecked: z.array(z.string().min(1)).min(1),
-      competitorNotes: z.string().optional(),
+      competitorNotes: z.string().nullable(),
     }),
     opportunity: z.object({
       noonOpportunity: z.string().min(1),
