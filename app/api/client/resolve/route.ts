@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/server/supabase/server'
+import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { resolveClientToken } from '@/lib/server/client-portal/repository'
 
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'token is required' }, { status: 400 })
     }
 
-    const client = await createSupabaseServerClient()
+    const client = await createSupabaseAdminClient()
     const resolved = await resolveClientToken(client, token)
 
     if (!resolved) {
