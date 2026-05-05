@@ -1,0 +1,1233 @@
+lib/users/admin-directory-serialization.ts
+  fd7b134cfe62fba6 1-27
+openspec/config.yaml
+  fd7b134cfe62fba6 1-49
+supabase/migrations/0027_phase_3_proposal_lifecycle.sql
+  fd7b134cfe62fba6 1-185
+.claude/agents/system-audit.md
+  fd7b134cfe62fba6 1-106
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/resource.h
+  fd7b134cfe62fba6 1-146
+components/ui/toggle.tsx
+  fd7b134cfe62fba6 1-47
+docs/tdrs/TDR-002-rate-limiting-in-memory.md
+  fd7b134cfe62fba6 1-62
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/buffer.h
+  fd7b134cfe62fba6 1-255
+.tmp-pdf-deps/pypdf/generic/_image_xobject.py
+  fd7b134cfe62fba6 1-590
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/string-util.h
+  fd7b134cfe62fba6 1-335
+.tmp-pdf-deps/pypdf/_text_extraction/_layout_mode/_text_state_manager.py
+  fd7b134cfe62fba6 1-221
+docs/business/ROADMAP_NOON_APP.md
+  fd7b134cfe62fba6 1-509
+.tmp-pdf-deps/pypdf/generic/_image_inline.py
+  fd7b134cfe62fba6 1-314
+lib/server/stripe/webhook-events.ts
+  fd7b134cfe62fba6 1-91
+tests/server/api/tasks/task-activity-paginated.test.ts
+  fd7b134cfe62fba6 1-234
+docs/thread-handoff-2026-03-18-phase-2i.txt
+  fd7b134cfe62fba6 1-197
+components/ui/badge.tsx
+  fd7b134cfe62fba6 1-46
+lib/prototypes/serialization.ts
+  fd7b134cfe62fba6 1-44
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/heap.h
+  fd7b134cfe62fba6 1-143
+.tmp-pdf-deps/pypdf/_codecs/__init__.py
+  fd7b134cfe62fba6 1-55
+app/client/[token]/page.tsx
+  fd7b134cfe62fba6 1-280
+lib/server/tasks/mappers.ts
+  fd7b134cfe62fba6 1-54
+supabase/migrations/0010_phase_2h_lead_locking.sql
+  fd7b134cfe62fba6 1-395
+lib/projects/serialization.ts
+  fd7b134cfe62fba6 1-57
+tests/server/leads/activity-repository-list.test.ts
+  fd7b134cfe62fba6 1-98
+tests/server/leads/proposal-repository-list.test.ts
+  fd7b134cfe62fba6 1-98
+supabase/migrations/0038_phase_16a_maxwell_lead_engine_v1.sql
+  fd7b134cfe62fba6 1-220
+.playwright-cli/page-2026-04-23T17-18-48-133Z.yml
+  fd7b134cfe62fba6 1-71
+components/ui/popover.tsx
+  fd7b134cfe62fba6 1-48
+supabase/migrations/0009_phase_2g_tasks_rls_recursion_fix.sql
+  fd7b134cfe62fba6 1-22
+components/ui/sidebar.tsx
+  fd7b134cfe62fba6 1-723
+app/api/integrations/website/payment-confirmed/route.ts
+  fd7b134cfe62fba6 1-56
+lib/server/profiles/types.ts
+  fd7b134cfe62fba6 1-44
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/heap-imp.h
+  fd7b134cfe62fba6 1-190
+docs/product/source/LeadEngine_Codex_FIXED.pdf
+  fd7b134cfe62fba6 1-309
+lib/server/leads/proposal-mappers.ts
+  fd7b134cfe62fba6 1-97
+supabase/migrations/0004_phase_2c_lead_proposals.sql
+  fd7b134cfe62fba6 1-218
+components/maxwell-chat.tsx
+  fd7b134cfe62fba6 1-227
+supabase/migrations/0015_phase_2k_project_activity_metadata_fix.sql
+  fd7b134cfe62fba6 1-28
+app/api/projects/route.ts
+  fd7b134cfe62fba6 1-35
+public/icon.svg
+  fd7b134cfe62fba6 1-26
+supabase/migrations/0018_phase_2m_internal_notifications.sql
+  fd7b134cfe62fba6 1-471
+tests/infra/env-example.test.ts
+  fd7b134cfe62fba6 1-27
+styles/globals.css
+  fd7b134cfe62fba6 1-125
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/write-pixmap.h
+  fd7b134cfe62fba6 1-511
+components/ui/avatar.tsx
+  fd7b134cfe62fba6 1-53
+.claude/agents/system-infra.md
+  fd7b134cfe62fba6 1-103
+supabase/migrations/0003_phase_2b_lead_activity.sql
+  fd7b134cfe62fba6 1-263
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/system.h
+  fd7b134cfe62fba6 1-495
+supabase/migrations/0022_phase_2q_prototype_project_linkage_foundation.sql
+  fd7b134cfe62fba6 1-109
+tests/server/api/earnings/history-paginated.test.ts
+  fd7b134cfe62fba6 1-239
+.tmp-pdf-deps/pypdf/papersizes.py
+  fd7b134cfe62fba6 1-52
+lib/server/wallet/types.ts
+  fd7b134cfe62fba6 1-58
+components/ui/dialog.tsx
+  fd7b134cfe62fba6 1-143
+docs/QA_AUTH_RUNTIME_CHECKLIST.md
+  fd7b134cfe62fba6 1-100
+.tmp-pdf-deps/pypdf/xmp.py
+  fd7b134cfe62fba6 1-777
+docs/product/source/NoonApp_Seller_Speech_Codex_Addendum.pdf
+  fd7b134cfe62fba6 1-156
+components/ui/input-group.tsx
+  fd7b134cfe62fba6 1-169
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/page.h
+  fd7b134cfe62fba6 1-342
+supabase/migrations/0013_phase_2j_task_activity_events.sql
+  fd7b134cfe62fba6 1-85
+supabase/migrations/0024_phase_5a_prototype_settings_admin_write.sql
+  fd7b134cfe62fba6 1-32
+public/placeholder.svg
+  fd7b134cfe62fba6 1
+supabase/migrations/0041_phase_17a_stripe_webhook_event_ledger.sql
+  fd7b134cfe62fba6 1-42
+app/api/connect/status/route.ts
+  fd7b134cfe62fba6 1-36
+lib/wallet/serialization.ts
+  fd7b134cfe62fba6 1-86
+supabase/migrations/0007_phase_2f_task_activity.sql
+  fd7b134cfe62fba6 1-85
+tests/server/api/tasks/list-tasks-paginated.test.ts
+  fd7b134cfe62fba6 1-160
+tests/server/website-webhook-auth.test.ts
+  fd7b134cfe62fba6 1-75
+.tmp-pdf-deps/pymupdf/pymupdf.py
+  fd7b134cfe62fba6 1-2
+app/dashboard/page.tsx
+  fd7b134cfe62fba6 1-356
+.tmp-pdf-deps/fitz/table.py
+  fd7b134cfe62fba6 1-2
+.playwright-cli/console-2026-04-23T15-06-10-110Z.log
+  fd7b134cfe62fba6 1-47
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/path.h
+  fd7b134cfe62fba6 1-490
+.playwright-cli/page-2026-04-23T16-56-39-928Z.yml
+  fd7b134cfe62fba6 1-59
+openspec/changes/api-pagination/proposal.md
+  fd7b134cfe62fba6 1-252
+docs/product/maxwell-lead-engine-v1.md
+  fd7b134cfe62fba6 1-125
+.tmp-pdf-deps/pymupdf/mupdf.py
+  fd7b134cfe62fba6 1-65830
+lib/tasks/activity-serialization.ts
+  fd7b134cfe62fba6 1-25
+lib/env.ts
+  fd7b134cfe62fba6 1-91
+docs/business/noonapp-overview.md
+  fd7b134cfe62fba6 1-79
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/track-usage.h
+  fd7b134cfe62fba6 1-57
+.tmp-pdf-deps/pypdf/_text_extraction/_text_extractor.py
+  fd7b134cfe62fba6 1-350
+lib/server/leads/activity-mappers.ts
+  fd7b134cfe62fba6 1-41
+.tmp-pdf-deps/pypdf/annotations/_non_markup_annotations.py
+  fd7b134cfe62fba6 1-106
+tests/server/api/prototypes/list-prototypes-paginated.test.ts
+  fd7b134cfe62fba6 1-175
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/recolor.h
+  fd7b134cfe62fba6 1-49
+supabase/migrations/0024_phase_3a_monetary_wallet_foundation.sql
+  fd7b134cfe62fba6 1-303
+docs/adrs/ADR-004-no-ports-adapters-yet.md
+  fd7b134cfe62fba6 1-48
+tests/server/api/leads/lead-proposals-paginated.test.ts
+  fd7b134cfe62fba6 1-144
+.tmp-pdf-deps/pypdf/generic/_appearance_stream.py
+  fd7b134cfe62fba6 1-589
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/compress.h
+  fd7b134cfe62fba6 1-132
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/util.h
+  fd7b134cfe62fba6 1-207
+components/theme-provider.tsx
+  fd7b134cfe62fba6 1-11
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/exceptions.h
+  fd7b134cfe62fba6 1-118
+components/ui/label.tsx
+  fd7b134cfe62fba6 1-24
+.atl/skill-registry.md
+  fd7b134cfe62fba6 1-43
+lib/notifications/serialization.ts
+  fd7b134cfe62fba6 1-27
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/xml.h
+  fd7b134cfe62fba6 1-440
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/document.h
+  fd7b134cfe62fba6 1-940
+lib/auth-user.ts
+  fd7b134cfe62fba6 1-17
+.tmp-pdf-deps/pypdf/_text_extraction/_layout_mode/_fixed_width_page.py
+  fd7b134cfe62fba6 1-400
+.tmp-pdf-deps/pypdf/_crypt_providers/_base.py
+  fd7b134cfe62fba6 1-38
+components/ui/empty.tsx
+  fd7b134cfe62fba6 1-104
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/glyph-cache.h
+  fd7b134cfe62fba6 1-96
+lib/server/prototypes/mappers.ts
+  fd7b134cfe62fba6 1-33
+supabase/migrations/0017_phase_2l_project_field_activity_events.sql
+  fd7b134cfe62fba6 1-133
+tests/server/api/users/admin-list.test.ts
+  fd7b134cfe62fba6 1-115
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/helpers/mu-office-lib.h
+  fd7b134cfe62fba6 1-666
+lib/server/projects/activity-mappers.ts
+  fd7b134cfe62fba6 1-49
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/config.h
+  fd7b134cfe62fba6 1-319
+lib/auth-context.tsx
+  fd7b134cfe62fba6 1-295
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/story-writer.h
+  fd7b134cfe62fba6 1-209
+lib/dashboard-selectors.ts
+  fd7b134cfe62fba6 1-828
+.tmp-pdf-deps/pymupdf/extra.py
+  fd7b134cfe62fba6 1-220
+.tmp-pdf-deps/pypdf/_codecs/zapfding.py
+  fd7b134cfe62fba6 1-261
+app/api/rewards/route.ts
+  fd7b134cfe62fba6 1-50
+supabase/migrations/0025_phase_3a_bridge_wallet_compatibility.sql
+  fd7b134cfe62fba6 1-273
+supabase/migrations/0025_phase_3a_leads_geo_location.sql
+  fd7b134cfe62fba6 1-12
+lib/server/leads/proposal-repository.ts
+  fd7b134cfe62fba6 1-141
+supabase/migrations/0030_phase_11a_points_ledger.sql
+  fd7b134cfe62fba6 1-110
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/compressed-buffer.h
+  fd7b134cfe62fba6 1-194
+supabase/migrations/0035_phase_14b_request_changes_review_action.sql
+  fd7b134cfe62fba6 1-94
+app/api/leads/[leadId]/proposals/[proposalId]/route.ts
+  fd7b134cfe62fba6 1-69
+.tmp-pdf-deps/pypdf/annotations/__init__.py
+  fd7b134cfe62fba6 1-42
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/crypt.h
+  fd7b134cfe62fba6 1-108
+components/maxwell-fab.tsx
+  fd7b134cfe62fba6 1-66
+supabase/migrations/0028_phase_9b_payments_insert_policy.sql
+  fd7b134cfe62fba6 1-35
+.tmp-pdf-deps/pymupdf-1.27.2.3.dist-info/README.md
+  fd7b134cfe62fba6 1-769
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/writer.h
+  fd7b134cfe62fba6 1-272
+tests/server/tasks/repository-list-tasks.test.ts
+  fd7b134cfe62fba6 1-56
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/font.h
+  fd7b134cfe62fba6 1-168
+.tmp-pdf-deps/pypdf/__init__.py
+  fd7b134cfe62fba6 1-48
+.tmp-pdf-deps/pypdf/_text_extraction/_layout_mode/_text_state_params.py
+  fd7b134cfe62fba6 1-135
+.tmp-pdf-deps/pypdf/generic/_utils.py
+  fd7b134cfe62fba6 1-208
+supabase/migrations/0040_phase_16c_trigger_rpc_security_hardening.sql
+  fd7b134cfe62fba6 1-54
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/glyph.h
+  fd7b134cfe62fba6 1-81
+tests/server/api/projects/list-projects-paginated.test.ts
+  fd7b134cfe62fba6 1-188
+components/ui/alert.tsx
+  fd7b134cfe62fba6 1-66
+.tmp-pdf-deps/pypdf/_codecs/_codecs.py
+  fd7b134cfe62fba6 1-281
+.tmp-pdf-deps/pypdf/_page_labels.py
+  fd7b134cfe62fba6 1-290
+lib/server/prototypes/service.ts
+  fd7b134cfe62fba6 1-328
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/store.h
+  fd7b134cfe62fba6 1-465
+components/ui/field.tsx
+  fd7b134cfe62fba6 1-244
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/tree.h
+  fd7b134cfe62fba6 1-62
+.tmp-pdf-deps/pypdf/_crypt_providers/_pycryptodome.py
+  fd7b134cfe62fba6 1-101
+lib/server/notifications/mappers.ts
+  fd7b134cfe62fba6 1-19
+lib/server/updates/types.ts
+  fd7b134cfe62fba6 1-43
+.tmp-pdf-deps/pypdf/_font.py
+  fd7b134cfe62fba6 1-321
+CLAUDE.md
+  fd7b134cfe62fba6 1-50
+components/ui/button.tsx
+  fd7b134cfe62fba6 1-60
+.tmp-pdf-deps/pymupdf-1.27.2.3.dist-info/RECORD
+  fd7b134cfe62fba6 1-130
+components/lead-import-dialog.tsx
+  fd7b134cfe62fba6 1-233
+docs/session-handoff.md
+  fd7b134cfe62fba6 1-79
+components/ui/table.tsx
+  fd7b134cfe62fba6 1-116
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/structured-text.h
+  fd7b134cfe62fba6 1-1246
+components/ui/toggle-group.tsx
+  fd7b134cfe62fba6 1-73
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/internal.h
+  fd7b134cfe62fba6 1-47
+app/api/leads/[leadId]/proposals/[proposalId]/project/route.ts
+  fd7b134cfe62fba6 1-148
+lib/server/stripe/connect.ts
+  fd7b134cfe62fba6 1-75
+.env.example
+  fd7b134cfe62fba6 1-23
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/event.h
+  fd7b134cfe62fba6 1-167
+lib/projects/progress.ts
+  fd7b134cfe62fba6 1-46
+supabase/migrations/0039_phase_16b_rpc_and_client_portal_security.sql
+  fd7b134cfe62fba6 1-135
+.tmp-pdf-deps/pypdf/pagerange.py
+  fd7b134cfe62fba6 1-200
+app/api/prototypes/route.ts
+  fd7b134cfe62fba6 1-37
+lib/server/pagination/cursor.ts
+  fd7b134cfe62fba6 1-28
+.tmp-pdf-deps/pypdf/generic/_outline.py
+  fd7b134cfe62fba6 1-33
+components/lead-detail.tsx
+  fd7b134cfe62fba6 1-1966
+.claude/agents/system-docs.md
+  fd7b134cfe62fba6 1-94
+docs/AGENTS.md
+  fd7b134cfe62fba6 1-62
+lib/server/tasks/activity-schema.ts
+  fd7b134cfe62fba6 1-7
+tests/server/maxwell/chat-schema.test.ts
+  fd7b134cfe62fba6 1-30
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/clean.h
+  fd7b134cfe62fba6 1-84
+lib/server/auth/policy.ts
+  fd7b134cfe62fba6 1-102
+.claude/agents/session-templates.md
+  fd7b134cfe62fba6 1-138
+lib/server/leads/mappers.ts
+  fd7b134cfe62fba6 1-103
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/types.h
+  fd7b134cfe62fba6 1-41
+app/api/updates/route.ts
+  fd7b134cfe62fba6 1-42
+app/dashboard/web-analysis/page.tsx
+  fd7b134cfe62fba6 1-341
+app/api/leads/[leadId]/claim/route.ts
+  fd7b134cfe62fba6 1-49
+components/ui/separator.tsx
+  fd7b134cfe62fba6 1-28
+lib/server/api/logger.ts
+  fd7b134cfe62fba6 1-87
+supabase/migrations/0026_phase_9a_stripe_payments.sql
+  fd7b134cfe62fba6 1-131
+lib/server/maxwell/lead-engine.ts
+  fd7b134cfe62fba6 1-724
+lib/server/profiles/repository.ts
+  fd7b134cfe62fba6 1-187
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/annot.h
+  fd7b134cfe62fba6 1-1028
+supabase/all_migrations.sql
+  fd7b134cfe62fba6 1-3226
+.npmrc
+  fd7b134cfe62fba6 1
+.tmp-pdf-deps/pypdf/annotations/_markup_annotations.py
+  fd7b134cfe62fba6 1-351
+components/ui/carousel.tsx
+  fd7b134cfe62fba6 1-243
+docs/delivery-summary.md
+  fd7b134cfe62fba6 1-115
+supabase/migrations/0031_phase_12a_notification_preferences.sql
+  fd7b134cfe62fba6 1-20
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/output.h
+  fd7b134cfe62fba6 1-451
+app/api/wallet/route.ts
+  fd7b134cfe62fba6 1-24
+.tmp-pdf-deps/pypdf/_codecs/core_font_metrics.py
+  fd7b134cfe62fba6 1-4483
+docs/features/api-pagination.md
+  fd7b134cfe62fba6 1-288
+tests/server/api/rate-limit.test.ts
+  fd7b134cfe62fba6 1-72
+app/dashboard/earnings/page.tsx
+  fd7b134cfe62fba6 1-477
+.playwright-cli/page-2026-04-23T17-19-25-262Z.yml
+  fd7b134cfe62fba6 1-77
+lib/server/website-integration.ts
+  fd7b134cfe62fba6 1-753
+.claude/agents/system-architecture.md
+  fd7b134cfe62fba6 1-90
+.tmp-pdf-deps/pypdf/constants.py
+  fd7b134cfe62fba6 1-814
+lib/projects/activity-copy.ts
+  fd7b134cfe62fba6 1-128
+.vercelignore
+  fd7b134cfe62fba6 1-3
+.tmp-pdf-deps/pypdf/generic/_files.py
+  fd7b134cfe62fba6 1-401
+components/ui/chart.tsx
+  fd7b134cfe62fba6 1-353
+.tmp-pdf-deps/pypdf/generic/_base.py
+  fd7b134cfe62fba6 1-946
+components/ui/scroll-area.tsx
+  fd7b134cfe62fba6 1-58
+lib/server/supabase/admin.ts
+  fd7b134cfe62fba6 1-17
+supabase/migrations/0027_phase_10a_commissions.sql
+  fd7b134cfe62fba6 1-80
+.playwright-cli/page-2026-04-23T17-19-24-943Z.yml
+  fd7b134cfe62fba6 1-77
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/separation.h
+  fd7b134cfe62fba6 1-138
+app/api/prototypes/[prototypeWorkspaceId]/generate/route.ts
+  fd7b134cfe62fba6 1-96
+CHANGELOG.md
+  h_795452727fd435 11
+  fd7b134cfe62fba6 1-10,12-200
+lib/server/notifications/types.ts
+  fd7b134cfe62fba6 1-3
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/geometry.h
+  fd7b134cfe62fba6 1-885
+components/app-sidebar.tsx
+  fd7b134cfe62fba6 1-316
+components/ui/button-group.tsx
+  fd7b134cfe62fba6 1-83
+lib/server/tasks/activity-repository.ts
+  fd7b134cfe62fba6 1-65
+lib/server/tasks/schema.ts
+  fd7b134cfe62fba6 1-43
+supabase/migrations/0034_phase_14a_website_inbound_integration.sql
+  fd7b134cfe62fba6 1-80
+components/lead-prototype-card.tsx
+  fd7b134cfe62fba6 1-421
+lib/server/auth/session.ts
+  fd7b134cfe62fba6 1-157
+components/project-form-dialog.tsx
+  fd7b134cfe62fba6 1-290
+lib/server/leads/activity-schema.ts
+  fd7b134cfe62fba6 1-7
+components/ui/sheet.tsx
+  fd7b134cfe62fba6 1-139
+.playwright-cli/console-2026-04-23T16-53-16-155Z.log
+  fd7b134cfe62fba6 1-69
+app/api/leads/auto-followup/route.ts
+  fd7b134cfe62fba6 1-126
+docs/tdrs/TDR-003-stripe-event-ledger.md
+  fd7b134cfe62fba6 1-67
+docs/pre-audit-readiness.md
+  fd7b134cfe62fba6 1-62
+components/ui/form.tsx
+  fd7b134cfe62fba6 1-167
+.tmp-pdf-deps/pypdf/annotations/_base.py
+  fd7b134cfe62fba6 1-29
+tests/server/pagination/envelope.test.ts
+  fd7b134cfe62fba6 1-73
+lib/server/wallet/repository.ts
+  fd7b134cfe62fba6 1-195
+components/ui/dropdown-menu.tsx
+  fd7b134cfe62fba6 1-257
+lib/leads/follow-up.ts
+  fd7b134cfe62fba6 1-60
+app/api/leads/[leadId]/release/route.ts
+  fd7b134cfe62fba6 1-49
+lib/server/projects/types.ts
+  fd7b134cfe62fba6 1-27
+lib/server/website-webhook-auth.ts
+  fd7b134cfe62fba6 1-109
+lib/server/projects/activity-types.ts
+  fd7b134cfe62fba6 1-29
+app/globals.css
+  fd7b134cfe62fba6 1-266
+app/dashboard/notifications/page.tsx
+  fd7b134cfe62fba6 1-205
+hooks/use-toast.ts
+  fd7b134cfe62fba6 1-189
+components/ui/skeleton.tsx
+  fd7b134cfe62fba6 1-13
+components/ui/breadcrumb.tsx
+  fd7b134cfe62fba6 1-109
+lib/server/supabase/server.ts
+  fd7b134cfe62fba6 1-30
+.tmp-pdf-deps/pymupdf/_apply_pages.py
+  fd7b134cfe62fba6 1-253
+supabase/migrations/0011_phase_2h_lead_assignment_policy_fix.sql
+  fd7b134cfe62fba6 1-81
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/stream.h
+  fd7b134cfe62fba6 1-646
+lib/server/withdrawals/repository.ts
+  fd7b134cfe62fba6 1-46
+scripts/validate-runtime-env.ts
+  fd7b134cfe62fba6 1-110
+supabase/migrations/0002_phase_2a_leads.sql
+  fd7b134cfe62fba6 1-151
+supabase/migrations/0021_phase_2p_prototype_delivery_handoff.sql
+  fd7b134cfe62fba6 1-69
+app/api/payouts/initiate/route.ts
+  fd7b134cfe62fba6 1-108
+docs/tdrs/TDR-004-api-pagination.md
+  fd7b134cfe62fba6 1-174
+supabase/migrations/0029_phase_10b_withdrawal_requests.sql
+  fd7b134cfe62fba6 1-47
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/transition.h
+  fd7b134cfe62fba6 1-76
+public/placeholder-logo.svg
+  fd7b134cfe62fba6 1
+components/ui/item.tsx
+  fd7b134cfe62fba6 1-193
+components/ui/menubar.tsx
+  fd7b134cfe62fba6 1-276
+package.json
+  fd7b134cfe62fba6 1-97
+components/ui/slider.tsx
+  fd7b134cfe62fba6 1-63
+tests/server/api/leads/lead-activity-paginated.test.ts
+  fd7b134cfe62fba6 1-241
+tests/server/pagination/cursor.test.ts
+  fd7b134cfe62fba6 1-55
+.tmp-pdf-deps/pypdf/generic/_data_structures.py
+  fd7b134cfe62fba6 1-1800
+tests/server/tasks/activity-repository-list.test.ts
+  fd7b134cfe62fba6 1-98
+.tmp-pdf-deps/pymupdf/table.py
+  fd7b134cfe62fba6 1-2730
+lib/server/leads/activity-repository.ts
+  fd7b134cfe62fba6 1-80
+components/ui/tooltip.tsx
+  fd7b134cfe62fba6 1-61
+app/api/payments/checkout/route.ts
+  fd7b134cfe62fba6 1-97
+.tmp-pdf-deps/pypdf/_codecs/adobe_glyphs.py
+  fd7b134cfe62fba6 1-13969
+docs/ui_intention/component-philosophy.md
+  fd7b134cfe62fba6 1-78
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/classes.h
+  fd7b134cfe62fba6 1-20818
+tests/server/api/users/delivery-list.test.ts
+  fd7b134cfe62fba6 1-113
+lib/server/pagination/envelope.ts
+  fd7b134cfe62fba6 1-49
+app/api/leads/route.ts
+  fd7b134cfe62fba6 1-22,24-82
+  700fbdbe7191ab59 23
+lib/server/auth/guards.ts
+  fd7b134cfe62fba6 1-135
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/deskew.h
+  fd7b134cfe62fba6 1-46
+docs/tdrs/TDR-001-structured-logger.md
+  fd7b134cfe62fba6 1-73
+app/dashboard/prototypes/page.tsx
+  fd7b134cfe62fba6 1-350
+app/dashboard/pm-queue/page.tsx
+  fd7b134cfe62fba6 1-459
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/pool.h
+  fd7b134cfe62fba6 1-106
+.idea/inspectionProfiles/profiles_settings.xml
+  fd7b134cfe62fba6 1-6
+app/api/web-analysis/route.ts
+  fd7b134cfe62fba6 1-110
+components/ui/textarea.tsx
+  fd7b134cfe62fba6 1-18
+lib/tasks/serialization.ts
+  fd7b134cfe62fba6 1-35
+lib/server/pagination/schema.ts
+  fd7b134cfe62fba6 1-14
+app/api/users/admin/route.ts
+  fd7b134cfe62fba6 1-49
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/text.h
+  fd7b134cfe62fba6 1-210
+app/dashboard/settings/page.tsx
+  fd7b134cfe62fba6 1-834
+components/ui/command.tsx
+  fd7b134cfe62fba6 1-184
+lib/server/updates/service.ts
+  fd7b134cfe62fba6 1-103
+.playwright-cli/page-2026-04-23T17-20-30-729Z.yml
+  fd7b134cfe62fba6 1-276
+.tmp-pdf-deps/pymupdf/utils.py
+  fd7b134cfe62fba6 1-1227
+lib/server/leads/proposal-lineage.ts
+  fd7b134cfe62fba6 1-59
+components/ui/toast.tsx
+  fd7b134cfe62fba6 1-129
+components/ui/context-menu.tsx
+  fd7b134cfe62fba6 1-252
+docs/v0-integration-spec.md
+  fd7b134cfe62fba6 1-101
+tests/server/projects/repository-list-projects.test.ts
+  fd7b134cfe62fba6 1-71
+lib/server/earnings/admin.ts
+  fd7b134cfe62fba6 1-127
+app/api/earnings/withdraw/route.ts
+  fd7b134cfe62fba6 1-61
+.tmp-pdf-deps/pypdf/_doc_common.py
+  fd7b134cfe62fba6 1-1491
+tests/server/api/updates/list-updates.test.ts
+  fd7b134cfe62fba6 1-191
+lib/server/tasks/types.ts
+  fd7b134cfe62fba6 1-12
+lib/server/wallet/mappers.ts
+  fd7b134cfe62fba6 1-85
+lib/utils.ts
+  fd7b134cfe62fba6 1-6
+lib/server/leads/types.ts
+  fd7b134cfe62fba6 1-12
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/crypt.h
+  fd7b134cfe62fba6 1-270
+app/api/client/route.ts
+  fd7b134cfe62fba6 1-161
+.tmp-pdf-deps/pypdf/_text_extraction/_layout_mode/__init__.py
+  fd7b134cfe62fba6 1-16
+.tmp-pdf-deps/pypdf/generic/_rectangle.py
+  fd7b134cfe62fba6 1-132
+scripts/reset-passwords.ts
+  fd7b134cfe62fba6 1-71
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/html.h
+  fd7b134cfe62fba6 1-54
+openspec/changes/api-pagination/spec.md
+  fd7b134cfe62fba6 1-989
+scripts/seed-phase-1a-users.ts
+  fd7b134cfe62fba6 1-85
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/image.h
+  fd7b134cfe62fba6 1-458
+components/ui/input.tsx
+  fd7b134cfe62fba6 1-21
+supabase/migrations/0020_phase_2o_wallet_prototype_credits_foundation.sql
+  fd7b134cfe62fba6 1-430
+.tmp-pdf-deps/pymupdf-1.27.2.3.dist-info/METADATA
+  fd7b134cfe62fba6 1-796
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/barcode.h
+  fd7b134cfe62fba6 1-138
+scripts/seed-phase-2a-leads.ts
+  fd7b134cfe62fba6 1-88
+components/ui/switch.tsx
+  fd7b134cfe62fba6 1-31
+app/api/connect/onboard/route.ts
+  fd7b134cfe62fba6 1-52
+lib/mock-data.ts
+  fd7b134cfe62fba6 1-519
+app/api/proposals/[proposalId]/review/route.ts
+  fd7b134cfe62fba6 1-81
+components/kanban-board.tsx
+  fd7b134cfe62fba6 1-258
+lib/server/prototypes/schema.ts
+  fd7b134cfe62fba6 1-15
+lib/server/tasks/activity-mappers.ts
+  fd7b134cfe62fba6 1-41
+lib/updates/serialization.ts
+  fd7b134cfe62fba6 1-29
+lib/projects/activity-serialization.ts
+  fd7b134cfe62fba6 1-70
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/object.h
+  fd7b134cfe62fba6 1-445
+.tmp-pdf-deps/pymupdf-1.27.2.3.dist-info/INSTALLER
+  fd7b134cfe62fba6 1
+.tmp-pdf-deps/pypdf/_utils.py
+  fd7b134cfe62fba6 1-645
+lib/server/wallet/schema.ts
+  fd7b134cfe62fba6 1-7
+supabase/migrations/0008_phase_2g_project_visibility_alignment.sql
+  fd7b134cfe62fba6 1-44
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/hyphen.h
+  fd7b134cfe62fba6 1-58
+tests/server/maxwell/lead-engine.test.ts
+  fd7b134cfe62fba6 1-40
+lib/server/notifications/service.ts
+  fd7b134cfe62fba6 1-141
+app/api/tasks/route.ts
+  fd7b134cfe62fba6 1-75
+components/ui/input-otp.tsx
+  fd7b134cfe62fba6 1-77
+components/ui/card.tsx
+  fd7b134cfe62fba6 1-92
+components/ui/use-mobile.tsx
+  fd7b134cfe62fba6 1-21
+docs/production-readiness-audit.md
+  fd7b134cfe62fba6 1-49
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/display-list.h
+  fd7b134cfe62fba6 1-142
+.tmp-pdf-deps/fitz/__init__.py
+  fd7b134cfe62fba6 1-13
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/bidi.h
+  fd7b134cfe62fba6 1-91
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/json.h
+  fd7b134cfe62fba6 1-98
+components/lead-form-dialog.tsx
+  fd7b134cfe62fba6 1-382
+components/ui/kbd.tsx
+  fd7b134cfe62fba6 1-28
+.tmp-pdf-deps/pypdf/_codecs/symbol.py
+  fd7b134cfe62fba6 1-260
+app/api/proposals/[proposalId]/open/route.ts
+  fd7b134cfe62fba6 1-36
+.tmp-pdf-deps/pymupdf/__init__.py
+  fd7b134cfe62fba6 1-25885
+components/ui/alert-dialog.tsx
+  fd7b134cfe62fba6 1-157
+components/ui/tabs.tsx
+  fd7b134cfe62fba6 1-66
+.claude/agents/system-validator.md
+  fd7b134cfe62fba6 1-135
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/bitmap.h
+  fd7b134cfe62fba6 1-188
+hooks/use-mobile.ts
+  fd7b134cfe62fba6 1-21
+lib/server/client-portal/repository.ts
+  fd7b134cfe62fba6 1-68
+supabase/migrations/0001_phase_1a_auth_profiles.sql
+  fd7b134cfe62fba6 1-64
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz.h
+  fd7b134cfe62fba6 1-102
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/extra.h
+  fd7b134cfe62fba6 1-189
+tests/server/pagination/schema.test.ts
+  fd7b134cfe62fba6 1-46
+next.config.mjs
+  fd7b134cfe62fba6 1-8
+.tmp-pdf-deps/pypdf/_reader.py
+  fd7b134cfe62fba6 1-1464
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/archive.h
+  fd7b134cfe62fba6 1-450
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/band-writer.h
+  fd7b134cfe62fba6 1-117
+app/api/prototype-settings/route.ts
+  fd7b134cfe62fba6 1-56
+app/payment/cancel/page.tsx
+  fd7b134cfe62fba6 1-25
+docs/adrs/ADR-003-stripe-for-payments.md
+  fd7b134cfe62fba6 1-42
+lib/notifications/client-events.ts
+  fd7b134cfe62fba6 1
+lib/server/leads/permissions.ts
+  fd7b134cfe62fba6 1-28
+.idea/inspectionProfiles/Project_Default.xml
+  fd7b134cfe62fba6 1-21
+.tmp-pdf-deps/pypdf/_crypt_providers/_cryptography.py
+  fd7b134cfe62fba6 1-124
+.tmp-pdf-deps/pypdf/_encryption.py
+  fd7b134cfe62fba6 1-1194
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf.h
+  fd7b134cfe62fba6 1-59
+.playwright-cli/page-2026-04-23T15-23-05-297Z.yml
+  fd7b134cfe62fba6 1-42
+supabase/migrations/0014_phase_2k_project_status_events.sql
+  fd7b134cfe62fba6 1-128
+components/ui/drawer.tsx
+  fd7b134cfe62fba6 1-135
+.tmp-pdf-deps/pypdf-6.10.2.dist-info/WHEEL
+  fd7b134cfe62fba6 1-4
+lib/server/api/rate-limit.ts
+  fd7b134cfe62fba6 1-72
+.tmp-pdf-deps/pypdf/generic/__init__.py
+  fd7b134cfe62fba6 1-115
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/device.h
+  fd7b134cfe62fba6 1-652
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/xref.h
+  fd7b134cfe62fba6 1-301
+app/api/maxwell/lead-searches/route.ts
+  fd7b134cfe62fba6 1-71
+lib/maxwell/system-prompt.ts
+  fd7b134cfe62fba6 1-100
+app/page.tsx
+  fd7b134cfe62fba6 1-206
+.tmp-pdf-deps/pypdf/generic/_link.py
+  fd7b134cfe62fba6 1-144
+.playwright-cli/page-2026-04-24T05-38-58-955Z.yml
+  fd7b134cfe62fba6 1-5
+components/ui/resizable.tsx
+  fd7b134cfe62fba6 1-56
+.mcp.json
+  fd7b134cfe62fba6 1-11
+app/layout.tsx
+  fd7b134cfe62fba6 1-82
+app/api/notifications/[notificationId]/read/route.ts
+  fd7b134cfe62fba6 1-28
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/cmap.h
+  fd7b134cfe62fba6 1-148
+lib/server/leads/proposal-schema.ts
+  fd7b134cfe62fba6 1-24
+lib/server/updates/schema.ts
+  fd7b134cfe62fba6 1-6
+.claude/agents/system-refactor.md
+  fd7b134cfe62fba6 1-87
+app/api/projects/[projectId]/route.ts
+  fd7b134cfe62fba6 1-60
+.tmp-pdf-deps/pypdf-6.10.2.dist-info/RECORD
+  fd7b134cfe62fba6 1-117
+lib/server/stripe/client.ts
+  fd7b134cfe62fba6 1-32
+docs/ui_intention/dashboard-navigation.md
+  fd7b134cfe62fba6 1-58
+app/api/admin/earnings/consolidate/route.ts
+  fd7b134cfe62fba6 1-29
+app/api/integrations/website/inbound-proposal/route.ts
+  fd7b134cfe62fba6 1-55
+.tmp-pdf-deps/pypdf/_crypt_providers/__init__.py
+  fd7b134cfe62fba6 1-86
+components/task-form-dialog.tsx
+  fd7b134cfe62fba6 1-253
+lib/data-context.tsx
+  fd7b134cfe62fba6 1-1870
+app/api/leads/[leadId]/activity/route.ts
+  fd7b134cfe62fba6 1-104
+app/dashboard/reports/page.tsx
+  fd7b134cfe62fba6 1-324
+components/ui/sonner.tsx
+  fd7b134cfe62fba6 1-24
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/filter.h
+  fd7b134cfe62fba6 1-269
+lib/server/prototypes/types.ts
+  fd7b134cfe62fba6 1-22
+.playwright-cli/page-2026-04-23T17-19-01-853Z.yml
+  fd7b134cfe62fba6 1-71
+.tmp-pdf-deps/pypdf/_page.py
+  fd7b134cfe62fba6 1-2354
+app/api/tasks/[taskId]/activity/route.ts
+  fd7b134cfe62fba6 1-127
+lib/server/tasks/repository.ts
+  fd7b134cfe62fba6 1-109
+.tmp-pdf-deps/pypdf/generic/_viewerpref.py
+  fd7b134cfe62fba6 1-163
+app/dashboard/leads/page.tsx
+  fd7b134cfe62fba6 1-604
+components/ui/hover-card.tsx
+  fd7b134cfe62fba6 1-44
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/classes2.h
+  fd7b134cfe62fba6 1-12574
+app/api/webhooks/stripe/route.ts
+  fd7b134cfe62fba6 1-423
+components/command-palette.tsx
+  fd7b134cfe62fba6 1-149
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/shade.h
+  fd7b134cfe62fba6 1-233
+components/ui/radio-group.tsx
+  fd7b134cfe62fba6 1-45
+docs/features/prototype-generation.md
+  fd7b134cfe62fba6 1-66
+lib/server/points/repository.ts
+  fd7b134cfe62fba6 1-113
+.tmp-pdf-deps/pypdf/_protocols.py
+  fd7b134cfe62fba6 1-86
+components/lead-card.tsx
+  fd7b134cfe62fba6 1-364
+docs/features/lead-lifecycle.md
+  fd7b134cfe62fba6 1-96
+components.json
+  fd7b134cfe62fba6 1-21
+lib/server/projects/mappers.ts
+  fd7b134cfe62fba6 1-83
+supabase/migrations/0016_phase_2k_project_activity_policy_fix.sql
+  fd7b134cfe62fba6 1-52
+app/api/projects/[projectId]/activity/route.ts
+  fd7b134cfe62fba6 1-61
+docs/adrs/ADR-001-nextjs-app-router.md
+  fd7b134cfe62fba6 1-41
+.tmp-pdf-deps/pypdf/_codecs/std.py
+  fd7b134cfe62fba6 1-258
+lib/server/leads/activity-types.ts
+  fd7b134cfe62fba6 1-11
+vercel.json
+  fd7b134cfe62fba6 1-8
+lib/server/prototypes/repository.ts
+  fd7b134cfe62fba6 1-159
+lib/server/v0/client.ts
+  fd7b134cfe62fba6 1-36
+.tmp-pdf-deps/pypdf/_cmap.py
+  fd7b134cfe62fba6 1-358
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/memento.h
+  fd7b134cfe62fba6 1-425
+docs/roadmap-reconciled.md
+  fd7b134cfe62fba6 1-137
+lib/server/projects/repository.ts
+  fd7b134cfe62fba6 1-207
+app/api/notifications/preferences/route.ts
+  fd7b134cfe62fba6 1-90
+app/payment/success/page.tsx
+  fd7b134cfe62fba6 1-25
+lib/server/maxwell/chat-schema.ts
+  fd7b134cfe62fba6 1-23
+.tmp-pdf-deps/pypdf/types.py
+  fd7b134cfe62fba6 1-80
+lib/server/leads/repository.ts
+  fd7b134cfe62fba6 1-172
+.idea/App-nooncode-main.iml
+  fd7b134cfe62fba6 1-12
+components/ui/select.tsx
+  fd7b134cfe62fba6 1-185
+proxy.ts
+  fd7b134cfe62fba6 1-97
+lib/server/leads/schema.ts
+  fd7b134cfe62fba6 1-94
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/font.h
+  fd7b134cfe62fba6 1-859
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/outline.h
+  fd7b134cfe62fba6 1-261
+lib/server/payments/activation.ts
+  fd7b134cfe62fba6 1-57
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/export.h
+  fd7b134cfe62fba6 1-52
+.tmp-pdf-deps/pypdf-6.10.2.dist-info/METADATA
+  fd7b134cfe62fba6 1-169
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/helpers/mu-threads.h
+  fd7b134cfe62fba6 1-280
+tsconfig.json
+  fd7b134cfe62fba6 1-41
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/image-rewriter.h
+  fd7b134cfe62fba6 1-85
+.tmp-pdf-deps/pymupdf-1.27.2.3.dist-info/entry_points.txt
+  fd7b134cfe62fba6 1-3
+.tmp-pdf-deps/pymupdf/__main__.py
+  fd7b134cfe62fba6 1-1153
+.claude/agents/system-testing.md
+  fd7b134cfe62fba6 1-93
+docs/project.context.core.md
+  fd7b134cfe62fba6 1-386
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/document.h
+  fd7b134cfe62fba6 1-1103
+postcss.config.mjs
+  fd7b134cfe62fba6 1-8
+app/api/tasks/[taskId]/route.ts
+  fd7b134cfe62fba6 1-79
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/parse.h
+  fd7b134cfe62fba6 1-61
+app/dashboard/tasks/page.tsx
+  fd7b134cfe62fba6 1-635
+tests/server/stripe/webhook-events.test.ts
+  fd7b134cfe62fba6 1-156
+lib/server/projects/activity-repository.ts
+  fd7b134cfe62fba6 1-64
+tests/server/api/leads/list-leads-paginated.test.ts
+  fd7b134cfe62fba6 1-105
+.tmp-pdf-deps/pypdf-6.10.2.dist-info/INSTALLER
+  fd7b134cfe62fba6 1
+lib/leads/proposal-serialization.ts
+  fd7b134cfe62fba6 1-67
+supabase/migrations/0012_phase_2i_lead_follow_up.sql
+  fd7b134cfe62fba6 1-73
+.playwright-cli/page-2026-04-23T15-10-17-837Z.yml
+  fd7b134cfe62fba6 1-73
+components/ui/progress.tsx
+  fd7b134cfe62fba6 1-31
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/ucdn.h
+  fd7b134cfe62fba6 1-464
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/interpret.h
+  fd7b134cfe62fba6 1-530
+.tmp-pdf-deps/pypdf/generic/_fit.py
+  fd7b134cfe62fba6 1-174
+supabase/migrations/0005_phase_2d_projects.sql
+  fd7b134cfe62fba6 1-160
+lib/server/stripe/service.ts
+  fd7b134cfe62fba6 1-220
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/pixmap.h
+  fd7b134cfe62fba6 1-517
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/helpers/pkcs7-openssl.h
+  fd7b134cfe62fba6 1-51
+supabase/migrations/0019_phase_2n_sales_manager_project_read_alignment.sql
+  fd7b134cfe62fba6 1-44
+app/api/client/resolve/route.ts
+  fd7b134cfe62fba6 1-38
+lib/dashboard-navigation.ts
+  fd7b134cfe62fba6 1-61
+app/api/leads/[leadId]/prototype/route.ts
+  fd7b134cfe62fba6 1-58
+app/api/client/comments/route.ts
+  fd7b134cfe62fba6 1-87
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/log.h
+  fd7b134cfe62fba6 1-61
+lib/server/earnings/repository.ts
+  fd7b134cfe62fba6 1-99
+.tmp-pdf-deps/pymupdf/_build.py
+  fd7b134cfe62fba6 1-9
+lib/server/tasks/activity-types.ts
+  fd7b134cfe62fba6 1-11
+.playwright-cli/page-2026-04-23T16-30-32-794Z.yml
+  fd7b134cfe62fba6 1-44
+.playwright-cli/console-2026-04-23T16-30-24-815Z.log
+  fd7b134cfe62fba6 1-35
+app/api/admin/earnings/credit/route.ts
+  fd7b134cfe62fba6 1-35
+lib/server/updates/repository.ts
+  fd7b134cfe62fba6 1-126
+openspec/changes/api-pagination/tasks.md
+  fd7b134cfe62fba6 1-478
+components/ui/toaster.tsx
+  fd7b134cfe62fba6 1-35
+.gitignore
+  fd7b134cfe62fba6 1-47
+.tmp-pdf-deps/pypdf/_codecs/pdfdoc.py
+  fd7b134cfe62fba6 1-264
+.tmp-pdf-deps/pypdf/errors.py
+  fd7b134cfe62fba6 1-74
+app/dashboard/layout.tsx
+  fd7b134cfe62fba6 1-69
+lib/leads/serialization.ts
+  fd7b134cfe62fba6 1-83
+lib/maxwell/pricing.ts
+  fd7b134cfe62fba6 1-83
+.playwright-cli/console-2026-04-24T05-38-53-831Z.log
+  fd7b134cfe62fba6 1-664
+app/api/inbound/pm-queue/route.ts
+  fd7b134cfe62fba6 1-19
+docs/adrs/ADR-002-supabase-as-primary-database.md
+  fd7b134cfe62fba6 1-42
+app/api/earnings/history/route.ts
+  fd7b134cfe62fba6 1-46
+openspec/changes/api-pagination/design.md
+  fd7b134cfe62fba6 1-767
+.playwright-cli/page-2026-04-23T15-06-11-377Z.yml
+  fd7b134cfe62fba6 1-71
+components/ui/collapsible.tsx
+  fd7b134cfe62fba6 1-33
+app/api/search/route.ts
+  fd7b134cfe62fba6 1-53
+app/api/prototypes/[prototypeWorkspaceId]/handoff/route.ts
+  fd7b134cfe62fba6 1-30
+app/dashboard/credits/page.tsx
+  fd7b134cfe62fba6 1-418
+components/ui/use-toast.ts
+  fd7b134cfe62fba6 1-189
+components/ui/aspect-ratio.tsx
+  fd7b134cfe62fba6 1-11
+lib/server/updates/mappers.ts
+  fd7b134cfe62fba6 1-238
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/color.h
+  fd7b134cfe62fba6 1-441
+app/dashboard/updates/page.tsx
+  fd7b134cfe62fba6 1-158
+app/api/leads/[leadId]/proposals/route.ts
+  fd7b134cfe62fba6 1-172
+docs/business/roadmap-v2.md
+  fd7b134cfe62fba6 1-204
+supabase/migrations/0026_phase_3b_earnings_backend.sql
+  fd7b134cfe62fba6 1-189
+lib/leads/activity-serialization.ts
+  fd7b134cfe62fba6 1-25
+supabase/migrations/0023_phase_8a_project_conversion_status_activity.sql
+  fd7b134cfe62fba6 1-68
+components/ui/spinner.tsx
+  fd7b134cfe62fba6 1-16
+tests/server/api/logger.test.ts
+  fd7b134cfe62fba6 1-32
+.tmp-pdf-deps/pypdf-6.10.2.dist-info/licenses/LICENSE
+  fd7b134cfe62fba6 1-29
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/name-table.h
+  fd7b134cfe62fba6 1-622
+lib/server/api/errors.ts
+  fd7b134cfe62fba6 1-95
+supabase/migrations/0033_phase_5b_v0_generation_columns.sql
+  fd7b134cfe62fba6 1-7
+lib/server/supabase/browser.ts
+  fd7b134cfe62fba6 1-18
+tests/server/api/notifications/list-notifications.test.ts
+  fd7b134cfe62fba6 1-207
+components/ui/navigation-menu.tsx
+  fd7b134cfe62fba6 1-166
+.playwright-cli/page-2026-04-23T16-53-28-327Z.yml
+  fd7b134cfe62fba6 1-44
+.tmp-pdf-deps/pymupdf/_wxcolors.py
+  fd7b134cfe62fba6 1-562
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/output-svg.h
+  fd7b134cfe62fba6 1-79
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/javascript.h
+  fd7b134cfe62fba6 1-43
+.tmp-pdf-deps/pypdf/_writer.py
+  fd7b134cfe62fba6 1-3395
+components/ui/accordion.tsx
+  fd7b134cfe62fba6 1-66
+.tmp-pdf-deps/pymupdf-1.27.2.3.dist-info/COPYING
+  fd7b134cfe62fba6 1
+.playwright-cli/page-2026-04-23T15-10-35-971Z.yml
+  fd7b134cfe62fba6 1-78
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/functions.h
+  fd7b134cfe62fba6 1-14181
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/story.h
+  fd7b134cfe62fba6 1-232
+.tmp-pdf-deps/pypdf/_crypt_providers/_fallback.py
+  fd7b134cfe62fba6 1-93
+lib/server/notifications/schema.ts
+  fd7b134cfe62fba6 1-6
+.playwright-cli/console-2026-04-23T17-18-47-097Z.log
+  fd7b134cfe62fba6 1-5
+lib/server/notifications/repository.ts
+  fd7b134cfe62fba6 1-170
+app/api/maxwell/route.ts
+  fd7b134cfe62fba6 1-163
+components/ui/calendar.tsx
+  fd7b134cfe62fba6 1-213
+lib/server/projects/schema.ts
+  fd7b134cfe62fba6 1-45
+.tmp-pdf-deps/pymupdf-1.27.2.3.dist-info/WHEEL
+  fd7b134cfe62fba6 1-4
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/hash.h
+  fd7b134cfe62fba6 1-126
+supabase/migrations/0032_phase_13a_client_portal.sql
+  fd7b134cfe62fba6 1-107
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/context.h
+  fd7b134cfe62fba6 1-1066
+components/ui/pagination.tsx
+  fd7b134cfe62fba6 1-127
+tests/server/leads/repository-list-leads.test.ts
+  fd7b134cfe62fba6 1-82
+lib/tasks/activity-copy.ts
+  fd7b134cfe62fba6 1-64
+app/api/leads/[leadId]/maxwell-feedback/route.ts
+  fd7b134cfe62fba6 1-61
+supabase/migrations/0037_phase_15b_payment_activation_and_payout_safety.sql
+  fd7b134cfe62fba6 1-707
+.tmp-pdf-deps/pypdf/_version.py
+  fd7b134cfe62fba6 1
+app/dashboard/projects/page.tsx
+  fd7b134cfe62fba6 1-1367
+app/api/leads/[leadId]/route.ts
+  fd7b134cfe62fba6 1-71
+.claude/agents/project-context.md
+  fd7b134cfe62fba6 1-58
+lib/server/api/request.ts
+  fd7b134cfe62fba6 1-26
+supabase/migrations/0036_phase_15a_wallet_atomic_credit.sql
+  fd7b134cfe62fba6 1-179
+.tmp-pdf-deps/fitz/utils.py
+  fd7b134cfe62fba6 1-2
+lib/server/leads/proposal-types.ts
+  fd7b134cfe62fba6 1-28
+docs/features/payment-and-earnings.md
+  fd7b134cfe62fba6 1-88
+components/ui/checkbox.tsx
+  fd7b134cfe62fba6 1-32
+.github/pull_request_template.md
+  fd7b134cfe62fba6 1-66
+.claude/agents/system-security.md
+  fd7b134cfe62fba6 1-94
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/form.h
+  fd7b134cfe62fba6 1-381
+eslint.config.mjs
+  fd7b134cfe62fba6 1-30
+app/api/users/delivery/route.ts
+  fd7b134cfe62fba6 1-48
+app/dashboard/rewards/page.tsx
+  fd7b134cfe62fba6 1-355
+.claude/agents/router.md
+  fd7b134cfe62fba6 1-138
+lib/server/supabase/database.types.ts
+  fd7b134cfe62fba6 1-2506
+lib/server/wallet/service.ts
+  fd7b134cfe62fba6 1-40
+app/api/inbound/pm-queue/[proposalId]/review-webhook/route.ts
+  fd7b134cfe62fba6 1-63
+supabase/migrations/0006_phase_2e_tasks.sql
+  fd7b134cfe62fba6 1-117
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/version.h
+  fd7b134cfe62fba6 1-31
+app/api/notifications/route.ts
+  fd7b134cfe62fba6 1-42
+docs/project.context.history.md
+  fd7b134cfe62fba6 1-1947
+.claude/agents/system-analysis.md
+  fd7b134cfe62fba6 1-92
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/link.h
+  fd7b134cfe62fba6 1-130
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/pdf/zugferd.h
+  fd7b134cfe62fba6 1-49
+.tmp-pdf-deps/pypdf/filters.py
+  fd7b134cfe62fba6 1-858
+docs/project.context.full.md
+  fd7b134cfe62fba6 1-884
+lib/types.ts
+  fd7b134cfe62fba6 1-555
+.playwright-cli/console-2026-04-23T17-19-00-646Z.log
+  fd7b134cfe62fba6 1-19285
+.claude/agents/system-backend.md
+  fd7b134cfe62fba6 1-105
+app/dashboard/pipeline/page.tsx
+  fd7b134cfe62fba6 1-178
+.idea/.gitignore
+  fd7b134cfe62fba6 1-10
+app/api/earnings/route.ts
+  fd7b134cfe62fba6 1-29
+.tmp-pdf-deps/pymupdf/mupdf-devel/include/mupdf/fitz/getopt.h
+  fd7b134cfe62fba6 1-134
+.tmp-pdf-deps/pypdf/_text_extraction/__init__.py
+  fd7b134cfe62fba6 1-245
+.claude/agents/system-frontend.md
+  fd7b134cfe62fba6 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d6d7afba8b28882985ac7b7bbfc1a202a8a9e33f",
+  "prompts": {
+    "700fbdbe7191ab59": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec749cfc-f63f-42d0-a6b7-e9bf9c9b89c7",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "rhernandezba",
+      "messages": [],
+      "total_additions": 1397,
+      "total_deletions": 2,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "fd7b134cfe62fba6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c2defcf9-dccd-470a-80ce-d4637bfd65ac",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "rhernandezba",
+      "messages": [],
+      "total_additions": 301224,
+      "total_deletions": 0,
+      "accepted_lines": 299362,
+      "overriden_lines": 1
+    }
+  },
+  "humans": {
+    "h_795452727fd435": {
+      "author": "rhernandezba"
+    }
+  }
+}
