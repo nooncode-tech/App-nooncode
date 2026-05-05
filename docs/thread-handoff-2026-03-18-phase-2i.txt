@@ -1,0 +1,197 @@
+Repositorio: C:\Users\melan\Downloads\nooncode-app
+Fecha: 2026-03-18
+Branch actual: codex/phase2-runtime-alignment
+
+ESTADO REAL ACTUAL
+
+Cerrado y empujado:
+- 2A leads/pipeline persistence
+- 2B lead activity
+- 2C lead proposals/handoff
+- 2H commercial lead locking / release / claim
+- 2D lead-to-project conversion
+- 2E task persistence
+- persisted project editing en /dashboard/projects
+- persisted task activity/comments en /dashboard/tasks
+- project-side read-only task-activity rollup para PM/admin en /dashboard/projects
+- developer project visibility alignment en /dashboard/projects
+- developer task visibility alignment en /dashboard/tasks
+- developer delivery summary alignment en /dashboard
+- developer delivery reporting alignment en /dashboard/reports
+- reports analytics realism alignment en /dashboard/reports
+
+Repo sigue en estado mixto:
+- auth/session real con Supabase
+- flujo comercial real hasta propuesta + locking/release/claim + proyecto/tareas base
+- proyectos reales editables en delivery
+- task activity real para tareas UUID
+- project rollup real solo para PM/admin
+- developer-visible projects/tasks/home/reports ya alineados con verdad real visible
+- resto del dominio todavía mock-first
+- analytics comercial/financiera todavía limitada por falta de fuentes reales
+
+ULTIMO SLICE IMPLEMENTADO
+
+Phase 2I manual lead follow-up scheduling
+
+Implementado y empujado:
+- commit: 5a268fc feat: implement phase 2i lead follow-up scheduling
+- branch remoto: origin/codex/phase2-runtime-alignment
+
+Slice 2I incluye:
+- supabase/migrations/0012_phase_2i_lead_follow_up.sql
+- campo persistido next_follow_up_at en public.leads
+- contrato actualizado en:
+  - lib/server/leads/schema.ts
+  - lib/server/leads/mappers.ts
+  - lib/server/leads/repository.ts
+  - lib/server/supabase/database.types.ts
+  - lib/leads/serialization.ts
+  - lib/types.ts
+  - lib/data-context.tsx
+- helper nuevo:
+  - lib/leads/follow-up.ts
+- UI actualizada:
+  - components/lead-detail.tsx
+  - components/lead-card.tsx
+
+Comportamiento implementado:
+- sales puede programar nextFollowUpAt
+- sales puede reprogramar nextFollowUpAt
+- sales puede limpiar nextFollowUpAt a null
+- lead detail muestra el bloque de proximo seguimiento
+- lead card muestra estado visible:
+  - scheduled
+  - due_today
+  - overdue
+- el CTA existente "Agendar" ahora apunta al flujo real de seguimiento
+- lead activity registra changedFields con nextFollowUpAt
+
+VALIDACION REAL HECHA
+
+Aplicacion de migracion:
+- 0012_phase_2i_lead_follow_up.sql ya fue aplicada al proyecto remoto con:
+  - npx.cmd supabase db push --yes
+
+Validacion runtime cerrada a nivel contrato/API:
+- script temporal usado:
+  - tmp_validate_lead_follow_up.mjs
+- evidencia confirmada:
+  1. seller puede programar nextFollowUpAt en un lead persistido
+  2. el valor persiste y sobrevive GET /api/leads tras reload
+  3. seller puede reprogramar y el valor persistido cambia
+  4. seller puede limpiar el follow-up y vuelve a null
+  5. GET /api/leads/[leadId]/activity refleja updates con changedFields = nextFollowUpAt
+
+Estado honesto del slice 2I:
+- PARTIAL runtime closure
+- contrato/persistencia: validado
+- browser-level UI evidence: pendiente
+
+QUE QUEDA ABIERTO
+
+Pendiente para marcar 2I como "closed in runtime":
+- validacion browser-level fiable en /dashboard/leads y en el detalle del lead
+- confirmar visualmente:
+  - card muestra programado / vence hoy / atrasado
+  - detalle muestra el mismo estado
+  - el estado visible sobrevive reload
+
+Intento fallido ya hecho:
+- script temporal:
+  - tmp_validate_lead_follow_up_browser.mjs
+- resultado:
+  - el harness CDP con Edge headless se colgo por tooling
+  - esto NO demostro bug del producto
+  - solo dejo deuda de validacion visual
+
+Importante:
+- NO marcar 2I como closed in runtime todavia
+- SI tratar 2I como implementado + migrado + validado por app routes/API
+
+ARCHIVOS DE CONTEXTO YA ACTUALIZADOS
+
+Estos archivos ya reflejan el estado real:
+- project.context.core.md
+- project.context.full.md
+- project.context.history.md
+
+Ultimas sesiones relevantes en history:
+- Session 021: cierre 2H locking/release/claim
+- Session 022: implementacion 2I
+- Session 023: validacion runtime parcial de 2I
+
+COMMITS IMPORTANTES
+
+2H:
+- 6d75592 feat: close phase 2h lead locking workflow
+
+2I:
+- 5a268fc feat: implement phase 2i lead follow-up scheduling
+
+WORKING TREE
+
+Al cerrar este hilo, el branch estaba limpio y sincronizado:
+- codex/phase2-runtime-alignment
+
+SIGUIENTE PASO RECOMENDADO
+
+No abrir otro feature todavia.
+
+Siguiente micro-slice:
+- cerrar la validacion visual de 2I
+
+Ruta recomendada al arrancar el nuevo hilo:
+- system-testing primero
+
+Objetivo exacto del siguiente hilo:
+- obtener evidencia browser-level estable de /dashboard/leads y lead detail para nextFollowUpAt
+- si la evidencia sale bien:
+  - actualizar context files
+  - cambiar 2I de partial a closed in runtime
+  - hacer commit/push de ese cierre documental si corresponde
+
+ALCANCE EXPLICITO DEL SIGUIENTE HILO
+
+Incluir:
+- validacion visual de card y detalle
+- reload browser
+- update de context si queda cerrado
+
+Excluir:
+- WhatsApp
+- proximity/radius
+- Google Calendar
+- reminders/notificaciones
+- nuevo slice comercial
+- refactors grandes
+
+MENSAJE SUGERIDO PARA ABRIR EL OTRO HILO
+
+Continuamos en C:\Users\melan\Downloads\nooncode-app desde el estado posterior a Phase 2I manual lead follow-up scheduling.
+
+Estado real:
+- branch: codex/phase2-runtime-alignment
+- 2H ya cerrado y empujado
+- 2I ya implementado, migrado y validado por app routes/API
+- 2I sigue PARTIAL porque falta evidencia browser-level en /dashboard/leads y lead detail
+
+Evidencia ya cerrada para 2I:
+- 0012_phase_2i_lead_follow_up.sql aplicada al Supabase remoto
+- tmp_validate_lead_follow_up.mjs confirmo schedule, reschedule, clear, reload y lead activity
+
+Pendiente exacto:
+- validar visualmente en browser que card y detalle muestran programado / vence hoy / atrasado y sobreviven reload
+
+Notas:
+- tmp_validate_lead_follow_up_browser.mjs intento esa validacion pero se colgo por el harness CDP; no asumir bug del producto por eso
+- project.context.core.md, project.context.full.md y project.context.history.md ya reflejan este estado parcial
+- tsc sigue fallando solo por errores preexistentes en:
+  - lib/server/supabase/browser.ts
+  - lib/server/supabase/server.ts
+  - middleware.ts
+  - scripts/seed-phase-1a-users.ts
+  - scripts/seed-phase-2a-leads.ts
+
+Ruta recomendada para arrancar:
+- system-testing primero

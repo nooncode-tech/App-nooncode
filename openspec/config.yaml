@@ -1,0 +1,49 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Next.js 16 App Router, TypeScript, React 19, pnpm
+  Architecture: Role-based sales-to-delivery workspace; App Router with server components + Supabase SSR auth
+  Data layer: lib/data-context.tsx (client state), lib/server/ (server repositories), Supabase Postgres
+  API: app/api/ route handlers (Next.js), all routes guarded by session + role middleware
+  UI: Tailwind CSS v4, shadcn/Radix component stack
+  Testing: Node built-in test runner via tsx --test (tests/**/*.test.ts)
+  Style: ESLint (eslint-config-next), tsc --noEmit
+
+strict_tdd: true
+
+testing:
+  runner:
+    command: pnpm test
+    framework: Node built-in (tsx --test)
+  layers:
+    unit: { available: true, tool: "tsx --test" }
+    integration: { available: true, tool: "tsx --test (tests/server/api/)" }
+    e2e: { available: false }
+  coverage: { available: false }
+  quality:
+    linter: { available: true, command: "pnpm lint" }
+    type_checker: { available: true, command: "pnpm typecheck" }
+    formatter: { available: false }
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Identify affected API routes and shared lib modules
+  specs:
+    - Use Given/When/Then format for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Document pagination strategy (cursor vs offset) with rationale
+    - Include response envelope contract changes
+  tasks:
+    - Group by phase (shared lib, per-route, tests)
+    - Use hierarchical numbering (1.1, 1.2, etc.)
+    - Keep tasks small enough to complete in one session
+  apply:
+    - Follow existing route handler patterns in app/api/
+    - Reuse repository/query helpers in lib/server/
+  verify:
+    - Run pnpm test and pnpm typecheck
+    - Compare implementation against every spec scenario
+  archive:
+    - Warn before merging destructive deltas (large removals)

@@ -1,0 +1,266 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Noon Brand: #000000 (sidebar), #1200c5 (primary), #FFFFFF (content bg) */
+:root {
+  --background: oklch(0.985 0.002 275);
+  --foreground: oklch(0.13 0.03 275);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.13 0.03 275);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.13 0.03 275);
+  --primary: #1200c5;
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.005 275);
+  --secondary-foreground: oklch(0.18 0.03 275);
+  --muted: oklch(0.955 0.005 275);
+  --muted-foreground: oklch(0.45 0.02 275);
+  --accent: oklch(0.50 0.26 264);
+  --accent-foreground: oklch(0.99 0 0);
+  --destructive: oklch(0.55 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.91 0.005 275);
+  --input: oklch(0.91 0.005 275);
+  --ring: #1200c5;
+  --chart-1: #1200c5;
+  --chart-2: oklch(0.5 0.17 175);
+  --chart-3: oklch(0.62 0.16 80);
+  --chart-4: oklch(0.52 0.2 330);
+  --chart-5: oklch(0.5 0.18 145);
+  --radius: 0.625rem;
+  --sidebar: #000000;
+  --sidebar-foreground: oklch(0.92 0.01 275);
+  --sidebar-primary: oklch(0.50 0.26 264);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.16 0.04 275);
+  --sidebar-accent-foreground: oklch(0.95 0.01 275);
+  --sidebar-border: oklch(0.18 0.03 275);
+  --sidebar-ring: #1200c5;
+  --success: oklch(0.5 0.18 145);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.7 0.17 80);
+  --warning-foreground: oklch(0.18 0.05 80);
+}
+
+@layer components {
+  .app-page {
+    @apply px-4 py-5 md:px-8 md:py-8 space-y-8;
+  }
+
+  .app-page-header {
+    @apply flex flex-col gap-4 border-b border-border/70 pb-5 md:flex-row md:items-end md:justify-between;
+  }
+
+  .app-page-title {
+    @apply text-[28px] font-semibold leading-[1.15] text-foreground;
+  }
+
+  .app-page-subtitle {
+    @apply mt-1 max-w-2xl text-sm leading-6 text-muted-foreground;
+  }
+
+  .app-section {
+    @apply space-y-4;
+  }
+
+  .app-section-header {
+    @apply flex flex-col gap-1 md:flex-row md:items-center md:justify-between;
+  }
+
+  .app-section-title {
+    @apply text-base font-semibold leading-6 text-foreground;
+  }
+
+  .app-section-subtitle {
+    @apply text-sm leading-6 text-muted-foreground;
+  }
+
+  .metric-grid {
+    @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-4;
+  }
+
+  .metric-card {
+    @apply rounded-md bg-card px-4 py-4 transition-colors hover:bg-muted/20;
+  }
+
+  .metric-card-primary {
+    @apply rounded-md bg-primary px-4 py-4 text-primary-foreground transition-colors hover:bg-primary/90;
+  }
+
+  .metric-label {
+    @apply text-xs font-semibold leading-4 text-muted-foreground;
+  }
+
+  .metric-label-inverse {
+    @apply text-xs font-semibold leading-4 text-primary-foreground/70;
+  }
+
+  .metric-value {
+    @apply mt-2 text-2xl font-semibold leading-none tabular-nums text-foreground;
+  }
+
+  .metric-value-lg {
+    @apply mt-2 text-[32px] font-semibold leading-none tabular-nums text-foreground;
+  }
+
+  .metric-value-inverse {
+    @apply mt-2 text-2xl font-semibold leading-none tabular-nums text-primary-foreground;
+  }
+
+  .metric-note {
+    @apply mt-2 text-xs leading-5 text-muted-foreground;
+  }
+
+  .metric-note-inverse {
+    @apply mt-2 text-xs leading-5 text-primary-foreground/70;
+  }
+
+  .app-panel {
+    @apply rounded-md bg-card p-6;
+  }
+
+  .app-feed {
+    @apply w-full max-w-6xl;
+  }
+
+  .app-panel-muted {
+    @apply rounded-md bg-muted/20 p-4;
+  }
+
+  .app-row {
+    @apply flex items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/20;
+  }
+
+  .app-muted-surface {
+    @apply rounded-md bg-muted/20;
+  }
+}
+
+@theme inline {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Cards stay on one plane by default; reserve strong elevation for overlays. */
+  [data-slot="card"] {
+    box-shadow: none !important;
+    filter: none !important;
+    border-color: transparent;
+  }
+
+  /* Sidebar: no border line, gap matches sidebar, inset uses a hard edge instead of a shadow */
+  [data-slot="sidebar-container"] {
+    border-color: transparent;
+  }
+  [data-slot="sidebar-gap"] {
+    background-color: var(--sidebar);
+  }
+  [data-slot="sidebar-inset"] {
+    border-left: 2px solid var(--sidebar);
+  }
+
+  /* Page title standard */
+  .page-title {
+    @apply text-[28px] font-semibold leading-[1.15] text-foreground;
+  }
+  .page-subtitle {
+    @apply mt-1 max-w-2xl text-sm leading-6 text-muted-foreground;
+  }
+
+  /* Stat number — large metric display like Stripe */
+  .stat-number {
+    @apply mt-2 text-[32px] font-semibold leading-none tabular-nums text-foreground;
+  }
+  .stat-number-lg {
+    @apply mt-2 text-[32px] font-semibold leading-none tabular-nums text-foreground;
+  }
+  .stat-label {
+    @apply text-xs font-semibold leading-4 text-muted-foreground;
+  }
+
+  /* Section divider */
+  .section-header {
+    @apply flex items-center justify-between border-b border-border/70 pb-4;
+  }
+
+  /* Hide scrollbars globally, allow scroll */
+  [data-sidebar="content"] {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  [data-sidebar="content"]::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Thin scrollbar for main content area */
+  main {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.82 0.005 275) transparent;
+  }
+  main::-webkit-scrollbar {
+    width: 6px;
+  }
+  main::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  main::-webkit-scrollbar-thumb {
+    background-color: oklch(0.82 0.005 275);
+    border-radius: 3px;
+  }
+
+  /* Table improvements */
+  th {
+    @apply text-xs font-medium text-muted-foreground;
+  }
+}

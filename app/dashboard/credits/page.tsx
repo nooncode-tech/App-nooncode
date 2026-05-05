@@ -1,0 +1,418 @@
+'use client'
+
+import Link from 'next/link'
+import { startTransition, useEffect, useState } from 'react'
+import { ArrowDownToLine, CircleOff, History, Lock, Sparkles, Timer, Wallet } from 'lucide-react'
+import { useAuth, canAccessDashboardPath } from '@/lib/auth-context'
+import type { WalletSummary, WalletEntry } from '@/lib/types'
+import { deserializeWalletSummary, type WalletSummaryWire } from '@/lib/wallet/serialization'
+import { buildLeadDetailHref } from '@/lib/dashboard-navigation'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Spinner } from '@/components/ui/spinner'
+
+function formatEntryDate(value: Date): string {
+  return new Intl.DateTimeFormat('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(value)
+}
+
+function entryTypeLabel(entry: WalletEntry): string {
+  if (entry.type === 'prototype_request_debit') {
+    return 'Solicitud de prototipo'
+  }
+
+  if (entry.type === 'prototype_continue_debit') {
+    return 'Continuacion de prototipo'
+  }
+
+  if (entry.type === 'free_grant') {
+    return 'Credito gratis'
+  }
+
+  if (entry.type === 'earnings_credit') {
+    return 'Credito por ganancias'
+  }
+
+  return 'Ajuste manual'
+}
+
+function bucketLabel(bucket: WalletEntry['bucket']): string {
+  return bucket === 'free' ? 'Gratis' : 'Propio'
+}
+
+function deltaLabel(value: number): string {
+  return `${value > 0 ? '+' : ''}${value}`
+}
+
+function formatUSD(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  }).format(value)
+}
+
+function monetaryEntryTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    deposit: 'Depósito',
+    earnings_distribution: 'Distribución de ganancias',
+    service_debit: 'Débito por servicio',
+    withdrawal_request: 'Solicitud de retiro',
+    withdrawal_confirmed: 'Retiro confirmado',
+    manual_adjustment: 'Ajuste manual',
+    balance_locked: 'Saldo bloqueado',
+    balance_unlocked: 'Saldo liberado',
+  }
+  return labels[type] ?? type
+}
+
+function balanceBucketLabel(bucket: string): string {
+  const labels: Record<string, string> = {
+    available_to_spend: 'Disponible para usar',
+    available_to_withdraw: 'Disponible para retirar',
+    pending: 'Pendiente',
+    locked: 'Bloqueado',
+  }
+  return labels[bucket] ?? bucket
+}
+
+export default function CreditsPage() {
+  const { authMode, user } = useAuth()
+  const [wallet, setWallet] = useState<WalletSummary | null>(null)
+  const [isLoading, setIsLoading] = useState(authMode === 'supabase')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isActive = true
+
+    if (authMode !== 'supabase' || !user) {
+      startTransition(() => {
+        setWallet(null)
+        setErrorMessage(null)
+        setIsLoading(false)
+      })
+      return () => {
+        isActive = false
+      }
+    }
+
+    startTransition(() => {
+      setIsLoading(true)
+      setErrorMessage(null)
+    })
+
+    fetch('/api/wallet?limit=30', {
+      method: 'GET',
+      cache: 'no-store',
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          const message =
+            payload && typeof payload.error === 'string'
+              ? payload.error
+              : 'No se pudo cargar la wallet interna.'
+          throw new Error(message)
+        }
+
+        return payload as { data: WalletSummaryWire }
+      })
+      .then((payload) => {
+        if (isActive) {
+          setWallet(deserializeWalletSummary(payload.data))
+        }
+      })
+      .catch((error) => {
+        if (isActive) {
+          setWallet(null)
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : 'No se pudo cargar la wallet interna.'
+          )
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [authMode, user])
+
+  if (!user) return null
+
+  const canOpenLeads = canAccessDashboardPath(user.role, '/dashboard/leads')
+
+  return (
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+          <h1 className="app-page-title">Creditos</h1>
+          {authMode === 'supabase' ? <Badge variant="outline">Wallet interna</Badge> : null}
+        </div>
+        <p className="app-page-subtitle">
+          Saldo interno disponible para solicitar prototipos. No equivale a liquidaciones mensuales ni a pagos reales.
+        </p>
+        </div>
+      </div>
+
+      {authMode !== 'supabase' ? (
+        <Card>
+          <CardContent className="min-h-[320px]">
+            <Empty className="h-full border-0 p-0">
+              <EmptyHeader className="my-auto">
+                <EmptyMedia variant="icon">
+                  <CircleOff className="size-5" />
+                </EmptyMedia>
+                <EmptyTitle>Disponible en runtime Supabase</EmptyTitle>
+                <EmptyDescription>
+                  La wallet interna depende de saldo y ledger persistidos. En mock no existe esta fuente real.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
+        <Card>
+          <CardContent className="flex min-h-[320px] items-center justify-center">
+            <Spinner className="size-6" />
+          </CardContent>
+        </Card>
+      ) : errorMessage ? (
+        <Card>
+          <CardContent className="min-h-[320px]">
+            <Empty className="h-full border-0 p-0">
+              <EmptyHeader className="my-auto">
+                <EmptyMedia variant="icon">
+                  <Wallet className="size-5" />
+                </EmptyMedia>
+                <EmptyTitle>No se pudo cargar la wallet</EmptyTitle>
+                <EmptyDescription>{errorMessage}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="metric-grid">
+            <div className="metric-card-primary">
+              <p className="metric-label-inverse">Saldo disponible</p>
+              <p className="metric-value-inverse">{wallet?.totalAvailable ?? 0}</p>
+              <p className="metric-note-inverse">Creditos listos para usar</p>
+            </div>
+
+            <div className="metric-card">
+              <p className="metric-label">Creditos gratis</p>
+              <p className="metric-value">{wallet?.freeAvailable ?? 0}</p>
+              <p className="metric-note">Se consumen primero en solicitudes de prototipo</p>
+            </div>
+
+            <div className="metric-card">
+              <p className="metric-label">Saldo propio</p>
+              <p className="metric-value">{wallet?.earnedAvailable ?? 0}</p>
+              <p className="metric-note">Saldo interno reflejado dentro de Noon</p>
+            </div>
+
+            <div className="metric-card">
+              <p className="metric-label">Costo por prototipo</p>
+              <p className="metric-value">{wallet?.prototypeRequestCost ?? 'No configurado'}</p>
+              <p className="metric-note">Costo actual por solicitud comercial</p>
+            </div>
+          </div>
+
+          {wallet?.monetaryWallet && (
+            <>
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold">Wallet monetaria</h2>
+                <p className="text-sm text-muted-foreground">
+                  Saldo real en USD. Fuente de verdad para pagos, ganancias y retiros.
+                </p>
+              </div>
+
+              <div className="metric-grid">
+                <Card className="bg-emerald-50/60 dark:bg-emerald-950/30">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                      Disponible para usar
+                    </CardTitle>
+                    <Sparkles className="size-4 text-emerald-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="metric-value text-emerald-700 dark:text-emerald-300">
+                      {formatUSD(wallet.monetaryWallet.availableToSpend)}
+                    </div>
+                    <p className="text-xs text-emerald-600/70 mt-1">Para prototipos y servicios internos</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Disponible para retirar</CardTitle>
+                    <ArrowDownToLine className="size-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="metric-value">
+                      {formatUSD(wallet.monetaryWallet.availableToWithdraw)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Retirable a banco o Binance</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Pendiente</CardTitle>
+                    <Timer className="size-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="metric-value">
+                      {formatUSD(wallet.monetaryWallet.pending)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Confirmación en progreso</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Bloqueado</CardTitle>
+                    <Lock className="size-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="metric-value">
+                      {formatUSD(wallet.monetaryWallet.locked)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">En validación por admin/PM</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Ledger monetario</CardTitle>
+                  <CardDescription>
+                    Historial auditable de movimientos en USD. Cada entrada es permanente e irreversible.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!wallet.monetaryLedger || wallet.monetaryLedger.length === 0 ? (
+                    <Empty className="border-0 px-0 py-12">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <History className="size-5" />
+                        </EmptyMedia>
+                        <EmptyTitle>Sin movimientos monetarios</EmptyTitle>
+                        <EmptyDescription>
+                          Los pagos, ganancias y retiros aparecerán aquí cuando existan movimientos reales.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    <div className="space-y-3">
+                      {wallet.monetaryLedger.map((entry) => (
+                          <div key={entry.id} className="app-panel-muted">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="outline">{monetaryEntryTypeLabel(entry.entryType)}</Badge>
+                                <Badge variant="secondary">{balanceBucketLabel(entry.balanceBucket)}</Badge>
+                                {entry.status !== 'confirmed' && (
+                                  <Badge variant={entry.status === 'reversed' ? 'destructive' : 'outline'}>
+                                    {entry.status === 'reversed' ? 'Revertido' : 'Pendiente'}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {entry.actorName} · {formatEntryDate(entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt))}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-lg font-semibold ${entry.amount < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {entry.amount > 0 ? '+' : ''}{formatUSD(entry.amount)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{entry.currency}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ledger de creditos</CardTitle>
+              <CardDescription>
+                Historial durable del saldo interno. Los pagos reales y liquidaciones mensuales siguen fuera de este modulo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!wallet || wallet.entries.length === 0 ? (
+                <Empty className="border-0 px-0 py-12">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <History className="size-5" />
+                    </EmptyMedia>
+                    <EmptyTitle>Aun no hay movimientos</EmptyTitle>
+                    <EmptyDescription>
+                      Los consumos y ajustes de creditos apareceran aqui cuando existan movimientos reales.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                <div className="space-y-3">
+                  {wallet.entries.map((entry) => (
+                          <div key={entry.id} className="app-panel-muted">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{entryTypeLabel(entry)}</Badge>
+                            <Badge variant="secondary">{bucketLabel(entry.bucket)}</Badge>
+                            {entry.leadId && canOpenLeads ? (
+                              <Button asChild size="sm" variant="ghost" className="h-6 px-2 text-xs">
+                                <Link href={buildLeadDetailHref(entry.leadId)}>Abrir lead</Link>
+                              </Button>
+                            ) : null}
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">
+                              {entry.metadata?.leadName && typeof entry.metadata.leadName === 'string'
+                                ? entry.metadata.leadName
+                                : entryTypeLabel(entry)}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {entry.actorName} · {formatEntryDate(entry.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-lg font-semibold ${entry.deltaCredits < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {deltaLabel(entry.deltaCredits)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {entry.bucket === 'free' ? 'Desde creditos gratis' : 'Desde saldo propio'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  )
+}
