@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { NextResponse } from 'next/server'
 import { createGetLeadsHandler } from '@/app/api/leads/route'
 import { AuthGuardError } from '@/lib/server/auth/guards'
-import type { OffsetPaginationInput } from '@/lib/server/pagination/schema'
+import type { DatabaseClient } from '@/lib/server/supabase/server'
 
 // ---------------------------------------------------------------------------
 // Stub factories
@@ -22,12 +21,12 @@ function makeHandler({
     return principal
   }
 
-  const listLeadsStub = async (_client: unknown, _pagination: OffsetPaginationInput) => ({
+  const listLeadsStub = async () => ({
     rows,
     total,
   })
 
-  const createClientStub = async () => ({})
+  const createClientStub = async () => ({}) as DatabaseClient
 
   return createGetLeadsHandler({
     requireRole: requireRoleStub,

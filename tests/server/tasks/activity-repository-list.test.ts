@@ -27,7 +27,7 @@ function makeMockClient(result: MockResult) {
   }
 
   return {
-    from: (_table: string) => chain,
+    from: () => chain,
     _calls: calls,
     _chain: chain,
   }

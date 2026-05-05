@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AuthGuardError } from '@/lib/server/auth/guards'
 import { encodeCursor } from '@/lib/server/pagination/cursor'
-import type { CursorPayload } from '@/lib/server/pagination/cursor'
+import type { DatabaseClient } from '@/lib/server/supabase/server'
 import { createGetLeadProposalsHandler } from '@/app/api/leads/[leadId]/proposals/route'
 
 // ---------------------------------------------------------------------------
@@ -60,15 +60,11 @@ function makeHandler({
 
   const getLeadByIdStub = async () => (leadExists ? { id: LEAD_ID } : null)
 
-  const listLeadProposalsStub = async (
-    _client: unknown,
-    _leadId: string,
-    _opts: { cursor: CursorPayload | null; limit: number }
-  ) => proposals
+  const listLeadProposalsStub = async () => proposals
 
   const listProjectsByProposalIdsStub = async () => []
   const listLeadActivitiesStub = async () => []
-  const createClientStub = async () => ({})
+  const createClientStub = async () => ({}) as DatabaseClient
 
   return createGetLeadProposalsHandler({
     requireRole: requireRoleStub,

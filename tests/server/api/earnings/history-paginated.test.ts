@@ -86,14 +86,6 @@ function makeGETHandler(deps: {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeRow(i: number): EarningsRow {
-  return {
-    id: `entry-${i}`,
-    created_at: `2026-05-0${i}T10:00:00Z`,
-    amount: 100 * i,
-  }
-}
-
 function makeUrl(params: Record<string, string> = {}) {
   const url = new URL('https://app.test/api/earnings/history')
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
@@ -104,7 +96,6 @@ const fakeClient = {}
 const createClientStub: CreateClientFn = async () => fakeClient
 const adminPrincipal: GetPrincipalFn = async () => ({ userId: 'admin-1', role: 'admin' })
 const userPrincipal: GetPrincipalFn = async () => ({ userId: 'user-1', role: 'sales' })
-const noSession: GetPrincipalFn = async () => null
 
 // ---------------------------------------------------------------------------
 // Tests

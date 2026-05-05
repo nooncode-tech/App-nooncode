@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildOffsetResponse, buildCursorResponse } from '@/lib/server/pagination/envelope'
-import { encodeCursor, decodeCursor } from '@/lib/server/pagination/cursor'
+import { decodeCursor } from '@/lib/server/pagination/cursor'
 import type { CursorPayload } from '@/lib/server/pagination/cursor'
 
 type Item = { id: string; createdAt: string }

@@ -84,7 +84,7 @@ function makeRows(count: number): ProjectRowWithLineage[] {
     name: `Project ${i + 1}`,
     description: null,
     client_name: 'ACME',
-    status: 'active' as const,
+    status: 'in_progress' as const,
     budget: 0,
     developer_user_id: null,
     pm_legacy_user_id: null,

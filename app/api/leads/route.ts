@@ -20,7 +20,7 @@ const allowedLeadRoles = ['admin', 'sales_manager', 'sales'] as const
 type GetHandlerDeps = {
   requireRole: (roles: readonly AppRole[]) => Promise<unknown>
   listLeads: (client: DatabaseClient, pagination: { page: number; limit: number }) => Promise<{ rows: unknown[]; total: number }>
-  createSupabaseServerClient: () => Promise<unknown>
+  createSupabaseServerClient: () => Promise<DatabaseClient>
   mapRow?: (row: unknown) => unknown
 }
 

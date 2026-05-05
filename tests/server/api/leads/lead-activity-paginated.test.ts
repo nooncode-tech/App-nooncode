@@ -163,6 +163,7 @@ test('valid cursor → next slice returned, no overlap with first page', async (
   for (const item of body2.data) {
     assert.ok(!ids1.has(item.id), `Item ${item.id} should not appear in both pages`)
   }
+  assert.equal(callCount, 2)
 })
 
 test('last page → meta.nextCursor is null', async () => {

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mock } from 'node:test'
 
 // We test the GET handler logic directly by stubbing its dependencies via module mocking.
 // Since tsx supports path aliases, we import from the source.
@@ -76,7 +75,7 @@ const unauthorizedRequireRole: RequireRoleFn = async () => {
   throw new AuthGuardError('UNAUTHENTICATED', 'An active session is required.', 401)
 }
 
-const emptyListTasks: ListTasksFn = async (_client, _input) => ({ rows: [], total: 0 })
+const emptyListTasks: ListTasksFn = async () => ({ rows: [], total: 0 })
 
 function makeRows(count: number): TaskRowWithProfiles[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -101,7 +100,8 @@ function makeRows(count: number): TaskRowWithProfiles[] {
 
 test('GET /api/tasks default → page=1, limit=100, meta present', async () => {
   const rows = makeRows(3)
-  const listTasks: ListTasksFn = async (_client, input) => {
+  const listTasks: ListTasksFn = async (client, input) => {
+    void client
     assert.equal(input.page, 1)
     assert.equal(input.limit, 100)
     return { rows, total: 3 }
@@ -118,7 +118,8 @@ test('GET /api/tasks default → page=1, limit=100, meta present', async () => {
 
 test('GET /api/tasks explicit ?page=2&limit=10', async () => {
   const rows = makeRows(10)
-  const listTasks: ListTasksFn = async (_client, input) => {
+  const listTasks: ListTasksFn = async (client, input) => {
+    void client
     assert.equal(input.page, 2)
     assert.equal(input.limit, 10)
     return { rows, total: 25 }

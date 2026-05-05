@@ -8,9 +8,9 @@ function makeClient(overrides: { data?: unknown; count?: number | null; error?: 
 
   const builder: Record<string, unknown> = {}
 
-  builder.from = (_table: string) => builder
-  builder.select = (_cols: string, _opts?: unknown) => builder
-  builder.order = (_col: string, _opts?: unknown) => builder
+  builder.from = () => builder
+  builder.select = () => builder
+  builder.order = () => builder
   builder.range = (from: number, to: number) => {
     calls.range = [from, to]
     return builder

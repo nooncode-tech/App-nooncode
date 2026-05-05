@@ -23,7 +23,7 @@ function makeMockClient(result: MockResult) {
   }
 
   const client = {
-    from: (_table: string) => chain,
+    from: () => chain,
     _calls: calls,
   }
 

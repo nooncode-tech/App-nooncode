@@ -77,15 +77,6 @@ function makeGETHandler(deps: {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeRow(i: number, leadId = 'lead-1'): PrototypeRow {
-  return {
-    id: `proto-${i}`,
-    lead_id: leadId,
-    updated_at: `2026-05-0${i}T10:00:00Z`,
-    created_at: `2026-05-0${i}T09:00:00Z`,
-  }
-}
-
 function makeUrl(params: Record<string, string> = {}) {
   const url = new URL('https://app.test/api/prototypes')
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)

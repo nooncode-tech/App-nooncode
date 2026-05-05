@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextResponse } from 'next/server'
-import { AuthGuardError } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { cursorPaginationSchema } from '@/lib/server/pagination/schema'
 import { decodeCursor } from '@/lib/server/pagination/cursor'
