@@ -27,6 +27,14 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# claude / agent config
+.mcp.json
+.claude/
+.atl/
+
+# openspec — local only
+openspec/
+
 # local validation artifacts
 /.tmp-runtime-validation/
 /.tmp-server/
