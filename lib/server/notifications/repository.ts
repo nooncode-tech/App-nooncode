@@ -21,14 +21,26 @@ const userNotificationSelect = `
 export async function listUserNotifications(
   client: DatabaseClient,
   profileId: string,
-  limit: number
+  limit: number,
+  cursor?: { createdAt: string; id: string } | null
 ): Promise<UserNotificationRow[]> {
-  const { data, error } = await client
+  let query = client
     .from('user_notifications')
     .select(userNotificationSelect)
     .eq('profile_id', profileId)
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .order('id', { ascending: false })
+
+  // Apply cursor filter: rows strictly before the cursor position
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+    )
+  }
+
+  query = query.limit(limit)
+
+  const { data, error } = await query
 
   if (error) {
     throw new Error(`Failed to list user notifications: ${error.message}`)

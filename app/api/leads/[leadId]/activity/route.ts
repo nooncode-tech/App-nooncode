@@ -13,6 +13,9 @@ import {
   mapLeadActivityRowToWire,
 } from '@/lib/server/leads/activity-mappers'
 import { createLeadNoteSchema } from '@/lib/server/leads/activity-schema'
+import { cursorPaginationSchema } from '@/lib/server/pagination/schema'
+import { decodeCursor } from '@/lib/server/pagination/cursor'
+import { buildCursorResponse } from '@/lib/server/pagination/envelope'
 
 const routeParamsSchema = z.object({
   leadId: z.string().uuid(),
@@ -31,7 +34,7 @@ function leadNotFoundResponse() {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ leadId: string }> }
 ) {
   try {
@@ -45,11 +48,25 @@ export async function GET(
       return leadNotFoundResponse()
     }
 
-    const activities = await listLeadActivities(client, leadId)
-
-    return NextResponse.json({
-      data: activities.map(mapLeadActivityRowToWire),
+    const { searchParams } = new URL(request.url)
+    const pagination = cursorPaginationSchema.parse({
+      cursor: searchParams.get('cursor') ?? undefined,
+      limit: searchParams.get('limit') ?? undefined,
     })
+
+    const cursorPayload = pagination.cursor ? decodeCursor(pagination.cursor) : null
+
+    const activities = await listLeadActivities(client, leadId, {
+      cursor: cursorPayload,
+      limit: pagination.limit,
+    })
+
+    return NextResponse.json(
+      buildCursorResponse(activities.map(mapLeadActivityRowToWire), {
+        limit: pagination.limit,
+        getCursor: (item) => ({ createdAt: item.createdAt, id: item.id }),
+      })
+    )
   } catch (error) {
     return toErrorResponse(error)
   }

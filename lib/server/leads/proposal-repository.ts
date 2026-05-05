@@ -5,6 +5,7 @@ import type {
   LeadProposalRowWithLinkedProject,
   LeadProposalUpdate,
 } from '@/lib/server/leads/proposal-types'
+import type { CursorPayload } from '@/lib/server/pagination/cursor'
 
 type DatabaseClient = SupabaseClient<Database>
 
@@ -37,13 +38,23 @@ const leadProposalSelect = `
 
 export async function listLeadProposals(
   client: DatabaseClient,
-  leadId: string
+  leadId: string,
+  { cursor, limit }: { cursor: CursorPayload | null; limit: number }
 ): Promise<LeadProposalRowWithLinkedProject[]> {
-  const { data, error } = await client
+  let query = client
     .from('lead_proposals')
     .select(leadProposalSelect)
     .eq('lead_id', leadId)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+    )
+  }
+
+  const { data, error } = await query.limit(limit + 1)
 
   if (error) {
     throw new Error(`Failed to list lead proposals: ${error.message}`)

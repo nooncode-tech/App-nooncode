@@ -135,6 +135,7 @@ export async function listVisiblePrototypeWorkspaces(
   query: {
     leadId?: string
     limit: number
+    cursor?: import('@/lib/server/pagination/cursor').CursorPayload | null
   }
 ): Promise<{
   items: PrototypeWorkspaceListItemWire[]
@@ -164,6 +165,7 @@ export async function listVisiblePrototypeWorkspaces(
   const workspaces = await listPrototypeWorkspaces(client, {
     leadId: query.leadId,
     limit: query.limit,
+    cursor: query.cursor ?? null,
   })
 
   return {

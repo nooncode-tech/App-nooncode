@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/server/supabase/database.types'
+import type { CursorPayload } from '@/lib/server/pagination/cursor'
 import type {
   HandoffPrototypeWorkspaceRpcRow,
   LinkLeadPrototypeWorkspaceRpcRow,
@@ -75,16 +76,24 @@ export async function listPrototypeWorkspaces(
   options: {
     leadId?: string
     limit: number
+    cursor?: CursorPayload | null
   }
 ): Promise<PrototypeWorkspaceRowWithRelations[]> {
   let query = client
     .from('prototype_workspaces')
     .select(prototypeWorkspaceListSelect)
     .order('updated_at', { ascending: false })
-    .limit(options.limit)
+    .order('id', { ascending: false })
+    .limit(options.limit + 1)
 
   if (options.leadId) {
     query = query.eq('lead_id', options.leadId)
+  }
+
+  if (options.cursor) {
+    query = (query as ReturnType<typeof query.lt>).or(
+      `updated_at.lt.${options.cursor.createdAt},and(updated_at.eq.${options.cursor.createdAt},id.lt.${options.cursor.id})`
+    )
   }
 
   const { data, error } = await query

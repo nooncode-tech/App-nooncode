@@ -49,13 +49,22 @@ const recentProjectUpdateSelect = `
 
 export async function listRecentLeadUpdates(
   client: DatabaseClient,
-  limit: number
+  limit: number,
+  cursor?: { createdAt: string; id: string } | null
 ): Promise<RecentLeadUpdateRow[]> {
-  const { data, error } = await client
+  let query = client
     .from('lead_activities')
     .select(recentLeadUpdateSelect)
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .order('id', { ascending: false })
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+    )
+  }
+
+  const { data, error } = await query.limit(limit)
 
   if (error) {
     throw new Error(`Failed to list recent lead updates: ${error.message}`)
@@ -66,13 +75,22 @@ export async function listRecentLeadUpdates(
 
 export async function listRecentTaskUpdates(
   client: DatabaseClient,
-  limit: number
+  limit: number,
+  cursor?: { createdAt: string; id: string } | null
 ): Promise<RecentTaskUpdateRow[]> {
-  const { data, error } = await client
+  let query = client
     .from('task_activities')
     .select(recentTaskUpdateSelect)
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .order('id', { ascending: false })
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+    )
+  }
+
+  const { data, error } = await query.limit(limit)
 
   if (error) {
     throw new Error(`Failed to list recent task updates: ${error.message}`)
@@ -83,13 +101,22 @@ export async function listRecentTaskUpdates(
 
 export async function listRecentProjectUpdates(
   client: DatabaseClient,
-  limit: number
+  limit: number,
+  cursor?: { createdAt: string; id: string } | null
 ): Promise<RecentProjectUpdateRow[]> {
-  const { data, error } = await client
+  let query = client
     .from('project_activities')
     .select(recentProjectUpdateSelect)
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .order('id', { ascending: false })
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+    )
+  }
+
+  const { data, error } = await query.limit(limit)
 
   if (error) {
     throw new Error(`Failed to list recent project updates: ${error.message}`)

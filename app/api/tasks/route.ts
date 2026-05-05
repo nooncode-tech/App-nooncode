@@ -6,6 +6,8 @@ import { createTaskSchema } from '@/lib/server/tasks/schema'
 import { mapCreateTaskInputToInsert, mapTaskRowToWire } from '@/lib/server/tasks/mappers'
 import { createTask, listTasks } from '@/lib/server/tasks/repository'
 import { getProjectById } from '@/lib/server/projects/repository'
+import { offsetPaginationSchema } from '@/lib/server/pagination/schema'
+import { buildOffsetResponse } from '@/lib/server/pagination/envelope'
 
 const allowedTaskRoles = ['admin', 'pm', 'developer'] as const
 const allowedTaskCreateRoles = ['admin', 'pm'] as const
@@ -20,16 +22,26 @@ function projectNotFoundResponse() {
   )
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await requireRole(allowedTaskRoles)
 
-    const client = await createSupabaseServerClient()
-    const tasks = await listTasks(client)
-
-    return NextResponse.json({
-      data: tasks.map(mapTaskRowToWire),
+    const { searchParams } = new URL(request.url)
+    const pagination = offsetPaginationSchema.parse({
+      page: searchParams.get('page') ?? undefined,
+      limit: searchParams.get('limit') ?? undefined,
     })
+
+    const client = await createSupabaseServerClient()
+    const { rows, total } = await listTasks(client, pagination)
+
+    return NextResponse.json(
+      buildOffsetResponse(rows.map(mapTaskRowToWire), {
+        page: pagination.page,
+        limit: pagination.limit,
+        total,
+      })
+    )
   } catch (error) {
     return toErrorResponse(error)
   }

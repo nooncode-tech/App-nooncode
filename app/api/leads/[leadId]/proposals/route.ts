@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireRole } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
+import type { DatabaseClient } from '@/lib/server/supabase/server'
 import { getLeadById } from '@/lib/server/leads/repository'
 import { listLeadActivities } from '@/lib/server/leads/activity-repository'
 import {
@@ -16,6 +17,11 @@ import {
   mapLeadProposalRowToWire,
 } from '@/lib/server/leads/proposal-mappers'
 import { createLeadProposalSchema } from '@/lib/server/leads/proposal-schema'
+import { cursorPaginationSchema } from '@/lib/server/pagination/schema'
+import { decodeCursor } from '@/lib/server/pagination/cursor'
+import { buildCursorResponse } from '@/lib/server/pagination/envelope'
+import type { AppRole } from '@/lib/server/profiles/types'
+import type { CursorPayload } from '@/lib/server/pagination/cursor'
 
 const routeParamsSchema = z.object({
   leadId: z.string().uuid(),
@@ -33,43 +39,104 @@ function leadNotFoundResponse() {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Testable handler factory
+// ---------------------------------------------------------------------------
+
+type GetHandlerDeps = {
+  requireRole: (roles: readonly AppRole[]) => Promise<unknown>
+  getLeadById: (client: DatabaseClient, leadId: string) => Promise<unknown>
+  listLeadProposals: (
+    client: DatabaseClient,
+    leadId: string,
+    opts: { cursor: CursorPayload | null; limit: number }
+  ) => Promise<unknown[]>
+  listProjectsByProposalIds: (client: DatabaseClient, ids: string[]) => Promise<unknown[]>
+  listLeadActivities: (client: DatabaseClient, leadId: string) => Promise<unknown[]>
+  createSupabaseServerClient: () => Promise<DatabaseClient>
+}
+
+export function createGetLeadProposalsHandler(deps: GetHandlerDeps) {
+  return async function GET(
+    request: Request,
+    context: { params: Promise<{ leadId: string }> }
+  ) {
+    try {
+      await deps.requireRole(allowedLeadRoles)
+
+      const { leadId } = routeParamsSchema.parse(await context.params)
+      const { searchParams } = new URL(request.url)
+      const pagination = cursorPaginationSchema.parse({
+        cursor: searchParams.get('cursor') ?? undefined,
+        limit: searchParams.get('limit') ?? undefined,
+      })
+
+      const cursor = pagination.cursor ? decodeCursor(pagination.cursor) : null
+
+      const client = await deps.createSupabaseServerClient()
+      const lead = await deps.getLeadById(client, leadId)
+
+      if (!lead) {
+        return leadNotFoundResponse()
+      }
+
+      const rawProposals = await deps.listLeadProposals(client, leadId, {
+        cursor,
+        limit: pagination.limit,
+      })
+
+      const proposals = rawProposals as Parameters<typeof mapLeadProposalRowToWire>[0][]
+      const proposalIds = proposals.map((proposal) => proposal.id)
+      const projects = (await deps.listProjectsByProposalIds(client, proposalIds)) as {
+        source_proposal_id?: string | null
+        id: string
+        name: string
+        status: string
+        created_at: string
+      }[]
+      const projectByProposalId = new Map(
+        projects
+          .filter((project) => project.source_proposal_id)
+          .map((project) => [project.source_proposal_id as string, project])
+      )
+      const leadActivities = await deps.listLeadActivities(client, leadId)
+
+      const envelope = buildCursorResponse(proposals, {
+        limit: pagination.limit,
+        getCursor: (p) => ({ createdAt: p.created_at, id: p.id }),
+      })
+
+      return NextResponse.json({
+        data: envelope.data.map((proposal) =>
+          mapLeadProposalRowToWire(
+            proposal,
+            (projectByProposalId.get(proposal.id) as Parameters<typeof mapLeadProposalRowToWire>[1]) ??
+              findProposalLinkedProjectFromActivities(
+                leadActivities as Parameters<typeof findProposalLinkedProjectFromActivities>[0],
+                proposal.id
+              )
+          )
+        ),
+        meta: envelope.meta,
+      })
+    } catch (error) {
+      return toErrorResponse(error)
+    }
+  }
+}
+
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ leadId: string }> }
 ) {
-  try {
-    await requireRole(allowedLeadRoles)
-
-    const { leadId } = routeParamsSchema.parse(await context.params)
-    const client = await createSupabaseServerClient()
-    const lead = await getLeadById(client, leadId)
-
-    if (!lead) {
-      return leadNotFoundResponse()
-    }
-
-    const proposals = await listLeadProposals(client, leadId)
-    const proposalIds = proposals.map((proposal) => proposal.id)
-    const projects = await listProjectsByProposalIds(client, proposalIds)
-    const projectByProposalId = new Map(
-      projects
-        .filter((project) => project.source_proposal_id)
-        .map((project) => [project.source_proposal_id as string, project])
-    )
-    const leadActivities = await listLeadActivities(client, leadId)
-
-    return NextResponse.json({
-      data: proposals.map((proposal) =>
-        mapLeadProposalRowToWire(
-          proposal,
-          projectByProposalId.get(proposal.id)
-            ?? findProposalLinkedProjectFromActivities(leadActivities, proposal.id)
-        )
-      ),
-    })
-  } catch (error) {
-    return toErrorResponse(error)
-  }
+  return createGetLeadProposalsHandler({
+    requireRole,
+    getLeadById,
+    listLeadProposals,
+    listProjectsByProposalIds,
+    listLeadActivities,
+    createSupabaseServerClient,
+  })(request, context)
 }
 
 export async function POST(
