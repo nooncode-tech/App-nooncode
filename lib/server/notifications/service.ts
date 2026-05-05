@@ -80,10 +80,12 @@ async function buildNotificationHrefMaps(
 export async function listVisibleNotifications(
   client: DatabaseClient,
   principal: AuthenticatedPrincipal,
-  limit: number
+  limit: number,
+  cursor?: { createdAt: string; id: string } | null
 ): Promise<{ items: UserNotificationWire[]; unreadCount: number }> {
+  // unreadCount uses a separate count query — NOT affected by cursor or page slice
   const [items, unreadCount] = await Promise.all([
-    listUserNotifications(client, principal.profile.id, limit),
+    listUserNotifications(client, principal.profile.id, limit, cursor),
     countUnreadUserNotifications(client, principal.profile.id),
   ])
   const { leadIdByEventId, projectIdByEventId, taskIdByEventId } = await buildNotificationHrefMaps(client, items)

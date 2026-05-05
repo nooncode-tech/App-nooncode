@@ -13,6 +13,9 @@ import {
   mapTaskActivityRowToWire,
 } from '@/lib/server/tasks/activity-mappers'
 import { createTaskNoteSchema } from '@/lib/server/tasks/activity-schema'
+import { cursorPaginationSchema } from '@/lib/server/pagination/schema'
+import { decodeCursor } from '@/lib/server/pagination/cursor'
+import { buildCursorResponse } from '@/lib/server/pagination/envelope'
 
 const routeParamsSchema = z.object({
   taskId: z.string().uuid(),
@@ -41,7 +44,7 @@ function forbiddenTaskActivityResponse(message: string) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ taskId: string }> }
 ) {
   try {
@@ -61,11 +64,25 @@ export async function GET(
       return forbiddenTaskActivityResponse('Developers can only view activity for tasks assigned to them.')
     }
 
-    const activities = await listTaskActivities(client, taskId)
-
-    return NextResponse.json({
-      data: activities.map(mapTaskActivityRowToWire),
+    const { searchParams } = new URL(request.url)
+    const pagination = cursorPaginationSchema.parse({
+      cursor: searchParams.get('cursor') ?? undefined,
+      limit: searchParams.get('limit') ?? undefined,
     })
+
+    const cursorPayload = pagination.cursor ? decodeCursor(pagination.cursor) : null
+
+    const rows = await listTaskActivities(client, taskId, {
+      cursor: cursorPayload,
+      limit: pagination.limit,
+    })
+
+    return NextResponse.json(
+      buildCursorResponse(rows.map(mapTaskActivityRowToWire), {
+        limit: pagination.limit,
+        getCursor: (item) => ({ createdAt: item.createdAt, id: item.id }),
+      })
+    )
   } catch (error) {
     return toErrorResponse(error)
   }

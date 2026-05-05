@@ -99,7 +99,8 @@ export async function updateUserProfile(
 }
 
 export async function listDeliveryUsers(
-  client: DatabaseClient
+  client: DatabaseClient,
+  limit = 100
 ): Promise<DeliveryUser[]> {
   const { data, error } = await client
     .from('user_profiles')
@@ -108,6 +109,7 @@ export async function listDeliveryUsers(
     .in('role', deliveryDirectoryRoles)
     .order('role', { ascending: true })
     .order('full_name', { ascending: true })
+    .limit(limit)
 
   if (error) {
     throw new Error(`Failed to list delivery user profiles: ${error.message}`)
@@ -125,7 +127,8 @@ export async function listDeliveryUsers(
 }
 
 export async function listAdminDirectoryUsers(
-  client: DatabaseClient
+  client: DatabaseClient,
+  limit = 100
 ): Promise<AdminDirectoryUser[]> {
   const { data, error } = await client
     .from('user_profiles')
@@ -135,6 +138,7 @@ export async function listAdminDirectoryUsers(
     .order('is_active', { ascending: false })
     .order('role', { ascending: true })
     .order('full_name', { ascending: true })
+    .limit(limit)
 
   if (error) {
     throw new Error(`Failed to list admin user profiles: ${error.message}`)

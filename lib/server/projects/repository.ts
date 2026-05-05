@@ -5,6 +5,7 @@ import type {
   ProjectRowWithLineage,
   ProjectUpdate,
 } from '@/lib/server/projects/types'
+import type { OffsetPaginationInput } from '@/lib/server/pagination/schema'
 import { listPrototypeWorkspacesByProjectIds } from '@/lib/server/prototypes/repository'
 
 type DatabaseClient = SupabaseClient<Database>
@@ -69,18 +70,30 @@ async function attachPrototypeWorkspaces(
   }))
 }
 
-export async function listProjects(client: DatabaseClient): Promise<ProjectRowWithLineage[]> {
-  const { data, error } = await client
+export async function listProjects(
+  client: DatabaseClient,
+  { page, limit }: OffsetPaginationInput
+): Promise<{ rows: ProjectRowWithLineage[]; total: number }> {
+  const from = (page - 1) * limit
+  const to = from + limit - 1
+
+  const { data, count, error } = await client
     .from('projects')
-    .select(projectSelect)
+    .select(projectSelect, { count: 'exact' })
     .eq('payment_activated', true)
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (error) {
     throw new Error(`Failed to list projects: ${error.message}`)
   }
 
-  return attachPrototypeWorkspaces(client, (data ?? []) as ProjectRowWithLineage[])
+  const rows = await attachPrototypeWorkspaces(
+    client,
+    (data ?? []) as ProjectRowWithLineage[]
+  )
+
+  return { rows, total: count ?? 0 }
 }
 
 export async function getProjectById(

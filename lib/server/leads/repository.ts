@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/server/supabase/database.types'
 import type { LeadInsert, LeadUpdate, LeadRowWithProfiles } from '@/lib/server/leads/types'
+import type { OffsetPaginationInput } from '@/lib/server/pagination/schema'
 
 type DatabaseClient = SupabaseClient<Database>
 
@@ -41,17 +42,27 @@ const leadSelect = `
   assigned_profile:user_profiles!leads_assigned_to_fkey(legacy_mock_id, full_name)
 `
 
-export async function listLeads(client: DatabaseClient): Promise<LeadRowWithProfiles[]> {
-  const { data, error } = await client
+export async function listLeads(
+  client: DatabaseClient,
+  { page, limit }: OffsetPaginationInput
+): Promise<{ rows: LeadRowWithProfiles[]; total: number }> {
+  const from = (page - 1) * limit
+  const to = from + limit - 1
+
+  const { data, count, error } = await client
     .from('leads')
-    .select(leadSelect)
+    .select(leadSelect, { count: 'exact' })
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (error) {
     throw new Error(`Failed to list leads: ${error.message}`)
   }
 
-  return (data ?? []) as LeadRowWithProfiles[]
+  return {
+    rows: (data ?? []) as LeadRowWithProfiles[],
+    total: count ?? 0,
+  }
 }
 
 export async function getLeadById(

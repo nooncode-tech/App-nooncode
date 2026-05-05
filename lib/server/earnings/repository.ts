@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/server/supabase/database.types'
 import type { WalletAccountRow, WalletLedgerEntryRowWithActor } from '@/lib/server/wallet/types'
+import type { CursorPayload } from '@/lib/server/pagination/cursor'
 
 type DatabaseClient = SupabaseClient<Database>
 
@@ -40,9 +41,9 @@ export async function getEarningsSummary(
 export async function listEarningsHistory(
   client: DatabaseClient,
   profileId: string,
-  limit = 50,
+  opts: { cursor: CursorPayload | null; limit: number } = { cursor: null, limit: 100 },
 ): Promise<WalletLedgerEntryRowWithActor[]> {
-  const { data, error } = await client
+  let query = client
     .from('wallet_ledger_entries' as never)
     .select(`
       id, profile_id, amount, currency, entry_type, balance_bucket,
@@ -52,7 +53,16 @@ export async function listEarningsHistory(
     .eq('profile_id', profileId)
     .eq('entry_type', 'earnings_distribution')
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .order('id', { ascending: false })
+    .limit(opts.limit + 1)
+
+  if (opts.cursor) {
+    query = (query as ReturnType<typeof query.lt>).or(
+      `created_at.lt.${opts.cursor.createdAt},and(created_at.eq.${opts.cursor.createdAt},id.lt.${opts.cursor.id})`
+    )
+  }
+
+  const { data, error } = await query
 
   if (error) throw new Error(`Failed to list earnings history: ${error.message}`)
 
@@ -61,9 +71,9 @@ export async function listEarningsHistory(
 
 export async function listAllEarningsHistory(
   client: DatabaseClient,
-  limit = 100,
+  opts: { cursor: CursorPayload | null; limit: number } = { cursor: null, limit: 100 },
 ): Promise<WalletLedgerEntryRowWithActor[]> {
-  const { data, error } = await client
+  let query = client
     .from('wallet_ledger_entries' as never)
     .select(`
       id, profile_id, amount, currency, entry_type, balance_bucket,
@@ -72,7 +82,16 @@ export async function listAllEarningsHistory(
     `)
     .eq('entry_type', 'earnings_distribution')
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .order('id', { ascending: false })
+    .limit(opts.limit + 1)
+
+  if (opts.cursor) {
+    query = (query as ReturnType<typeof query.lt>).or(
+      `created_at.lt.${opts.cursor.createdAt},and(created_at.eq.${opts.cursor.createdAt},id.lt.${opts.cursor.id})`
+    )
+  }
+
+  const { data, error } = await query
 
   if (error) throw new Error(`Failed to list all earnings history: ${error.message}`)
 

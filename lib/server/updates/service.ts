@@ -62,26 +62,31 @@ export function getVisibleUpdateSources(role: AuthenticatedPrincipal['role']): V
 export async function listVisibleUpdates(
   client: DatabaseClient,
   principal: AuthenticatedPrincipal,
-  limit: number
+  limit: number,
+  cursor?: { createdAt: string; id: string } | null
 ): Promise<{ items: UpdateFeedItemWire[]; domains: UpdateFeedDomain[] }> {
   const visibility = getVisibleUpdateSources(principal.role)
+
+  // domains is derived from the full visibility set (role-based), NOT from result items.
+  // It must NOT be recomputed from the page slice — it represents what domains the user
+  // can see at all, regardless of how many items are on the current page.
   const requestedFeedPromises: Array<Promise<UpdateFeedItemWire[]>> = []
 
   if (visibility.includeLead) {
     requestedFeedPromises.push(
-      listRecentLeadUpdates(client, limit).then((rows) => rows.map(mapRecentLeadUpdateToWire))
+      listRecentLeadUpdates(client, limit, cursor).then((rows) => rows.map(mapRecentLeadUpdateToWire))
     )
   }
 
   if (visibility.includeProject) {
     requestedFeedPromises.push(
-      listRecentProjectUpdates(client, limit).then((rows) => rows.map(mapRecentProjectUpdateToWire))
+      listRecentProjectUpdates(client, limit, cursor).then((rows) => rows.map(mapRecentProjectUpdateToWire))
     )
   }
 
   if (visibility.includeTask) {
     requestedFeedPromises.push(
-      listRecentTaskUpdates(client, limit).then((rows) => rows.map(mapRecentTaskUpdateToWire))
+      listRecentTaskUpdates(client, limit, cursor).then((rows) => rows.map(mapRecentTaskUpdateToWire))
     )
   }
 

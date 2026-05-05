@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getPhase1APublicEnv } from '@/lib/env'
 import type { Database } from '@/lib/server/supabase/database.types'
 
-type DatabaseClient = SupabaseClient<Database>
+export type DatabaseClient = SupabaseClient<Database>
 type CookieToSet = { name: string; value: string; options: CookieOptions }
 
 export async function createSupabaseServerClient(): Promise<DatabaseClient> {
