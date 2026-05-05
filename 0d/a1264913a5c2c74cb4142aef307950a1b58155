@@ -1,0 +1,125 @@
+tests/server/projects/repository-list-projects.test.ts
+  fd7b134cfe62fba6 1-71
+lib/server/updates/service.ts
+  fd7b134cfe62fba6 65-66,69-72,77,83,89
+app/api/updates/route.ts
+  fd7b134cfe62fba6 7-8,15,18-21,23-28,31,33,35-36
+lib/server/notifications/schema.ts
+  fd7b134cfe62fba6 4
+lib/server/projects/repository.ts
+  fd7b134cfe62fba6 8,73-80,82,85,91-96
+tests/server/api/leads/list-leads-paginated.test.ts
+  fd7b134cfe62fba6 1-105
+lib/server/leads/repository.ts
+  fd7b134cfe62fba6 4,45-52,54,56,62-65
+lib/server/prototypes/service.ts
+  fd7b134cfe62fba6 138,168
+lib/server/updates/schema.ts
+  fd7b134cfe62fba6 4
+lib/server/notifications/service.ts
+  fd7b134cfe62fba6 83-84,86,88
+tests/server/leads/proposal-repository-list.test.ts
+  fd7b134cfe62fba6 1-98
+tests/server/api/earnings/history-paginated.test.ts
+  fd7b134cfe62fba6 1-239
+tests/server/leads/activity-repository-list.test.ts
+  fd7b134cfe62fba6 1-98
+tests/server/tasks/repository-list-tasks.test.ts
+  fd7b134cfe62fba6 1-56
+lib/server/earnings/repository.ts
+  fd7b134cfe62fba6 4,44,46,56-65,74,76,85-94
+tests/server/tasks/activity-repository-list.test.ts
+  fd7b134cfe62fba6 1-98
+lib/server/supabase/server.ts
+  fd7b134cfe62fba6 7
+lib/server/pagination/schema.ts
+  fd7b134cfe62fba6 1-14
+lib/server/profiles/repository.ts
+  fd7b134cfe62fba6 102-103,112,130-131,141
+app/api/users/delivery/route.ts
+  fd7b134cfe62fba6 6-7,11-12,14-28,30-38,41-48
+tests/server/api/prototypes/list-prototypes-paginated.test.ts
+  fd7b134cfe62fba6 1-175
+lib/server/leads/proposal-repository.ts
+  fd7b134cfe62fba6 8,41-42,44,49-57
+app/api/tasks/route.ts
+  fd7b134cfe62fba6 9-10,25,29-34,36,38-44
+app/api/users/admin/route.ts
+  fd7b134cfe62fba6 6-7,11-12,14-28,30-38,41-49
+app/api/leads/route.ts
+  fd7b134cfe62fba6 7,9-12,16-18,20-25,27-51,55-64
+app/api/projects/route.ts
+  fd7b134cfe62fba6 7-8,12,16-21,23,25-31
+tests/server/api/tasks/list-tasks-paginated.test.ts
+  fd7b134cfe62fba6 1-160
+lib/server/tasks/activity-repository.ts
+  fd7b134cfe62fba6 7,24-25,27-28,33-41
+tests/server/api/projects/list-projects-paginated.test.ts
+  fd7b134cfe62fba6 1-188
+tests/server/api/tasks/task-activity-paginated.test.ts
+  fd7b134cfe62fba6 1-234
+app/api/prototypes/route.ts
+  fd7b134cfe62fba6 7-8,19,21,23-26,28-29,31-33
+tests/server/api/notifications/list-notifications.test.ts
+  fd7b134cfe62fba6 1-207
+tests/server/api/users/delivery-list.test.ts
+  fd7b134cfe62fba6 1-113
+tests/server/api/updates/list-updates.test.ts
+  fd7b134cfe62fba6 1-191
+tests/server/pagination/cursor.test.ts
+  fd7b134cfe62fba6 1-55
+tests/server/leads/repository-list-leads.test.ts
+  fd7b134cfe62fba6 1-82
+lib/server/leads/activity-repository.ts
+  fd7b134cfe62fba6 7,24-25,27-51
+lib/server/prototypes/repository.ts
+  fd7b134cfe62fba6 3,79,86-87,93-96
+package.json
+  fd7b134cfe62fba6 87,93-95
+app/api/notifications/route.ts
+  fd7b134cfe62fba6 7-8,15,18-21,23-28,31,33,35-36
+app/api/earnings/history/route.ts
+  fd7b134cfe62fba6 1,6-7,10-14,24-27,29-30,33-35,37-42
+lib/server/notifications/repository.ts
+  fd7b134cfe62fba6 24-25,27,32-43
+lib/server/pagination/cursor.ts
+  fd7b134cfe62fba6 1-28
+tests/server/pagination/envelope.test.ts
+  fd7b134cfe62fba6 1-73
+tests/server/api/leads/lead-activity-paginated.test.ts
+  fd7b134cfe62fba6 1-241
+tests/server/api/leads/lead-proposals-paginated.test.ts
+  fd7b134cfe62fba6 1-144
+lib/server/tasks/repository.ts
+  fd7b134cfe62fba6 4,25-32,34,36,42-45
+lib/server/pagination/envelope.ts
+  fd7b134cfe62fba6 1-49
+tests/server/pagination/schema.test.ts
+  fd7b134cfe62fba6 1-46
+lib/server/updates/repository.ts
+  fd7b134cfe62fba6 52-53,55,59-67,78-79,81,85-93,104-105,107,111-119
+tests/server/api/users/admin-list.test.ts
+  fd7b134cfe62fba6 1-115
+lib/server/prototypes/schema.ts
+  fd7b134cfe62fba6 4,6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "0da1264913a5c2c74cb4142aef307950a1b58155",
+  "prompts": {
+    "fd7b134cfe62fba6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c2defcf9-dccd-470a-80ce-d4637bfd65ac",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "rhernandezba",
+      "messages": [],
+      "total_additions": 3740,
+      "total_deletions": 119,
+      "accepted_lines": 3739,
+      "overriden_lines": 0
+    }
+  }
+}
