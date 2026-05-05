@@ -1,0 +1,49 @@
+docs/business/roadmap-v2.md
+  fd7b134cfe62fba6 1-204
+docs/thread-handoff-2026-03-18-phase-2i.txt
+  fd7b134cfe62fba6 1-197
+docs/ui_intention/dashboard-navigation.md
+  fd7b134cfe62fba6 1-58
+.gitignore
+  fd7b134cfe62fba6 30-37
+docs/project.context.full.md
+  fd7b134cfe62fba6 1-884
+docs/project.context.core.md
+  fd7b134cfe62fba6 1-386
+docs/features/prototype-generation.md
+  fd7b134cfe62fba6 1-66
+.github/pull_request_template.md
+  fd7b134cfe62fba6 1-66
+docs/business/noonapp-overview.md
+  fd7b134cfe62fba6 1-79
+docs/features/lead-lifecycle.md
+  fd7b134cfe62fba6 1-96
+docs/features/payment-and-earnings.md
+  fd7b134cfe62fba6 1-88
+docs/project.context.history.md
+  fd7b134cfe62fba6 1-1947
+docs/ui_intention/component-philosophy.md
+  fd7b134cfe62fba6 1-78
+docs/features/api-pagination.md
+  fd7b134cfe62fba6 1-288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "35545cddc7afbd83f9f0fe031afdddcb054b1906",
+  "prompts": {
+    "fd7b134cfe62fba6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c2defcf9-dccd-470a-80ce-d4637bfd65ac",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "rhernandezba",
+      "messages": [],
+      "total_additions": 5665,
+      "total_deletions": 3871,
+      "accepted_lines": 5665,
+      "overriden_lines": 0
+    }
+  }
+}
