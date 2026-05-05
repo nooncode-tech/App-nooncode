@@ -45,3 +45,6 @@ openspec/
 /tmp_*.txt
 /tmp_edge_profile*/
 /tmp_validate_*.mjs
+
+# IDE
+.idea/
