@@ -38,6 +38,7 @@ openspec/
 # local validation artifacts
 /.tmp-runtime-validation/
 /.tmp-server/
+/.tmp-pdf-deps/
 /supabase/.temp/
 /.tmp-dev-server*.log
 /.tmp-start-server*.log
