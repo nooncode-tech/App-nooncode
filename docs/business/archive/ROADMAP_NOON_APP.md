@@ -1,6 +1,11 @@
-# Noon App — Roadmap completo hacia producción real
+# [ARCHIVED] Noon App — Roadmap completo hacia producción real
+
+> **Archivado el 2026-05-09.** Este documento ya no es la fuente de verdad.
+> El roadmap canónico vigente es `docs/business/roadmap-reconciled.md`.
+> Se conserva como referencia histórica; **no actualizar**.
+
 **Documento interno · Uso exclusivo del equipo de desarrollo**
-Fecha: 2026-04-19 · Versión 1.0
+Fecha original: 2026-04-19 · Versión 1.0
 
 ---
 

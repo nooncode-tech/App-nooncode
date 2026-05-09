@@ -42,7 +42,7 @@
 
 ## Confirmed auth and data reality
 - Supabase auth/session has been implemented for the active real-auth path.
-- `middleware.ts` blocks unauthenticated or unauthorized `/dashboard` access using Supabase session plus `user_profiles`.
+- `proxy.ts` blocks unauthenticated or unauthorized `/dashboard` access using Supabase session plus `user_profiles`.
 - `lib/server/auth/session.ts` resolves current session/user/profile/principal server-side.
 - `supabase/migrations/0001_phase_1a_auth_profiles.sql` defines `public.user_profiles` with role and active-state control.
 - `scripts/seed-phase-1a-users.ts` seeds auth users and linked profile rows.
@@ -293,10 +293,7 @@
 - FASE 2 completada (2026-04-21): Earnings reales implementados. `GET /api/earnings` retorna `summary` (4 buckets desde `wallet_accounts`) e `history` (`wallet_ledger_entries` filtrado por `earnings_distribution`). `POST /api/admin/earnings/credit` permite a admin/pm acreditar ganancias manuales al bucket `pending` (usa admin client con service_role para bypass de RLS). `POST /api/admin/earnings/consolidate` permite a admin mover saldo de `pending` a `available_to_withdraw`. `/dashboard/earnings` muestra datos reales (summary + ledger + solicitudes de retiro desde `withdrawal_requests`). `/dashboard/settings` tiene nueva tab `Ganancias` (admin+supabase) con formulario de acreditación manual. Migration 0026 SQL functions replicadas en `lib/server/earnings/admin.ts` vía TypeScript (admin client). Pendiente: validación en browser; index de entry_type no aplicado aún (optimización futura).
 
 ## Active risks
-- Repo is in a mixed real/mock state: auth is real-capable while business data still resets on reload.
-- Route access is enforced with real session/profile checks, but broader non-commercial delivery persistence still remains client-side beyond the current project/task base slice.
-- `next.config.mjs` still ignores TypeScript build errors.
-- No repo-local automated test suite was found.
+- Mock-only surfaces remaining: rewards/points domain and the global users directory still read from in-memory state in `lib/data-context.tsx:442-443`. All other business data (auth, leads, proposals, projects, tasks, wallet, earnings) persists in Supabase.
 - Local context files can drift quickly unless updated after each real phase.
 - Bridge wallet (0025): conversión 1 crédito = $1.00 es temporal. FASE 2 ya implementa acreditación real vía admin, pero no elimina el bridge aún.
 - Stripe live keys pendientes de subir a Vercel antes del primer deploy a producción.

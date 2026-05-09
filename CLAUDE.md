@@ -23,19 +23,19 @@ This project uses a structured multi-agent workflow. All agents live in `.claude
 
 ## Session discipline
 
-1. Start every session by reading `project.context.core.md` as default context.
-2. Load `project.context.full.md` only for Recovery, Architecture, Validator, deep Security, or deep Infra.
+1. Start every session by reading `docs/context/project.context.core.md` as default context.
+2. Load `docs/context/project.context.full.md` only for Recovery, Architecture, Validator, deep Security, or deep Infra.
 3. Use the `router` agent to select the correct execution route.
 4. Follow the active agent's rules strictly — do not invent contracts or expand scope.
-5. No iteration is complete until `system-validator` has run and `project.context.core.md` is updated.
+5. No iteration is complete until `system-validator` has run and `docs/context/project.context.core.md` is updated.
 
 ## Local source of truth
 
 | File | Purpose |
 |---|---|
-| `project.context.core.md` | Default operating context for normal sessions |
-| `project.context.full.md` | Deep architecture, contracts, conventions, and structural truth |
-| `project.context.history.md` | Accumulated session history and prior decisions |
+| `docs/context/project.context.core.md` | Default operating context for normal sessions |
+| `docs/context/project.context.full.md` | Deep architecture, contracts, conventions, and structural truth |
+| `docs/context/project.context.history.md` | Accumulated session history and prior decisions |
 
 If these files are missing, stale, or contradictory — surface that explicitly instead of guessing.
 
@@ -44,7 +44,7 @@ If these files are missing, stale, or contradictory — surface that explicitly 
 No work is COMPLETE unless:
 - The scoped success criterion is satisfied.
 - `system-validator` has run and returned COMPLETE.
-- `project.context.core.md` is updated.
+- `docs/context/project.context.core.md` is updated.
 - Unresolved risks are explicitly recorded.
 
 If evidence is incomplete, mark the work PARTIAL or BLOCKED.

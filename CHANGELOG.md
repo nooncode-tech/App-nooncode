@@ -8,7 +8,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Addedh
+### Added
 - Architecture documentation under `docs/` (business, features, ADRs, TDRs, ui_intention)
 - `docs/business/noonapp-overview.md` — business context, roles, entities, constraints
 - `docs/business/roadmap-v2.md` — full roadmap toward production with Go backend
