@@ -18,10 +18,26 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `docs/adrs/ADR-001` through `ADR-004` — architecture decisions documented
 - `docs/tdrs/TDR-001` through `TDR-003` — technical decisions documented
 - `docs/ui_intention/` — component philosophy and dashboard navigation intent
+- `docs/GITFLOW.md` expanded with concrete Rulesets activation steps and the two CI status check names required for branch protection
+- GitHub Actions CI workflow `.github/workflows/ci.yml` running lint, typecheck, and 141 tests on every push and on PRs targeting `develop` / `master`
+- `scripts/check-migrations.mjs` — Node-only migration prefix collision check, runs as a parallel CI job. The four historical 0024–0027 collisions are grandfathered until R1.1 lands
+- Phase-aware obligation annotations across the 14 keys of `.env.example` (Auth Phase 1A, Stripe Phase 9 + 17, AI providers, Website Phase 14)
 
 ### Changed
 - Moved non-config files from project root to `docs/` (AGENTS.md, QA checklist, roadmap, context files)
 - `.gitignore` updated to exclude `.mcp.json`, `.claude/`, `.atl/`
+- `package.json` `name` field renamed from `my-v0-project` to `nooncode-app`
+- `CLAUDE.md` session-discipline and source-of-truth paths now point to `docs/context/` (matches the docs reorganization)
+- `docs/context/project.context.core.md`, `project.context.full.md`, and `docs/business/roadmap-reconciled.md` now reference `proxy.ts` (Next 16 file convention) instead of the legacy `middleware.ts`
+- `docs/context/project.context.core.md` Active risks section pruned from 7 to 4 entries; removed two false claims (`next.config.mjs ignores TS`, `no test suite`) and narrowed the broad mock-state risks to the actual remaining surfaces in `lib/data-context.tsx:442-443`
+- `docs/business/roadmap-reconciled.md` declared canonical; `roadmap-v2.md` and `ROADMAP_NOON_APP.md` archived under `docs/business/archive/` with `[ARCHIVED]` headers
+- `pnpm-lock.yaml` regenerated to match the current `package.json` overrides; resolves `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` on `pnpm install --frozen-lockfile`
+
+### Fixed
+- Typo in CHANGELOG `### Addedh` → `### Added`
+
+### Removed
+- `.tmp-pdf-deps/` (247 files, including `pymupdf` binary and `fitz/`/`pypdf/` Python sources) is no longer tracked in git; the directory is now ignored alongside the other `/.tmp-*/` workspaces. Files remain on disk for in-flight scripts.
 
 ---
 
