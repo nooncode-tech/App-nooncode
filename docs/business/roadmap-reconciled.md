@@ -1,5 +1,9 @@
 # NoonApp Roadmap Reconciliado
 
+> **Documento canónico de roadmap.** Reemplaza a `roadmap-v2.md` y `ROADMAP_NOON_APP.md`,
+> ambos archivados en `docs/business/archive/` el 2026-05-09.
+> Cualquier nueva planificación de roadmap debe ir aquí, no en los archivados.
+
 ## Base usada
 - PDFs ya revisados:
   - `tmp_roadmap.txt`

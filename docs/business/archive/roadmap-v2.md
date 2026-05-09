@@ -1,6 +1,10 @@
-# NoonApp — Roadmap v2 hacia producción real
+# [ARCHIVED] NoonApp — Roadmap v2 hacia producción real
 
-**Fecha:** 2026-05-04  
+> **Archivado el 2026-05-09.** Este documento ya no es la fuente de verdad.
+> El roadmap canónico vigente es `docs/business/roadmap-reconciled.md`.
+> Se conserva como referencia histórica; **no actualizar**.
+
+**Fecha original:** 2026-05-04  
 **Contexto:** MVP funcional bien documentado. Toda la funcionalidad existe. Faltan las capas que hacen a una app production-ready con volumen real y operación en múltiples países.
 
 ---
