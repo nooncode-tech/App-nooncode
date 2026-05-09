@@ -21,7 +21,7 @@
 - `Fase 1A - Auth/session Supabase`
   - Login real por Supabase
   - Sesion server-backed en `app/layout.tsx`
-  - Proteccion de `/dashboard` en `middleware.ts`
+  - Proteccion de `/dashboard` en `proxy.ts`
   - Perfil/rol activo en `public.user_profiles`
   - Script de seed y checklist QA de runtime
 - `Fase 3 - Slice cerrado en Leads`

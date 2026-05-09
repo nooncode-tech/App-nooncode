@@ -44,7 +44,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - decides `authMode` as `supabase` or `mock`
   - resolves initial server-side principal through `getCurrentPrincipal()`
   - injects `AuthProvider` with `initialUser`
-- `middleware.ts`
+- `proxy.ts`
   - protects `/dashboard/:path*`
   - enforces active Supabase session
   - reads `public.user_profiles`

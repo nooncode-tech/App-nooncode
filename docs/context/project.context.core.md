@@ -42,7 +42,7 @@
 
 ## Confirmed auth and data reality
 - Supabase auth/session has been implemented for the active real-auth path.
-- `middleware.ts` blocks unauthenticated or unauthorized `/dashboard` access using Supabase session plus `user_profiles`.
+- `proxy.ts` blocks unauthenticated or unauthorized `/dashboard` access using Supabase session plus `user_profiles`.
 - `lib/server/auth/session.ts` resolves current session/user/profile/principal server-side.
 - `supabase/migrations/0001_phase_1a_auth_profiles.sql` defines `public.user_profiles` with role and active-state control.
 - `scripts/seed-phase-1a-users.ts` seeds auth users and linked profile rows.
