@@ -90,8 +90,8 @@ Server log evidence during this step: `GET /dashboard/earnings 200`, `GET /api/e
 - **Root cause:** `app/api/admin/earnings/consolidate/route.ts` exists and is correctly wired (zod schema + `requireRole(['admin'])` + calls `consolidateEarnings()`), but **no UI surface in the repo calls it**. Verified by grep across `app/` and `components/` — only the route file mentions consolidation. The Settings → Ganancias form is credit-only.
 - **Impact:** FASE 2 cannot be fully validated through the UI today. The endpoint is real and functional (proven by today's script workaround), but the admin has no way to trigger it without manual API access.
 - **Severity:** High for FASE 2 closure; Medium overall (workaround exists; functional gap, not a security/data risk).
-- **Action:** out of scope for this validation iteration. Should land as a small focused PR — add a `Consolidar pendiente` action to the same Ganancias tab, reusing user dropdown + amount field, calling `POST /api/admin/earnings/consolidate`. Estimated effort: ~40 lines in `app/dashboard/settings/page.tsx`. No backend, no migration, no contract change.
-- **Suggested ticket title:** `feat(settings): add consolidate-earnings UI to Ganancias tab`
+- **Action:** **deferred until v3 reshape**. `docs/product/master-spec-v3.md` sec. 24.4 introduces a new earnings bucket state machine (`Potential / Confirmed / Pending payout / Paid out / Cancelled`) that does not map onto the current `pending → available_to_withdraw` semantics. Pending FASE 3 (in roadmap) further automates credit from proposal `paid/won`, so the manual admin credit + consolidate flow becomes a fallback rather than the primary path. Building UI on the current model would be replaced twice within the v3 reshape — premature investment. Hold the gap open in Active risks; reabordar como parte del rediseño v3 cuando los nuevos estados estén definidos.
+- **Workaround for now:** `scripts/consolidate-earnings-validation.ts` (or any direct service-role call to `consolidateEarnings()`).
 
 ## Files changed in this branch
 
