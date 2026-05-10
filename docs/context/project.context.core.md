@@ -298,6 +298,9 @@
 - Bridge wallet (0025): conversión 1 crédito = $1.00 es temporal. FASE 2 ya implementa acreditación real vía admin, pero no elimina el bridge aún.
 - Stripe live keys pendientes de subir a Vercel antes del primer deploy a producción.
 - In-memory rate limiter (`lib/server/api/rate-limit.ts`) is per-process and resets on restart. Documented as known debt in `docs/tdrs/TDR-002-rate-limiting-in-memory.md`; will not enforce limits correctly under multi-instance deployment.
+- Maxwell terminology conflict: `docs/product/master-spec-v3.md` sec. 5.1 frames `Maxwell` at the website as a single inbound entity, while the existing operating rule keeps `Maxwell Lead Engine V1` as App/outbound/seller-only and explicitly forbids treating it as the website inbound Maxwell. Naming/ownership decision pending; blocks scoping of v3 sec. 15–19 AI MVP pipeline.
+- Migration prefix collisions on `0024`, `0025`, `0026`, and `0027` (each prefix used by two unrelated phases) remain unresolved in `supabase/migrations/`. The CI guard at `scripts/check-migrations.mjs` grandfathers the four existing pairs but the underlying numbering convention has not been chosen; new collisions are blocked, existing pairs depend on filename sort order at apply time.
+- Outbound seller fee is hard-coded at `$100` in `lib/maxwell/pricing.ts:56` and replicated inside the Stripe webhook split, while `docs/product/master-spec-v3.md` sec. 24 requires a selectable 100/300/500 USD fee. Not patchable in place; will require a contract change spanning pricing, proposal, payment, and ledger surfaces.
 
 ## Corrected roadmap status
 - Closed: Phase 1A auth/session foundation with Supabase, dashboard middleware protection, anonymous root handling, auth QA checklist.
@@ -350,7 +353,10 @@
 - Closed in runtime: PASO 0 — Maxwell GPT + Stripe keys fix (2026-04-19).
 - Closed in runtime: FASE 1 — Wallet monetaria real, migrations 0024+0025, bridge de compatibilidad, frontend credits actualizado (2026-04-19).
 - Partial: FASE 2 — Earnings reales backend+UI implementados (2026-04-21); pendiente validación en browser.
-- Recommended next execution route: FASE 3 — Propuesta con lifecycle (paid/won trigger automático de earnings) o validación browser de FASE 2.
+- Pending: FASE 3 — Propuesta con lifecycle (paid/won trigger automático de earnings desde `wallet_accounts`). El contrato actual de earnings sigue siendo manual via `POST /api/admin/earnings/credit`; FASE 3 reemplazaría ese paso por un trigger automático cuando una propuesta se confirme como pagada/ganada.
+- v3 master spec landed: `docs/product/master-spec-v3.md` (38 sections) and `docs/product/master-spec-v3-flows.md` (9 mermaid diagrams) define the next product perimeter (client portal vs internal NoonApp split, post-payment Maxwell AI MVP pipeline, client-controlled publish/versioning/rollback, developer principal + collaborators + handoff/replacement, seller map, fixed seller fees, i18n).
+- v3 master spec audit completed (read-only) at `docs/audits/v3-phase-0-audit.md`: 6-chunk module classification, 30 catalogued findings with module-level Recover/Refactor/Rebuild/Defer verdicts, spec-vs-reality conflict register, and recommended phase ordering for spec sec. 1–8. Verdict is `Recoverable with effort` at program level. No code, migration, deploy, or PR work was performed in this iteration.
+- Recommended next execution route: route through `router` once the user has answered the gating open questions in `docs/audits/v3-phase-0-audit.md` §7 (at minimum the Maxwell naming/ownership and migration numbering convention decisions). Until those are answered, neither v3 implementation phases nor the pending FASE 3 earnings lifecycle can be safely scoped.
 
 ## Operating rules
 - Treat auth/session as repo-proven when Supabase env is enabled.
