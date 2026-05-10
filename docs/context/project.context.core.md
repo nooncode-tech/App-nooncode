@@ -297,6 +297,7 @@
 - Local context files can drift quickly unless updated after each real phase.
 - Bridge wallet (0025): conversión 1 crédito = $1.00 es temporal. FASE 2 ya implementa acreditación real vía admin, pero no elimina el bridge aún.
 - Stripe live keys pendientes de subir a Vercel antes del primer deploy a producción.
+- In-memory rate limiter (`lib/server/api/rate-limit.ts`) is per-process and resets on restart. Documented as known debt in `docs/tdrs/TDR-002-rate-limiting-in-memory.md`; will not enforce limits correctly under multi-instance deployment.
 
 ## Corrected roadmap status
 - Closed: Phase 1A auth/session foundation with Supabase, dashboard middleware protection, anonymous root handling, auth QA checklist.

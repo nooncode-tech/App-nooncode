@@ -3,6 +3,7 @@ import { generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { toErrorResponse } from '@/lib/server/api/errors'
+import { errorToLogContext, logger } from '@/lib/server/api/logger'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
@@ -114,8 +115,14 @@ export async function POST(request: Request) {
         }
 
         processed++
-      } catch {
-        // Skip this lead if AI fails, continue with others
+      } catch (error) {
+        // Surface the failure but keep iterating so one bad lead does not
+        // abort the cron run. AI generation, the activity insert, and the
+        // notification RPC can all throw here.
+        logger.warn('leads.auto_followup.lead_failed', {
+          leadId: lead.id,
+          ...errorToLogContext(error),
+        })
       }
     }
 
