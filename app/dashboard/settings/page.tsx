@@ -73,7 +73,7 @@ export default function SettingsPage() {
   const [creditTargetId, setCreditTargetId] = useState('')
   const [creditAmount, setCreditAmount] = useState('')
   const [creditType, setCreditType] = useState<'activation' | 'membership' | 'milestone' | 'manual'>('manual')
-  const [creditChannel, setCreditChannel] = useState<'inbound' | 'outbound' | ''>('')
+  const [creditChannel, setCreditChannel] = useState<'inbound' | 'outbound' | 'none'>('none')
   const [creditNotes, setCreditNotes] = useState('')
   const [creditSaving, setCreditSaving] = useState(false)
 
@@ -139,7 +139,7 @@ export default function SettingsPage() {
           targetProfileId: creditTargetId,
           amount,
           earningType: creditType,
-          channel: creditChannel || null,
+          channel: creditChannel === 'none' ? null : creditChannel,
           notes: creditNotes || null,
         }),
       })
@@ -801,7 +801,7 @@ export default function SettingsPage() {
                         <SelectValue placeholder="Sin canal" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Sin canal</SelectItem>
+                        <SelectItem value="none">Sin canal</SelectItem>
                         <SelectItem value="inbound">Inbound</SelectItem>
                         <SelectItem value="outbound">Outbound</SelectItem>
                       </SelectContent>
