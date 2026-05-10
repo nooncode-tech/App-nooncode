@@ -353,9 +353,10 @@
 - Closed in runtime: PASO 0 — Maxwell GPT + Stripe keys fix (2026-04-19).
 - Closed in runtime: FASE 1 — Wallet monetaria real, migrations 0024+0025, bridge de compatibilidad, frontend credits actualizado (2026-04-19).
 - Partial: FASE 2 — Earnings reales backend+UI implementados (2026-04-21); pendiente validación en browser.
+- Pending: FASE 3 — Propuesta con lifecycle (paid/won trigger automático de earnings desde `wallet_accounts`). El contrato actual de earnings sigue siendo manual via `POST /api/admin/earnings/credit`; FASE 3 reemplazaría ese paso por un trigger automático cuando una propuesta se confirme como pagada/ganada.
 - v3 master spec landed: `docs/product/master-spec-v3.md` (38 sections) and `docs/product/master-spec-v3-flows.md` (9 mermaid diagrams) define the next product perimeter (client portal vs internal NoonApp split, post-payment Maxwell AI MVP pipeline, client-controlled publish/versioning/rollback, developer principal + collaborators + handoff/replacement, seller map, fixed seller fees, i18n).
 - v3 master spec audit completed (read-only) at `docs/audits/v3-phase-0-audit.md`: 6-chunk module classification, 30 catalogued findings with module-level Recover/Refactor/Rebuild/Defer verdicts, spec-vs-reality conflict register, and recommended phase ordering for spec sec. 1–8. Verdict is `Recoverable with effort` at program level. No code, migration, deploy, or PR work was performed in this iteration.
-- Recommended next execution route: route through `router` once the user has answered the gating open questions in `docs/audits/v3-phase-0-audit.md` §7 (at minimum the Maxwell naming/ownership and migration numbering convention decisions). Until those are answered, neither v3 implementation nor the deferred FASE 3 earnings lifecycle can be safely scoped.
+- Recommended next execution route: route through `router` once the user has answered the gating open questions in `docs/audits/v3-phase-0-audit.md` §7 (at minimum the Maxwell naming/ownership and migration numbering convention decisions). Until those are answered, neither v3 implementation phases nor the pending FASE 3 earnings lifecycle can be safely scoped.
 
 ## Operating rules
 - Treat auth/session as repo-proven when Supabase env is enabled.
