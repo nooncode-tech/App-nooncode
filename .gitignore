@@ -49,3 +49,4 @@ openspec/
 
 # IDE
 .idea/
+.env*.local
