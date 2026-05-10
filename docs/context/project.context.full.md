@@ -505,6 +505,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - source PDFs are versioned under `docs/product/source/`
   - operational digest lives in `docs/product/maxwell-lead-engine-v1.md`
   - product boundary is App/outbound/seller-only; it is not the website inbound Maxwell
+  - this boundary is anchored by `docs/adrs/ADR-005-maxwell-modules-shared-brand.md` (two functionally separate modules under a shared brand identity); future website-side AI MVP work belongs to Maxwell Inbound, never to Maxwell Lead Engine V1
   - explicitly excluded unless separately scoped: website, inbound, payments, client workspace, developer board, post-payment handoff, earnings rules, and sensitive permission rewrites
   - `supabase/migrations/0038_phase_16a_maxwell_lead_engine_v1.sql` adds `maxwell_search_runs`, `maxwell_lead_feedback`, Maxwell publication/search/feedback enums, lead Maxwell metadata columns, dedupe index, RLS, and `maxwell_confirmed_sales_count(uuid)`
   - `app/api/maxwell/lead-searches/route.ts` provides the seller/admin/PM/sales-manager search entrypoint

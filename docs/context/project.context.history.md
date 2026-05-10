@@ -1945,3 +1945,14 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 - Treat Session 002 as historically useful but stale on auth reality.
 - Treat Session 004 as the current repo-backed implementation baseline for leads persistence.
 - If future code adds real persistence for leads/projects/tasks, update the corrected roadmap immediately so the next phase choice stays accurate.
+
+## Session note: v3 contracts skeleton landed
+- Date: 2026-05-10
+- Route used: system-analysis -> system-architecture (doc-only)
+- Objective: introduce a contracts home and seed the 4 v3 entity skeletons that downstream iterations will depend on, plus propagate the two resolved Pre-Phase decisions into durable context.
+- Anchors:
+  - `docs/adrs/ADR-005-maxwell-modules-shared-brand.md` — Maxwell as two functionally separate modules (Lead Engine V1 outbound vs Inbound) under a shared brand identity, plus Maxwell Chat as a third independent App copilot surface.
+  - `docs/adrs/ADR-006-migration-prefix-convention-and-rename.md` — formalizes the migration-prefix CI guard convention and records the conditional rename decision (deferred pending ledger verification).
+  - `docs/contracts/` — new home for entity-level contract documents (`client-requests.md`, `project-versions.md`, `ai-mvp-pipeline-state.md`, `seller-fee-state-machine.md`, plus `README.md` index).
+- Skeleton-depth boundary: contract files contain entity, lifecycle, conceptual data shape, inputs/outputs, and cross-refs only. No SQL, no API surface, no component or migration filenames invented.
+- Open items: every contract carries at least one `OPEN: gated by audit §7 Q<N>` marker that must be resolved before the corresponding implementation iteration can be scoped.
