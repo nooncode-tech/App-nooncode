@@ -19,8 +19,8 @@ Audited 2026-05-09 against `feature/sprint-5-hardening`.
 | `app/api/earnings/route.ts` | Authenticated session principal | `getCurrentPrincipal` from `lib/server/auth/session.ts` |
 | `app/api/earnings/history/route.ts` | Authenticated session principal | `getCurrentPrincipal` |
 | `app/api/earnings/withdraw/route.ts` | Authenticated session principal | `getCurrentPrincipal` |
-| `app/api/integrations/website/inbound-proposal/route.ts` | HMAC-signed payload from marketing site | `readSignedWebsiteJson` from `lib/server/website-webhook-auth.ts` |
-| `app/api/integrations/website/payment-confirmed/route.ts` | HMAC-signed payload | `readSignedWebsiteJson` |
+| `app/api/integrations/website/inbound-proposal/route.ts` | HMAC-signed payload from marketing site (contract: `docs/integrations/cross-repo-webhook-v1.md` §3) | `readSignedWebsiteJson` from `lib/server/website-webhook-auth.ts` |
+| `app/api/integrations/website/payment-confirmed/route.ts` | HMAC-signed payload (contract: `docs/integrations/cross-repo-webhook-v1.md` §4) | `readSignedWebsiteJson` |
 | `app/api/leads/auto-followup/route.ts` | `Authorization: Bearer ${CRON_SECRET}` | inline `isCronAuthorized` |
 | `app/api/notifications/route.ts` | Authenticated session principal | `requirePrincipal` from `lib/server/auth/guards.ts` |
 | `app/api/notifications/[notificationId]/read/route.ts` | Authenticated session principal | `requirePrincipal` |
