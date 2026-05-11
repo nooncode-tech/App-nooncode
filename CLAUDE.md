@@ -39,6 +39,13 @@ This project uses a structured multi-agent workflow. All agents live in `.claude
 
 If these files are missing, stale, or contradictory — surface that explicitly instead of guessing.
 
+## Iteration specs
+
+- Per-iteration spec files live in `specs/<iteration-id>.md` and are versioned in git as durable history for Validator and future sessions.
+- Filename convention: `<phase>-<bloq-or-feature>-<short-slug>.md` (e.g. `fase-0-b4-adr-006-execution.md`).
+- A spec is the Analysis output. It is the authoritative input for downstream skills (Architecture / Backend / Frontend / Infra / Testing / Validator) within the same iteration.
+- Specs are not edited after an iteration closes. Follow-up iterations create new spec files; superseding is declared in the new spec's lifecycle section.
+
 ## Completion policy
 
 No work is COMPLETE unless:
