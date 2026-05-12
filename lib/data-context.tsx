@@ -77,6 +77,7 @@ interface DataContextType {
     amount: number
     currency?: string
     status?: ProposalStatus
+    sellerFeeAmount?: 100 | 300 | 500
   }) => Promise<LeadProposal>
   updateLeadProposalStatus: (leadId: string, proposalId: string, status: ProposalStatus) => Promise<LeadProposal>
   createProjectFromProposal: (leadId: string, proposalId: string) => Promise<Project>
@@ -752,6 +753,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       amount: number
       currency?: string
       status?: ProposalStatus
+      // Outbound proposals only. When provided, the proposal API uses this
+      // value to persist a seller_fees row (potential state). For inbound
+      // leads, callers pass undefined and no seller_fees row is created.
+      // The API defaults missing values to 100 per backwards compatibility.
+      sellerFeeAmount?: 100 | 300 | 500
     }
   ) => {
     if (authMode !== 'supabase') {
@@ -796,6 +802,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         amount: input.amount,
         currency: input.currency ?? 'USD',
         status: input.status ?? 'draft',
+        // Only sent when defined (i.e., outbound proposal with a resolved
+        // amount). JSON.stringify drops undefined values automatically.
+        sellerFeeAmount: input.sellerFeeAmount,
       }),
     })
     const payload = await readApiResponse<LeadProposalWire>(response)
