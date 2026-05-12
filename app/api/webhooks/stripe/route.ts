@@ -60,7 +60,10 @@ async function creditWalletBucket(
   }
 }
 
-async function handleCheckoutSessionCompleted(
+// Exported for unit testing in tests/server/api/webhooks/stripe-checkout-completed.test.ts.
+// Next.js route runtime only treats the named exports POST / GET / etc. as
+// route handlers, so an additional export here is safe.
+export async function handleCheckoutSessionCompleted(
   client: SupabaseAdminClient,
   session: Stripe.Checkout.Session,
 ) {
