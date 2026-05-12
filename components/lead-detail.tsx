@@ -196,6 +196,25 @@ function buildDefaultProposalTitle(lead: Lead) {
   return `Propuesta - ${lead.company || lead.name}`
 }
 
+// Resolves the seller fee amount to send to the proposal API based on the
+// lead's origin. For inbound leads, no fee is sent (the API treats absence
+// as "not applicable"). For outbound, the form value is parsed; if invalid
+// for any reason, defaults to 100 (preserves prior behavior). The DB CHECK
+// constraint on seller_fees.amount catches anything that slips through.
+function resolveSellerFeeAmountForOutbound(
+  lead: Lead,
+  formValue: string,
+): 100 | 300 | 500 | undefined {
+  if (lead.leadOrigin !== 'outbound') {
+    return undefined
+  }
+  const parsed = Number.parseInt(formValue, 10)
+  if (parsed === 100 || parsed === 300 || parsed === 500) {
+    return parsed
+  }
+  return 100
+}
+
 function getChangedFields(metadata: LeadActivity['metadata']): string[] {
   const changedFields = metadata?.changedFields
 
@@ -391,6 +410,7 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
     title: buildDefaultProposalTitle(lead),
     amount: lead.value.toString(),
     body: '',
+    sellerFeeAmount: '100',
   })
   const isSupabaseMode = authMode === 'supabase'
   const hasValidEmail = isValidLeadEmail(lead.email)
@@ -621,6 +641,7 @@ Total: 8 semanas
         title: prev.title || buildDefaultProposalTitle(lead),
         amount: prev.amount || lead.value.toString(),
         body: prev.body,
+        sellerFeeAmount: prev.sellerFeeAmount || '100',
       }))
     })
   }, [lead])
@@ -725,14 +746,16 @@ Total: 8 semanas
         amount: Number.isFinite(amount) ? amount : 0,
         currency: 'USD',
         status: 'draft',
+        sellerFeeAmount: resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount),
       })
       setProposals((prev) => [proposal, ...prev])
       toast.success('Propuesta guardada')
-      setProposalForm({
+      setProposalForm((prev) => ({
         title: buildDefaultProposalTitle(lead),
         amount: lead.value.toString(),
         body: '',
-      })
+        sellerFeeAmount: prev.sellerFeeAmount,
+      }))
       void getLeadActivity(lead.id).then(setActivities).catch(() => {})
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar la propuesta')
@@ -755,6 +778,7 @@ Total: 8 semanas
         amount: lead.value,
         currency: 'USD',
         status: 'draft',
+        sellerFeeAmount: resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount),
       })
       setProposals((prev) => [proposal, ...prev])
       toast.success('Propuesta guardada desde IA')
@@ -1509,6 +1533,31 @@ Total: 8 semanas
                   />
                 </div>
               </div>
+
+              {lead.leadOrigin === 'outbound' && (
+                <div className="space-y-2">
+                  <Label htmlFor="proposal-seller-fee">Tu comision (seller fee)</Label>
+                  <Select
+                    value={proposalForm.sellerFeeAmount}
+                    onValueChange={(value) =>
+                      setProposalForm((prev) => ({ ...prev, sellerFeeAmount: value }))
+                    }
+                    disabled={isReleasedLeadPendingClaim}
+                  >
+                    <SelectTrigger id="proposal-seller-fee">
+                      <SelectValue placeholder="Seleccionar fee" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="100">$100 USD</SelectItem>
+                      <SelectItem value="300">$300 USD</SelectItem>
+                      <SelectItem value="500">$500 USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Se agrega al monto que paga el cliente y se acredita a tu wallet al confirmar el pago. El cliente no ve el desglose.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
