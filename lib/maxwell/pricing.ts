@@ -45,16 +45,27 @@ export interface PricingResult {
   isOutbound: boolean
 }
 
+// Allowed seller-fee values for outbound activations, per ADR-007 §rule 7.
+// Inbound proposals do not carry a seller fee and must pass 0.
+export type SellerFeeAmount = 0 | 100 | 300 | 500
+
+// computePricing accepts the seller-chosen fee at proposal generation. The
+// caller is responsible for routing the seller's selection here. For outbound
+// proposals, feeAmount must be one of 100 / 300 / 500. For inbound, feeAmount
+// must be 0. The function does not enforce the relationship between channel
+// and feeAmount — that validation lives in the proposal schema / DB CHECK
+// constraint (seller_fees_amount_allowed_values) per defense-in-depth.
 export function computePricing(
   projectType: ProjectType,
   complexity: Complexity,
   channel: Channel,
+  feeAmount: SellerFeeAmount,
 ): PricingResult {
   const activationBase = ACTIVATION[projectType][complexity]
   const membership = MEMBERSHIP[projectType][complexity]
   const isOutbound = channel === 'outbound'
-  const sellerFee = isOutbound ? 100 : 0
-  const activationFinal = isOutbound ? activationBase + sellerFee : activationBase
+  const sellerFee = isOutbound ? feeAmount : 0
+  const activationFinal = activationBase + sellerFee
 
   return { activationBase, activationFinal, membership, sellerFee, isOutbound }
 }
