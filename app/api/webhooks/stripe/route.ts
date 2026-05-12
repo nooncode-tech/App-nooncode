@@ -7,11 +7,19 @@ import { getStripeClient } from '@/lib/server/stripe/client'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import type { Database, Json } from '@/lib/server/supabase/database.types'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
+import { getSellerFeeByProposalId } from '@/lib/server/seller-fees/repository'
+import { confirmSellerFee } from '@/lib/server/seller-fees/service'
 import {
   beginStripeWebhookEvent,
   markStripeWebhookEventFailed,
   markStripeWebhookEventProcessed,
 } from '@/lib/server/stripe/webhook-events'
+
+// Legacy fallback when a paid outbound proposal predates B3 Chunk 3a deploy
+// and therefore has no seller_fees row. Removed in Chunk 5 once backfill is
+// verified. Stays a module-level constant (not inline) so it can be grepped
+// and deleted cleanly.
+const LEGACY_FALLBACK_SELLER_FEE_AMOUNT = 100
 
 type SupabaseAdminClient = Awaited<ReturnType<typeof createSupabaseAdminClient>>
 type MonetaryEntryType = Database['public']['Enums']['monetary_entry_type']
@@ -52,7 +60,10 @@ async function creditWalletBucket(
   }
 }
 
-async function handleCheckoutSessionCompleted(
+// Exported for unit testing in tests/server/api/webhooks/stripe-checkout-completed.test.ts.
+// Next.js route runtime only treats the named exports POST / GET / etc. as
+// route handlers, so an additional export here is safe.
+export async function handleCheckoutSessionCompleted(
   client: SupabaseAdminClient,
   session: Stripe.Checkout.Session,
 ) {
@@ -126,6 +137,35 @@ async function handleCheckoutSessionCompleted(
   const sellerId = leadRow.assigned_to ?? leadRow.created_by
   const activationAmount = Number(paymentBeforeActivation.amount)
 
+  // Resolve the seller fee amount from the persisted seller_fees row (per
+  // ADR-007 §rule 1). For outbound proposals created post-Chunk-3a, the row
+  // exists in state='potential' and carries the seller's chosen amount
+  // (100/300/500). For inbound proposals, no row exists and the fee is 0.
+  // For outbound proposals created BEFORE Chunk 3a deployed (the "in-flight"
+  // window), no row exists either — the legacy fallback (100) preserves the
+  // prior split behavior. Chunk 5 removes the fallback once backfill is
+  // verified.
+  let sellerFeeRow: Awaited<ReturnType<typeof getSellerFeeByProposalId>> = null
+  let sellerFeeUsingLegacyFallback = false
+
+  if (leadOrigin === 'outbound') {
+    sellerFeeRow = await getSellerFeeByProposalId(client, activation.proposal_id)
+    if (!sellerFeeRow) {
+      sellerFeeUsingLegacyFallback = true
+      logger.warn('Webhook using legacy seller-fee fallback (no seller_fees row found for outbound proposal)', {
+        proposalId: activation.proposal_id,
+        paymentId: activation.payment_id,
+        fallbackAmount: LEGACY_FALLBACK_SELLER_FEE_AMOUNT,
+      })
+    }
+  }
+
+  const sellerFeeAmount = leadOrigin === 'outbound'
+    ? sellerFeeRow
+      ? Number(sellerFeeRow.amount)
+      : LEGACY_FALLBACK_SELLER_FEE_AMOUNT
+    : 0
+
   // Fetch developer from project if linked
   let developerUserId: string | null = null
   if (projectId) {
@@ -151,22 +191,25 @@ async function handleCheckoutSessionCompleted(
   }> = []
 
   const base = leadOrigin === 'outbound'
-    ? Math.max(activationAmount - 100, 0)
+    ? Math.max(activationAmount - sellerFeeAmount, 0)
     : activationAmount
 
-  // Seller commission - outbound only, $100 fixed
+  // Seller commission - outbound only, persisted value from seller_fees
+  // (or LEGACY_FALLBACK_SELLER_FEE_AMOUNT for in-flight proposals).
   if (leadOrigin === 'outbound') {
     earningRows.push({
       actor_id: sellerId,
       actor_role: 'seller',
       earning_type: 'activation',
-      amount: 100,
+      amount: sellerFeeAmount,
       currency: 'USD',
       lead_id: proposal.lead_id,
       proposal_id: activation.proposal_id,
       payment_id: activation.payment_id,
       idempotency_key: `stripe:${session.id}:earning:seller:${sellerId}`,
-      notes: 'Outbound activation - $100 fixed',
+      notes: sellerFeeUsingLegacyFallback
+        ? `Outbound activation - $${sellerFeeAmount} (legacy fallback, pre-Chunk-3a proposal)`
+        : `Outbound activation - $${sellerFeeAmount} (seller-selected)`,
     })
   }
 
@@ -230,6 +273,29 @@ async function handleCheckoutSessionCompleted(
           },
         idempotencyKey: `stripe:${session.id}:wallet:${row.actor_role}:${row.actor_id}`,
         createdAt: creditedAt,
+      })
+    }
+  }
+
+  // Transition seller_fees state potential → confirmed. Idempotent for
+  // webhook retries per ADR-007 §rule 11; the service short-circuits if
+  // already confirmed for this payment_id. Only fires when a row exists —
+  // legacy fallback proposals (pre-Chunk-3a) have no row to transition.
+  // Failures are logged but do not fail the webhook: payment and earnings
+  // are already processed at this point, and the activity log is secondary.
+  if (sellerFeeRow) {
+    try {
+      await confirmSellerFee(client, {
+        proposalId: activation.proposal_id,
+        paymentId: activation.payment_id,
+      })
+    } catch (error) {
+      logger.error('Failed to transition seller_fees state to confirmed', {
+        ...errorToLogContext(error),
+        proposalId: activation.proposal_id,
+        paymentId: activation.payment_id,
+        sellerFeeId: sellerFeeRow.id,
+        priorState: sellerFeeRow.state,
       })
     }
   }
