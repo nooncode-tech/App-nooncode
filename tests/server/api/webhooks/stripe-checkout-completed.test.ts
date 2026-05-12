@@ -243,48 +243,43 @@ test('webhook: outbound proposal with seller_fees row=300 uses persisted amount,
 })
 
 // ---------------------------------------------------------------------------
-// Test 2: Legacy fallback — outbound proposal without a seller_fees row
+// Test 2: Outbound proposal without seller_fees row THROWS (post B3 Chunk 5).
+// The legacy fallback constant was removed because every outbound proposal
+// is now guaranteed to have a seller_fees row (new proposals via the
+// proposal API since Chunk 3a; legacy in-flight proposals backfilled
+// 2026-05-12). Hitting this branch means a data integrity breach; Stripe
+// retries the webhook, which is the correct recovery posture.
 // ---------------------------------------------------------------------------
 
-test('webhook: outbound proposal WITHOUT seller_fees row falls back to 100, skips confirmSellerFee', async () => {
+test('webhook: outbound proposal WITHOUT seller_fees row throws (post-Chunk-5 invariant)', async () => {
   const client = makeMockClient({
     maybeSingleByTable: {
       payments: [{ data: { id: PAYMENT_ID, amount: 599, proposal_id: PROPOSAL_ID, project_id: PROJECT_ID }, error: null }],
       lead_proposals: [{ data: { id: PROPOSAL_ID, lead_id: LEAD_ID, amount: 599 }, error: null }],
       leads: [{ data: { lead_origin: 'outbound', assigned_to: SELLER_ID, created_by: SELLER_ID }, error: null }],
-      seller_fees: [{ data: null, error: null }], // no row — legacy in-flight proposal
-      projects: [{ data: { developer_user_id: DEVELOPER_ID }, error: null }],
+      seller_fees: [{ data: null, error: null }], // no row — integrity breach
     },
     singleByTable: {},
-    upsertByTable: {
-      earnings_ledger: [{ data: null, error: null }],
-      points_ledger: [{ data: null, error: null }],
-    },
+    upsertByTable: {},
     rpcByName: {
       activate_paid_proposal: [{ data: [activationRpcResult], error: null }],
-      credit_wallet_bucket: [
-        { data: null, error: null },
-        { data: null, error: null },
-      ],
     },
   })
 
-  await handleCheckoutSessionCompleted(client as never, makeSession())
+  // Webhook must throw clearly. Stripe will retry; if the row still doesn't
+  // exist on retry, the retries surface the integrity issue for escalation.
+  await assert.rejects(
+    () => handleCheckoutSessionCompleted(client as never, makeSession()),
+    /seller_fees row missing for outbound proposal/
+  )
 
-  // Seller earning uses the legacy fallback (100).
+  // No earnings_ledger upsert: the throw fires BEFORE the split calculation.
   const earningsUpsert = client._ops.find((o) => o.table === 'earnings_ledger' && o.op === 'upsert')
-  const earningRows = earningsUpsert!.args[0] as Array<{ actor_role: string; amount: number; notes: string }>
-  const sellerRow = earningRows.find((r) => r.actor_role === 'seller')
-  assert.equal(sellerRow?.amount, 100, 'fallback path should use 100 for the seller earning')
-  assert.match(sellerRow!.notes, /legacy fallback/, 'fallback notes should mark the legacy path')
+  assert.equal(earningsUpsert, undefined, 'earnings_ledger upsert must not fire on integrity breach')
 
-  // No confirmSellerFee call (no row to transition).
-  const sellerFeesUpdate = client._ops.find((o) => o.table === 'seller_fees' && o.op === 'update')
-  assert.equal(sellerFeesUpdate, undefined, 'no seller_fees update when row missing')
-
-  // No activity log for seller_fee transition.
-  const activityInsert = client._ops.find((o) => o.table === 'lead_activities' && o.op === 'insert')
-  assert.equal(activityInsert, undefined, 'no activity log when no row to transition')
+  // No wallet credits either.
+  const walletCredits = client._rpcCalls.filter((c) => c.name === 'credit_wallet_bucket')
+  assert.equal(walletCredits.length, 0, 'no wallet credits when integrity breach detected')
 })
 
 // ---------------------------------------------------------------------------

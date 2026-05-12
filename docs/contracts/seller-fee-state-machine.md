@@ -8,7 +8,7 @@
 
 The current implementation hard-codes the fee at $100 in `lib/maxwell/pricing.ts` and inside the Stripe webhook handler (per audit §3 F-05 and §4.6 sec 24). That implementation is structurally incompatible with the spec sec. 24 selectable model and is the surface this contract eventually replaces.
 
-The exact ownership decision — whether the state machine sits on its own `seller_fees` entity or extends `earnings_ledger` rows with discriminated state — is gated by audit §7 Q7 and recorded in the OPEN markers below. Until that decision lands, this contract describes the conceptual entity behavior. The wallet model decision (audit §7 Q4) interacts with payout-side transitions and is also recorded in the OPEN markers.
+The exact ownership decision — whether the state machine sits on its own `seller_fees` entity or extends `earnings_ledger` rows with discriminated state — was **resolved by `docs/adrs/ADR-007-seller-fee-state-machine.md`** (2026-05-11) in favor of a dedicated `seller_fees` table. The wallet model decision (interaction with payout-side transitions) was **also resolved by ADR-007**: existing `credit_wallet_bucket` RPC for `Confirmed` and `service_debit` ledger entries for `confirmed → cancelled`. Both decisions are now implemented end-to-end (B3 closure 2026-05-12).
 
 ## States / lifecycle / transitions
 
@@ -86,5 +86,6 @@ None directly. The seller_fee links to a proposal and a payment, both of which a
 
 ## OPEN markers
 
-- OPEN: gated by audit §7 Q4 (wallet model)
-- OPEN: gated by audit §7 Q7 (seller-fee entity ownership)
+- CLOSED 2026-05-11: audit §7 Q4 (wallet model) — resolved by `docs/adrs/ADR-007-seller-fee-state-machine.md` §Rationale: existing `wallet_accounts` + `credit_wallet_bucket` RPC + `service_debit` ledger entries; no new wallet primitives needed.
+- CLOSED 2026-05-11: audit §7 Q7 (seller-fee entity ownership) — resolved by `docs/adrs/ADR-007-seller-fee-state-machine.md` §Decision: dedicated `seller_fees` table (not discriminated on `earnings_ledger`), per state enum granularity (5 states vs 3) and structural RLS separation (developer excluded).
+- Implementation landed in migrations `0043_phase_18a_seller_fees.sql` + `0044_phase_18b_seller_fees_rls.sql`, service layer `lib/server/seller-fees/*`, proposal API integration, webhook integration, UI selector. Browser validated 2026-05-12.
