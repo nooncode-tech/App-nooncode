@@ -330,7 +330,74 @@ test('webhook: inbound proposal skips seller_fees lookup and uses fee=0 for spli
 })
 
 // ---------------------------------------------------------------------------
-// Test 4: confirmSellerFee idempotent — webhook retry on already-confirmed row
+// Test 4: confirmSellerFee error path — webhook completes despite state-machine failure
+// ---------------------------------------------------------------------------
+
+test('webhook: confirmSellerFee failure is logged and swallowed — payment + earnings still processed', async () => {
+  const sellerFee = makeSellerFeeRow(300)
+
+  const client = makeMockClient({
+    maybeSingleByTable: {
+      payments: [{ data: { id: PAYMENT_ID, amount: 599, proposal_id: PROPOSAL_ID, project_id: PROJECT_ID }, error: null }],
+      lead_proposals: [{ data: { id: PROPOSAL_ID, lead_id: LEAD_ID, amount: 599 }, error: null }],
+      leads: [{ data: { lead_origin: 'outbound', assigned_to: SELLER_ID, created_by: SELLER_ID }, error: null }],
+      seller_fees: [
+        { data: sellerFee, error: null }, // initial lookup
+        { data: sellerFee, error: null }, // confirmSellerFee re-read
+      ],
+      projects: [{ data: { developer_user_id: DEVELOPER_ID }, error: null }],
+    },
+    singleByTable: {
+      // The update inside updateSellerFeeState() fails — simulates an
+      // unexpected DB-side error (e.g., FK violation, deadlock, RLS reject).
+      seller_fees: [{ data: null, error: { message: 'simulated: connection timeout during state transition' } }],
+    },
+    upsertByTable: {
+      earnings_ledger: [{ data: null, error: null }],
+      points_ledger: [{ data: null, error: null }],
+    },
+    rpcByName: {
+      activate_paid_proposal: [{ data: [activationRpcResult], error: null }],
+      credit_wallet_bucket: [
+        { data: null, error: null },
+        { data: null, error: null },
+      ],
+    },
+  })
+
+  // The webhook MUST complete without throwing — payment and earnings are
+  // already processed at this point. State-machine failure is a secondary
+  // concern that's logged and recovered separately.
+  await assert.doesNotReject(() => handleCheckoutSessionCompleted(client as never, makeSession()))
+
+  // Earnings ledger upsert + wallet credits MUST still have happened — the
+  // payment is the source of truth for the money movement.
+  const earningsUpsert = client._ops.find((o) => o.table === 'earnings_ledger' && o.op === 'upsert')
+  assert.ok(earningsUpsert, 'earnings_ledger upsert must happen before confirmSellerFee')
+  const earningRows = earningsUpsert!.args[0] as Array<{ actor_role: string; amount: number }>
+  const sellerRow = earningRows.find((r) => r.actor_role === 'seller')
+  assert.equal(sellerRow?.amount, 300, 'seller earning row still posted with correct amount')
+
+  // Points award MUST still happen.
+  const pointsUpsert = client._ops.find((o) => o.table === 'points_ledger' && o.op === 'upsert')
+  assert.ok(pointsUpsert, 'points_ledger upsert must happen even if confirmSellerFee fails')
+
+  // Wallet credits MUST still happen for each actor.
+  const walletCredits = client._rpcCalls.filter((c) => c.name === 'credit_wallet_bucket')
+  assert.ok(walletCredits.length >= 2, 'wallet credits for seller + developer must happen')
+
+  // The update attempt DID happen (confirmSellerFee tried to transition).
+  const sellerFeesUpdates = client._ops.filter((o) => o.table === 'seller_fees' && o.op === 'update')
+  assert.equal(sellerFeesUpdates.length, 1, 'confirmSellerFee attempted the update before failing')
+
+  // But NO activity log row was inserted — the update threw, so the activity
+  // log was never reached.
+  const activityInserts = client._ops.filter((o) => o.table === 'lead_activities' && o.op === 'insert')
+  assert.equal(activityInserts.length, 0, 'activity log not written when state transition fails')
+})
+
+// ---------------------------------------------------------------------------
+// Test 5: confirmSellerFee idempotent — webhook retry on already-confirmed row
 // ---------------------------------------------------------------------------
 
 test('webhook: retry with already-confirmed seller_fees row is idempotent (no second update)', async () => {
