@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import type { DatabaseClient } from '@/lib/server/supabase/server'
+import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { getLeadById } from '@/lib/server/leads/repository'
 import { listLeadActivities } from '@/lib/server/leads/activity-repository'
 import {
@@ -17,6 +18,8 @@ import {
   mapLeadProposalRowToWire,
 } from '@/lib/server/leads/proposal-mappers'
 import { createLeadProposalSchema } from '@/lib/server/leads/proposal-schema'
+import { createSellerFee } from '@/lib/server/seller-fees/service'
+import type { SellerFeeAmount } from '@/lib/server/seller-fees/types'
 import { cursorPaginationSchema } from '@/lib/server/pagination/schema'
 import { decodeCursor } from '@/lib/server/pagination/cursor'
 import { buildCursorResponse } from '@/lib/server/pagination/envelope'
@@ -159,6 +162,30 @@ export async function POST(
       client,
       mapCreateLeadProposalInputToInsert(payload, leadId, principal.userId)
     )
+
+    // For outbound proposals, persist the seller_fees row with the chosen
+    // amount (per ADR-007 §rule 1). Defaults to 100 for backwards compat
+    // with callers that pre-date the UI selector (Chunk 4 introduces it).
+    // The webhook will read this persisted value to compute the earnings
+    // split in Chunk 3b; until 3b ships, the webhook still hard-codes 100
+    // — and because the default here is also 100, the behavior is identical
+    // during the transition window.
+    if (lead.lead_origin === 'outbound') {
+      const sellerProfileId = lead.assigned_to ?? lead.created_by
+      if (sellerProfileId) {
+        const adminClient = createSupabaseAdminClient()
+        const amount: SellerFeeAmount = (payload.sellerFeeAmount ?? 100) as SellerFeeAmount
+        await createSellerFee(adminClient, {
+          proposalId: proposal.id,
+          leadId,
+          sellerProfileId,
+          amount,
+        })
+      }
+      // If neither assigned_to nor created_by is set (unexpected for an
+      // outbound lead), we skip seller_fees creation. The webhook fallback
+      // in 3b will continue to use the hard-coded $100 for this proposal.
+    }
 
     return NextResponse.json(
       {

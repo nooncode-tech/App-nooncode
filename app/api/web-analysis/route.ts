@@ -90,10 +90,17 @@ ${siteContent || '(No se pudo obtener contenido — analiza solo por la URL)'}
 Identifica las principales oportunidades de mejora que Noon podría ofrecer como proyecto de desarrollo.`,
     })
 
+    // Web-analysis is a pre-proposal estimation. The seller has not yet
+    // selected their fee at this point — the selector lives at proposal
+    // generation time. We pass 100 here as the default outbound fee so the
+    // estimated activationFinal preserves the previous behavior. The real
+    // value is locked when the seller creates the proposal (see
+    // createSellerFee in app/api/leads/[leadId]/proposals/route.ts).
     const pricing = computePricing(
       object.projectType as ProjectType,
       object.complexity as Complexity,
       body.channel,
+      body.channel === 'outbound' ? 100 : 0,
     )
 
     return NextResponse.json({
