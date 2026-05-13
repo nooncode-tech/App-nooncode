@@ -859,6 +859,69 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - customer portal
   - Maxwell grounding
 
+## Confirmed seller-fee state machine slice
+- Anchors:
+  - `docs/contracts/seller-fee-state-machine.md` (entity contract, with `OPEN: Q4` and `OPEN: Q7` markers closed)
+  - `docs/adrs/ADR-007-seller-fee-state-machine.md` (storage = dedicated table, state enum, cancellation policy, wallet integration, activity-log integration)
+  - `specs/fase-0-b3-seller-fee-selector.md` (5-chunk iteration spec, Approved 2026-05-11)
+- Entity:
+  - new persisted table `seller_fees`
+  - one row per outbound proposal that the seller initiates with a chosen fee value
+  - inbound proposals (website hand-off) create **no** `seller_fees` row — seller-fee semantics do not apply to inbound
+  - row links to `lead_proposals.id`, `seller_user_id` (the lead's `assigned_to ?? created_by`), and optionally to `payment_events.id` once payment confirms
+  - `fee_amount` constrained to `100 | 300 | 500` USD (assertion enforced by zod + check constraint)
+- Lifecycle (5 states):
+  - `potential` — row created at proposal creation; no payment yet
+  - `confirmed` — Stripe webhook fired `payment.confirmed`; transition wired in `app/api/webhooks/stripe/route.ts`
+  - `pending_payout` — earnings consolidation moved the seller's bucket from `pending` to `available_to_withdraw` (uses existing wallet pipeline; no new bucket)
+  - `paid_out` — payout batch completed
+  - `cancelled` — only allowed from `potential` or `confirmed` per ADR-007; cancelling from `paid_out` is treated as an unrecoverable exception (PM/admin manual intervention)
+- Storage model (per ADR-007):
+  - **dedicated table** chosen over discriminating on `earnings_ledger` because role-aware RLS visibility cannot be enforced precisely enough on the ledger without leaking the fee value to developers via inference on `actor_role='developer'` rows
+  - `earnings_ledger` retains its existing shape; the fee is computed via the persisted `seller_fees` row instead of the previous hardcoded `100`
+- RLS posture:
+  - `client` never reads `seller_fees` (no portal access path)
+  - `developer` is **structurally excluded** from `SELECT` — there is no policy permitting developer role to read, by design
+  - `seller` reads own rows only (matches `auth.uid() = seller_user_id`)
+  - `pm` and `admin` read all rows
+  - mutations route only through `service_role` (the service layer in `lib/server/seller-fees/`)
+- Service surface (`lib/server/seller-fees/`):
+  - `schema.ts` — zod validation, `SellerFeeAmount` type alias (`0 | 100 | 300 | 500`), input/output shapes
+  - `repository.ts` — typed Supabase queries (insert / get-by-proposal / update-state)
+  - `activity.ts` — helpers that emit the 5 new `lead_activity_type` values (`seller_fee_selected`, `seller_fee_confirmed`, `seller_fee_pending_payout`, `seller_fee_paid_out`, `seller_fee_cancelled`) on state transitions
+  - `service.ts` — `createSellerFee`, `confirmSellerFee`, `cancelSellerFee`, `markSellerFeePendingPayout`, `markSellerFeePaidOut`
+  - 38 unit tests cover state-machine transitions, RLS visibility, validation; 5 additional tests cover the webhook integration path including failure mode
+- Integration surfaces:
+  - `lib/maxwell/pricing.ts` — `computePricing()` now accepts a `feeAmount` argument supplied by the persisted row; the previous `const FEE = 100` is removed. Type definitions (`SellerFeeAmount`) and explanatory comments still reference the literals `100 / 300 / 500`, but no functional code path reads them.
+  - `app/api/leads/[leadId]/proposals/route.ts` + `lib/server/leads/proposal-schema.ts` + `lib/server/leads/proposal-mappers.ts` — proposal creation accepts `sellerFeeAmount`, persists the `seller_fees` row in `potential`, and emits the `seller_fee_selected` activity. Inbound proposals skip this entirely.
+  - `app/api/webhooks/stripe/route.ts` — at `payment.confirmed`, the handler reads the persisted `seller_fees` row for the proposal and calls `confirmSellerFee` to move state `potential → confirmed`. The former three hardcoded `100` references at lines 154/163/179 are gone.
+  - `components/lead-detail.tsx` — proposal-creation form renders the `100 / 300 / 500 USD` selector **only** for outbound proposals; default value `100`; the row is created at save. Inbound paths do not show the selector.
+- Activity logging:
+  - 5 `lead_activity_type` enum values added by migration `0043`
+  - every state transition writes a `lead_activities` row through `lib/server/seller-fees/activity.ts`, surfaced in `/dashboard/updates` for visible actors
+- Migrations:
+  - `supabase/migrations/0043_phase_18a_seller_fees.sql` — table, indexes, triggers, enum extensions
+  - `supabase/migrations/0044_phase_18b_seller_fees_rls.sql` — RLS policies
+  - applied out-of-band consistent with the wider G7 schema↔ledger desync (not via `supabase db push`)
+- One-time legacy backfill:
+  - 4 in-flight outbound proposals predating Chunk 3a were backfilled via Supabase MCP one-time SQL on 2026-05-12
+  - 3 rows in `potential`, 1 in `confirmed` (payment_id wired retroactively)
+  - no fallback constant survives in code; backfill was the only path to bridge the gap
+- Validation evidence:
+  - `pnpm test`: **201/201 pass** (post-Chunk-5 baseline)
+  - browser validation 2026-05-12: `docs/validations/Browser validation 2026-05-12 — B3 seller-fees input side.md` (14 invariants verified end-to-end, including selector at `$300` for outbound, inbound proposals correctly creating no `seller_fees` row, webhook idempotency, and activity-log surfacing)
+- Explicitly excluded from this slice:
+  - wallet model overhaul (`wallet_accounts` / `wallet_ledger_entries` shape preserved)
+  - payout system rework (`payout_methods`, `payout_batches`, `payouts` unchanged)
+  - FASE 3 proposal lifecycle automation — the `potential → confirmed` transition still fires from the webhook; FASE 3 will hook into the existing service layer when it ships
+  - Stripe live-card end-to-end validation (deferred to B1 cutover)
+- Known open items:
+  - **G10** — selector value does not persist between consecutive saves on the same lead; `useEffect([lead])` in `components/lead-detail.tsx:619-627` re-initializes the form when the lead object refreshes after save. UX-only, no functional or financial impact. Deferred to a UX iteration post-cutover.
+- Operating constraints carried forward (per ADR-007):
+  - the hardcoded `$100` **must never** be re-introduced for "compatibility" reasons
+  - role-aware visibility must remain enforced at the database layer (RLS), not at the application layer alone
+  - the developer role must never gain `SELECT` access to `seller_fees`, by design
+
 ## Active risks
 - High:
   - mixed real/mock state can mislead future implementation if context files are not updated
