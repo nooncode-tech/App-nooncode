@@ -859,6 +859,41 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - customer portal
   - Maxwell grounding
 
+## Confirmed client-facing architecture (App / portal / MVP three-entity model)
+- Anchors:
+  - `docs/adrs/ADR-008-fase-0-commercial-and-scope.md`
+  - `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md`
+  - `docs/adrs/ADR-011-ai-mvp-pipeline-runtime.md`
+  - `docs/adrs/ADR-012-noonweb-owns-client-email.md`
+  - `docs/product/master-spec-v3.md` §2.1, §8.1
+  - `docs/integrations/cross-repo-webhook-v1.md`
+- Three distinct surfaces, each with its own owner repo, its own audience, and its own purpose:
+  - **NoonApp** (this repo, `nooncode-org/App-nooncode`) — internal workspace under `/dashboard/*`. Audience: sellers, PMs, developers, sales managers, admins. Purpose: lead/proposal management, delivery, earnings, outbound Maxwell. The client final **never enters here**.
+  - **Client portal** (sister repo, `nooncode-org/noon-web-main`, at `/portal/[projectId]`) — to be built in v3 Phase 2-6 (mes 3-7). Verified 2026-05-13: the route does not yet exist; only `/app/[locale]/maxwell/proposal/[token]/page.tsx` exists for proposal review + Stripe Checkout. Audience: the client final, authenticated via their NoonWeb account (NextAuth Google). Purpose: post-payment client experience — see project status, request changes, view/publish MVP, manage proposal and payment plan.
+  - **MVP** (independent URL per project, deployed by the project itself) — the actual product Noon built for the client (their site / app / store). Audience: the end users of the client's product. Purpose: the deliverable. Embedded into or linked from the client portal.
+- The portal is **not** the MVP. The MVP is the deliverable. The portal is where the client accesses and manages the deliverable.
+- The portal is **not** NoonApp. NoonApp is the operator workspace. The client never sees NoonApp.
+- Cross-repo coupling lives only in signed webhooks under `docs/integrations/cross-repo-webhook-v1.md`. The two Supabase projects are distinct; no shared database, no direct cross-repo SQL reads.
+- Payment flow:
+  - Client pays from inside their NoonWeb account via Stripe Checkout (NoonWeb owns the Checkout session creation).
+  - Stripe webhook lands in App at `/api/webhooks/stripe`.
+  - NoonWeb fires `payment-confirmed` to App via signed webhook at `/api/integrations/website/payment-confirmed`.
+  - App owns the activation, the seller-fee state transition (per ADR-007), the earnings credit, and the eventual AI MVP pipeline orchestration (per ADR-011).
+- Email to client:
+  - NoonWeb is the single owner (Resend already configured at `nooncode-org/noon-web-main` `lib/maxwell/proposal-email.ts:133`).
+  - App publishes domain events via the cross-repo webhook contract; NoonWeb decides whether and how each event becomes a client email.
+  - App has no email provider integration and must not gain one.
+- AI MVP pipeline (v3 Phase 5, mes 3-7):
+  - Currently only the V0 step exists in App (`lib/server/v0/client.ts`, `app/api/prototypes/[prototypeWorkspaceId]/generate/route.ts`, migration `0033_phase_5b_v0_generation_columns.sql`). Operator-triggered, synchronous Vercel Function.
+  - Full pipeline (GPT spec → V0 → Opus → validation → up to 5 auto-fix iterations) will be built in v3 Phase 5 on Vercel Functions + Vercel Cron + a queue table in App's Supabase. No external worker.
+  - LLM budget ceiling is deferred to a follow-up ADR after the FASE 4 PoC. No auto-trigger from payment-confirmed until that follow-up ADR ships.
+- Legacy debt on App-side:
+  - `/client/[token]` route in App is pre-v3 placeholder. Reclassified as legacy debt per ADR-010. No new features; removal scheduled when NoonWeb ships `/portal/[projectId]` or when an explicit cleanup iteration runs.
+- Operational mode through FASE 1-3 (per ADR-008):
+  - Internal-only. No client receives automated email or accesses a portal during FASE 1-3.
+  - Client communication is operator-mediated (out-of-band: email, phone, WhatsApp from the operator's own channels).
+  - Verified 2026-05-13: no client has an active account in NoonWeb expecting the portal today, so the gap is absorbable.
+
 ## Confirmed seller-fee state machine slice
 - Anchors:
   - `docs/contracts/seller-fee-state-machine.md` (entity contract, with `OPEN: Q4` and `OPEN: Q7` markers closed)
