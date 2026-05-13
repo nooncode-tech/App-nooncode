@@ -2056,3 +2056,42 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - B3 closed end-to-end in `supabase`
   - zero functional `$100` literals remain in integration code
   - remaining open items: Stripe live-card validation (deferred to B1 cutover) and G10 selector persistence (UX, deferred)
+
+## Session note: B18 branded App Router framework pages (FASE 1 first iteration)
+- Date: 2026-05-13
+- Iteration id: `fase-1-b18-error-pages`
+- Route used: system-analysis -> system-frontend -> system-testing -> system-validator -> system-docs
+- Objective: ship the four Next.js App Router framework pages that App-nooncode was missing (`app/not-found.tsx`, `app/error.tsx`, `app/loading.tsx`, `app/global-error.tsx`) so the FASE 1 cutover does not run on a UI that surfaces Next.js's unstyled default fallbacks during the inevitable 404s and runtime errors of a real-money pilot.
+- Spec landed: `specs/fase-1-b18-error-pages.md` (Approved 2026-05-13 via PR #32).
+- Implemented (PR #33, merged as `1707875`):
+  - `app/not-found.tsx` — Server Component. Branded 404 with try/catch around `getCurrentPrincipal()`. Auth-aware CTA: `Volver al dashboard` when authenticated, `Volver al inicio` when anonymous.
+  - `app/error.tsx` — Client Component (`'use client'`). Receives `{ error, reset }` per Next.js convention. Reads `useAuth()` directly (no defensive try/catch — Rules of Hooks made the wrapping pattern lint-blocked, and the realistic failure mode for `useAuth` is a broken `AuthProvider`, which means the root layout itself failed and Next.js would have rendered `global-error.tsx` instead of this boundary). Browser-console log only (no Sentry per observability deferral). `Reintentar` button calls `reset()`.
+  - `app/loading.tsx` — Server Component. Centered `Loader2` from `lucide-react`, brand primary color, ARIA `role="status"` + `aria-live="polite"` + `aria-label="Cargando"`. No animation libs.
+  - `app/global-error.tsx` — Client Component. Replaces the entire HTML document with its own `<html lang="es">` + `<body>` shell. Inline-styled because Tailwind / `globals.css` may not be loaded when the root layout itself fails. Brand tokens captured as inline constants (`#1200c5` primary, `#FBFBFB` background, `#18171F` foreground, `#6F6E80` muted, `#E6E5EC` border-subtle).
+  - `tests/app/error-pages.test.ts` — 4 smoke tests, one per file, asserting `typeof mod.default === 'function'`. Visual / behavioral validation is browser-level (separate doc).
+- One implementation decision diverged from the spec's risk-mitigation suggestion: the spec proposed wrapping `useAuth()` in `try/catch` defensively. ESLint `react-hooks/rules-of-hooks` rejected that pattern. The simplification (direct call) is safe in practice for the reason recorded in the file comment and in the commit message of PR #33.
+- Scope boundary kept:
+  - no per-segment error pages (`app/dashboard/error.tsx` etc.) — root-only
+  - no Sentry / telemetry wiring
+  - no changes to `app/layout.tsx` or any existing route group layout
+  - no new dependencies (`lucide-react` was already in `package.json`)
+  - Spanish-only copy (consistent with ADR-010 internal-only mode)
+- Validation outcome:
+  - `pnpm run typecheck`: clean
+  - `pnpm run lint`: clean
+  - `pnpm test`: **205/205 pass** (201 baseline + 4 smoke tests)
+  - `pnpm run build`: ok; Next.js picks up `/_not-found` in the route tree as expected
+  - Browser validation 2026-05-13 — full evidence in `docs/validations/Browser validation 2026-05-13 — B18 error pages.md` — all 5 scenarios PASS:
+    - Scenario 1 (not-found authenticated): branded 404 with `Volver al dashboard` CTA navigating to `/dashboard`
+    - Scenario 2 (not-found anonymous): same surface with `Volver al inicio` CTA navigating to `/`
+    - Scenario 3 (error.tsx + reset()): branded error page rendered after a forced throw in `app/dashboard/page.tsx`; `Reintentar` fired the error again while the throw was still in source; after revert, `Reintentar` recovered the dashboard cleanly
+    - Scenario 4 (loading.tsx): brief branded spinner visible during route transition
+    - Scenario 5 (global-error.tsx): forced throw in `getInitialAuthState()` in `app/layout.tsx` was caught by the Next.js dev-mode error overlay (intentional Next.js dev behavior — overlay supersedes branded fallback in `next dev`). Production-mode visual verification deferred as non-blocking. Source / build verification confirms the file is wired correctly.
+  - Both temporary `throw` lines reverted; `git diff app/dashboard/page.tsx app/layout.tsx` empty after validation
+- Operational observation during validation: first dev-server run crashed with Turbopack OOM (`memory allocation of 16777216 bytes failed`) after ~100 requests against the new 404 route. Recovered with a fresh `npm run dev` in 3.0s. Probably exacerbated by the existing "Slow filesystem detected" warning on `D:` drive. Not a B18 defect; tracked inline in the validation doc with mitigations (switch to webpack via `--no-turbopack`, more Node memory, or move `.next/dev` to a faster local drive).
+- Docs updated:
+  - `project.context.core.md` (Closed-in-runtime entry for B18)
+- Completion status:
+  - B18 closed; first FASE 1 iteration COMPLETE
+  - dev-mode validation sufficient for cutover prep; production visual check of `global-error.tsx` deferred but non-blocking
+  - next FASE 1 iteration candidate: B1 (Stripe live keys cutover) or the UX honesty bundle (F-V03 + F-V09 + bundle copy F-V11/13/18/19/20)
