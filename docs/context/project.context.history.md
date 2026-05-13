@@ -1956,3 +1956,103 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - `docs/contracts/` — new home for entity-level contract documents (`client-requests.md`, `project-versions.md`, `ai-mvp-pipeline-state.md`, `seller-fee-state-machine.md`, plus `README.md` index).
 - Skeleton-depth boundary: contract files contain entity, lifecycle, conceptual data shape, inputs/outputs, and cross-refs only. No SQL, no API surface, no component or migration filenames invented.
 - Open items: every contract carries at least one `OPEN: gated by audit §7 Q<N>` marker that must be resolved before the corresponding implementation iteration can be scoped.
+
+## Session note: ADR-006 migration prefix reconciliation (Branch B / Option B2)
+- Date: 2026-05-11
+- Iteration id: `fase-0-b4-adr-006-execution`
+- Route used: system-analysis -> system-infra -> system-docs -> system-validator
+- Objective: execute the deferred portion of ADR-006 (eight collided migration prefixes `0024/0025/0026/0027`) by first verifying the remote `supabase_migrations.schema_migrations` ledger and then either renaming to fresh `0043+` prefixes (Branch A) or recording a reconciliation amendment (Branch B). Analysis-first; spec versioned in git.
+- Spec landed: `specs/fase-0-b4-adr-006-execution.md` (Approved 2026-05-10, executed 2026-05-11).
+- Ledger verification (Paso 1, via Supabase MCP against `pdotsdahsrnnsoroxbfe`):
+  - query: `SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version`
+  - result: **4 of the 8 collided filenames already registered** as ledger rows (suffix-match on `name`)
+  - branch decision: **Branch B (rename is unsafe — Option B2 additive convention permanent)**
+- Implemented (Paso 2 / Branch B):
+  - `docs/adrs/ADR-006-migration-prefix-convention-and-rename.md`
+    - amended with `## Reconciliation required` section enumerating the registered rows by ledger key
+    - status updated from "Currently BLOCKED" to "Branch B adopted; rename foreclosed"
+    - Option B1 (ledger rewrite), Option B2 (freeze collisions as permanent convention), and Option B3 (defer to dedicated iteration) listed; **Option B2 adopted as default**
+  - `scripts/check-migrations.mjs`
+    - `KNOWN_COLLISION_FILES` kept as a **hard frozen allowlist** for the 8 historical filenames
+    - guard continues to reject any *new* prefix collision outside that frozen set
+    - dead-code disposition of the grandfathered branch documented in the script's comment block
+  - `docs/context/project.context.core.md`
+    - migration-prefix-collision Active risk **downgraded** from "execution pending" to "permanent convention; no new collisions allowed"
+- Scope boundary kept:
+  - no migration filename was renamed
+  - no SQL inside any migration file was touched
+  - the remote `supabase_migrations.schema_migrations` ledger was never rewritten
+  - the CI workflow `.github/workflows/ci.yml` was not modified (only the script the step invokes)
+- Validation outcome:
+  - `pnpm test`: **141/141 pass** (rerun 2026-05-11)
+  - `pnpm audit --prod --audit-level=high`: clean (after PR #14 Next.js 16.2.6 upgrade, recorded as gap G6)
+  - PR #15 merged to `develop` as `59d5307`
+- Wider finding surfaced (out-of-ADR-006 scope, registered as **G7** in roadmap §16):
+  - 15 local migrations are absent from the remote ledger even though their tables exist in `public` (`list_tables` confirms)
+  - 6 ledger rows are orphaned (no matching local file): `phase_4b_payment_columns`, `phase_5_stripe_connect`, `phase_7_client_workspace`, `phase_7b_resolve_token_update`, `phase_8_lead_whatsapp`, `phase_11_lead_auto_followup`
+  - `supabase db push` is unsafe against production until reconciled
+  - subsequent attempt to regenerate `database.types.ts` revealed RPC drift (`ensure_user_wallet_for_profile`, `ensure_monetary_wallet_for_profile` missing from generated types despite production use) and enum drift (`UpdateFeedEventType` vs `lead_activity_type` post-0043)
+  - reconciliation scheduled as future iteration `fase-0-b4b-ledger-reconciliation`
+- Docs updated:
+  - `project.context.core.md` (Active risk downgrade)
+- Completion status:
+  - B4 closed under Branch B / Option B2
+  - history note added retroactively in the 2026-05-13 docs-alignment slice
+
+## Session note: B3 seller-fee state machine (Option C, 5 chunks)
+- Date: 2026-05-11 through 2026-05-12
+- Iteration id: `fase-0-b3-seller-fee-selector`
+- Route used: system-analysis -> system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs -> system-validator (per chunk)
+- Objective: eliminate the hard-coded `$100` seller fee at `lib/maxwell/pricing.ts:56` and `app/api/webhooks/stripe/route.ts:154,163,179` by implementing the full seller-fee state machine per `docs/contracts/seller-fee-state-machine.md`: introduce a `seller_fees` entity with five states (`potential / confirmed / pending_payout / paid_out / cancelled`), role-aware visibility enforced at the database layer, and integration with both the proposal API (selector at creation) and the Stripe webhook (post-payment confirmation).
+- Spec landed: `specs/fase-0-b3-seller-fee-selector.md` (Approved 2026-05-11; lifecycle status: Approved, 5 chunks declared).
+- ADR landed: `docs/adrs/ADR-007-seller-fee-state-machine.md` (storage model = dedicated table, state enum, cancellation policy, wallet integration, activity logging).
+- Implemented (5 chunks, 9 PRs merged + 1 closure PR):
+  - **Chunk 1 — Foundation** (PRs #17 ADR-007, #18 migration table, #19 migration RLS):
+    - `supabase/migrations/0043_phase_18a_seller_fees.sql`
+      - new table `seller_fees` with state enum, references to `lead_proposal_id`, `seller_user_id`, `payment_event_id`
+      - triggers for `updated_at`
+      - 5 new `lead_activity_type` enum values (`seller_fee_selected`, `seller_fee_confirmed`, `seller_fee_pending_payout`, `seller_fee_paid_out`, `seller_fee_cancelled`)
+    - `supabase/migrations/0044_phase_18b_seller_fees_rls.sql`
+      - RLS policies enforcing role-aware visibility: `client` never sees the row, `developer` is **structurally excluded** from `SELECT`, seller sees own rows, PM/admin see all
+      - mutation policies route through service layer only
+  - **Chunk 2 — Data + service layer** (PRs #20 data layer, #21+#23 service.ts):
+    - `lib/server/seller-fees/schema.ts`: zod schemas for input validation, `SellerFeeAmount` type (0 | 100 | 300 | 500)
+    - `lib/server/seller-fees/repository.ts`: typed Supabase queries (insert, get-by-proposal, update-state)
+    - `lib/server/seller-fees/activity.ts`: helpers for activity-log entries on state transitions
+    - `lib/server/seller-fees/service.ts`: `createSellerFee`, `confirmSellerFee`, `cancelSellerFee`, `markSellerFeePendingPayout`, `markSellerFeePaidOut`
+    - 38 unit tests covering state transitions, RLS visibility, validation
+  - **Chunk 3 — Integration** (PRs #22+#25 pricing + proposal, #24 webhook):
+    - `lib/maxwell/pricing.ts`: `computePricing()` signature now accepts persisted `feeAmount`; hardcode reduced to type defs only (`SellerFeeAmount` enum + comments)
+    - `app/api/leads/[leadId]/proposals/route.ts` + `lib/server/leads/proposal-schema.ts` + `lib/server/leads/proposal-mappers.ts`: outbound proposal creation now persists a `seller_fees` row with seller's chosen amount
+    - `app/api/webhooks/stripe/route.ts`: reads the persisted `seller_fees` row at payment confirmation, fires `confirmSellerFee` transition; three former hardcoded `100` references replaced with reads from persisted record
+    - 5 unit tests with complex mock for the webhook integration (including error path)
+  - **Chunk 4 — UI selector** (PR #27):
+    - `components/lead-detail.tsx`: `100 / 300 / 500 USD` selector in proposal-creation form, visible only for outbound proposals, default `100`, inbound proposals continue without a row
+  - **Chunk 5 — Closure** (PR #28):
+    - `lib/server/seller-fees/schema.ts`: `LEGACY_FALLBACK_SELLER_FEE_AMOUNT` constant **removed** post-backfill
+    - `app/api/webhooks/stripe/route.ts`: no remaining functional `100` literal
+    - Active risk for the hardcoded `$100` **removed** from core context
+    - contract `docs/contracts/seller-fee-state-machine.md`: `OPEN: Q4` (activity-log integration) and `OPEN: Q7` (currency column type) markers **closed**
+- One-time legacy backfill (no PR — data action only):
+  - 4 in-flight outbound proposals predating Chunk 3a were backfilled via Supabase MCP one-time SQL on 2026-05-12
+  - 3 rows inserted in `potential` state (no payment yet)
+  - 1 row inserted in `confirmed` state (payment already captured pre-Chunk-3a, payment_id wired retroactively)
+- Scope boundary kept:
+  - no wallet model overhaul (existing `wallet_accounts` / `wallet_ledger_entries` shape preserved)
+  - no payout system rework (existing `payout_methods`, `payout_batches`, `payouts` unchanged)
+  - no FASE 3 proposal lifecycle automation (Potential→Confirmed still fires from the webhook, will hook into FASE 3 when that ships)
+  - no migration applied via `supabase db push` (out-of-band path consistent with the wider G7 reconciliation gap)
+- Validation outcome:
+  - `pnpm test`: **201/201 pass** (post-Chunk-5)
+  - browser validation 2026-05-12 documented in `docs/validations/Browser validation 2026-05-12 — B3 seller-fees input side.md` (14 invariants verified end-to-end, including selector at `$300`, inbound proposals correctly creating no `seller_fees` row, and idempotent webhook behavior)
+- Operational gaps surfaced (registered in roadmap §16):
+  - **G9** — `gh pr merge` mis-targeting when `base != develop`: tripped **twice** in this iteration (PR #21 mis-merged against `feature/fase-0-b3-chunk-2a-data-layer`; PR #22 mis-merged against `feature/fase-0-b3-chunk-2b-service`). Restored via cherry-pick PRs #23 and #25. Mitigation adopted for Chunks 4-5: open sub-PRs with `base = develop` from the start.
+  - **G10** — selector seller fee does not persist value between consecutive saves in the same lead (UX bug, no functional impact). `useEffect([lead])` in `components/lead-detail.tsx:619-627` re-initializes the form on `updatedAt` change. Deferred to a UX iteration post-cutover.
+- Docs updated:
+  - `docs/adrs/ADR-007-seller-fee-state-machine.md` (new)
+  - `docs/contracts/seller-fee-state-machine.md` (Q4/Q7 closed)
+  - `docs/context/project.context.core.md` (Closed-in-runtime entry; hardcode-$100 Active risk removed)
+- Completion status:
+  - B3 closed end-to-end in `supabase`
+  - zero functional `$100` literals remain in integration code
+  - remaining open items: Stripe live-card validation (deferred to B1 cutover) and G10 selector persistence (UX, deferred)
