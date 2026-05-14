@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const requestId = getRequestId(request)
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'client-resolve',
       limit: 60,
       windowMs: 60_000,

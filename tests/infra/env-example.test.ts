@@ -16,6 +16,8 @@ const requiredExampleKeys = [
   'NOON_WEBSITE_WEBHOOK_SECRET',
   'NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL',
   'CRON_SECRET',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
 ]
 
 test('.env.example documents runtime validation keys', () => {

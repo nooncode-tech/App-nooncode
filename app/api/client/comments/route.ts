@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const requestId = getRequestId(request)
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'client-comments-post',
       limit: 20,
       windowMs: 60_000,
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
   const requestId = getRequestId(request)
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'client-comments-get',
       limit: 60,
       windowMs: 60_000,

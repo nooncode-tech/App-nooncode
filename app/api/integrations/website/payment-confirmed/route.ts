@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   const requestId = getRequestId(request)
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'website-payment-confirmed',
       limit: 120,
       windowMs: 60_000,
