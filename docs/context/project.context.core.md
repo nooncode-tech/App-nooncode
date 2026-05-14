@@ -4,7 +4,6 @@
 - Project: `nooncode-app`
 - Product name in UI: `NoonApp`
 - Type: Next.js web application
-- Primary repo path: `C:\Users\white\Documents\Codex\2026-04-23-quiero-que-trabajemos-sobre-este-repo`
 - Current stage: hybrid MVP with real Supabase auth/session, multiple persisted business slices, and active Maxwell Lead Engine V1 consolidation
 
 ## Primary purpose

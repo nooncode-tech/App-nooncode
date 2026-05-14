@@ -2180,7 +2180,7 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 - Docs updated:
   - `project.context.core.md` (G7 Active risk now records materialization + OOB resolution + bumped priority; new Closed-in-runtime entry for F-V03; new operating rule for the balance chip)
   - `project.context.history.md` (this session note)
-  - `C:\Users\pbu50\Desktop\Noon App\roadmap\NoonApp Roadmap.md` §17 (snapshot rewritten for 2026-05-14)
+  - local NoonApp Roadmap §17 (snapshot rewritten for 2026-05-14)
 - Completion status:
   - F-V03 closed. FASE 1 third iteration COMPLETE.
   - real database-layer defect discovered during validation and resolved, demonstrating operator-in-the-loop value — F-V03's honest error surface turned an invisible drift into a fixable incident.
