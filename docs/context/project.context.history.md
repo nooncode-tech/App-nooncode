@@ -2242,3 +2242,39 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - FASE 1 UX honesty bundle closed. FASE 1 fourth iteration COMPLETE.
   - operator-in-the-loop value reaffirmed: F-V11's richer visual empty state made an invisible pre-existing kanban-drop bug visible to a human operator, and the bug was fixed inside the same iteration rather than queued as a separate sprint item. Same pattern as F-V03 surfacing the G7 migration drift.
   - next FASE 1 iteration candidates (per roadmap §17): (a) provisioning Upstash via Vercel Marketplace + B14 production verification, (b) `fase-0-b4b-ledger-reconciliation` for the broader G7 desync, (c) B1 Stripe live keys + ADR-010 cleanup in `app/api/payments/checkout/route.ts`.
+
+## Session note: ADR-010 amendment — operator-driven outbound Checkout exception (B1 Plan C unblock)
+- Date: 2026-05-14 (later same day as the UX bundle closure)
+- Iteration id: `chore-adr-010-amendment-outbound-checkout`
+- Route used: system-docs (single ADR amendment + context updates; no code changes)
+- Objective: unblock B1 (Stripe live keys + cutover) without requiring the cross-repo migration that Plan B would entail. The original ADR-010 (2026-05-13) included a literal blanket prohibition — *"No Stripe Checkout creation logic in App"* — that, read narrowly, made the existing outbound seller flow (`app/api/payments/checkout/route.ts` + `components/lead-detail.tsx` "Crear/copiar link de pago") a violation. The route is operator-authenticated, rejects inbound flows, and delivers the URL out-of-band; the client final never authenticates into App. That is consistent with ADR-010's principle of surface separation by repository, but inconsistent with its literal wording. The amendment narrows the wording without weakening the principle.
+- Decision (locked):
+  - Status: `Accepted (amended 2026-05-14 — operator-driven outbound Checkout exception)`.
+  - Original "What this forbids" bullet rewritten in place to use the precise wording **"No client-facing Stripe Checkout creation logic in App"**; the operator-driven exception is explicitly carved out.
+  - New section `## Amendment 2026-05-14: operator-driven outbound Checkout exception` added to the ADR with context, decision (four conjunctive constraints), why-this-is-not-erosion, what-this-enables (B1 unblock for Plan C + F-V08 remains in scope), what-this-preserves (inbound flows unchanged, `/client/[token]` still legacy debt, no client-facing UI in App, NoonWeb still owns the future portal), the operating rule added to `core.md`, and amendment-specific re-evaluation triggers.
+  - `Lifecycle` block updated with `Amendments: 2026-05-14 ...`.
+- Implemented:
+  - `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md` — amendment landed inline as described above.
+  - `docs/context/project.context.core.md` — Active risks block now records the outbound-Checkout exception as a constrained allowance (not a violation), with the four conjunctive constraints inline and an explicit escalation trigger if any future change weakens them. Operating rules block now contains a new rule that binds `app/api/payments/checkout/route.ts` + the `Crear/copiar link de pago` UI to the operator-driven flow contract.
+- Scope boundary kept:
+  - no code changes (route, UI, and webhook untouched — the amendment is interpretive)
+  - no migrations
+  - no new dependencies, env vars
+  - inbound payment links remain owned by NoonWeb per ADR-010 decision #8 — unchanged
+  - `/client/[token]` legacy debt status — unchanged
+  - the original ADR-010 decision (portal lives in NoonWeb) — unchanged
+- Validation outcome:
+  - no behavioral surface change → no browser validation required
+  - tests baseline 218/218 preserved (no test surface touched)
+  - `npm run typecheck` / `lint` / `build` not re-run because no source files were modified; the existing CI on this PR will re-run them.
+- Operating rules added in this closure:
+  - "Treat `app/api/payments/checkout/route.ts` and the `Crear/copiar link de pago` UI ..." (full text in `core.md`)
+- Docs updated:
+  - `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md` (amendment)
+  - `docs/context/project.context.core.md` (active risk + operating rule)
+  - `docs/context/project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot updated — B1 ADR-010 sub-blocker closed via amendment; remaining B1 work is purely ops + smoke + runbook, all deferred until Pedro can do the Stripe live keys ops)
+- Completion status:
+  - B1 architectural blocker closed via amendment.
+  - B1 ops side (Stripe live keys to Vercel Production + webhook endpoint configuration + first-event validation + Día 4 smoke + runbook) remains deferred; Pedro will pick the timing.
+  - F-V08 (Stripe checkout link persistence) becomes a valid in-scope follow-up if/when outbound volume justifies the audit / re-share UX improvement.

@@ -1,6 +1,6 @@
 # ADR-010: Client portal lives in NoonWeb — NoonApp is internal-only
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-05-14 — operator-driven outbound Checkout exception)
 **Date:** 2026-05-13
 **Deciders:** Pedro (Engineering owner)
 **Closes:** roadmap §2 decision #4 + roadmap §11.3 cross-repo decisions #8 and #9
@@ -87,7 +87,7 @@ The portal **is not** NoonApp. NoonApp is the operator workspace. The client nev
 ### What this forbids
 
 - **No new client-facing UI work in App-nooncode.** Any UI that the client final would see must be built in NoonWeb. If a FASE 1-3 task seems to require a client-facing surface, escalate to revise scope, not to add to App.
-- **No Stripe Checkout creation logic in App.** App may consume Stripe events (webhooks) and may render internal Stripe-related UI (admin views), but App does not create checkout sessions for the client final.
+- **No client-facing Stripe Checkout creation logic in App.** App may consume Stripe events (webhooks), may render internal Stripe-related UI (admin views), and may create Checkout sessions through **operator-driven outbound flows** where an internal user (seller, PM, admin) shares the resulting URL out-of-band to the client final. App does not create Checkout sessions that the client final triggers from a client-authenticated surface — that flow lives in NoonWeb per decision #8. See "Amendment 2026-05-14" below for the operator-driven vs client-driven distinction.
 - **`/client/[token]` in App-nooncode must not receive new features.** Bug fixes for existing functionality during the legacy window are acceptable; new functionality is not.
 
 ### Legacy debt: `/client/[token]` removal
@@ -122,8 +122,75 @@ This ADR must be revisited when:
 
 ---
 
+## Amendment 2026-05-14: operator-driven outbound Checkout exception
+
+### Context
+
+When the original ADR was accepted on 2026-05-13, the "What this forbids" section included a blanket prohibition: *"No Stripe Checkout creation logic in App. App may consume Stripe events (webhooks) and may render internal Stripe-related UI (admin views), but App does not create checkout sessions for the client final."*
+
+Recon during FASE 1 B1 planning surfaced a concrete tension with this prohibition: the route `app/api/payments/checkout/route.ts` already exists in App and is used by **outbound** flows only (rejects `lead_origin === 'inbound'` with `INBOUND_PAYMENT_LINK_OWNED_BY_WEBSITE` at lines 45-50). Its sole UI consumer is the "Crear/copiar link de pago" button on `components/lead-detail.tsx:881`, used by sellers when sending a proposal to a lead they prospected themselves (outbound), as opposed to leads that arrived via the NoonWeb inbound webhook.
+
+The original rule, read literally, made this route a violation. Read in light of the architectural intent — *separate operator-side and client-side surfaces by repository* — the situation is different: the outbound flow is fully operator-driven. The seller authenticates in App, requests a Checkout link via App's API, receives the URL, and shares it with the lead out-of-band (Gmail, WhatsApp, etc.). The client final never interacts with App; they receive a URL by email/message and click through to Stripe directly.
+
+This is **not** the architectural anti-pattern the ADR was guarding against. The anti-pattern is: *client final authenticates into App and pays from inside an App surface*. That remains forbidden. The intent of the original prohibition was always "no client-facing payment surfaces in App" — the literal wording was over-broad.
+
+### Decision (amendment)
+
+The original prohibition is **narrowed**, not lifted. Stripe Checkout session creation in App is allowed if and only if **all** of the following hold:
+
+1. **Operator-authenticated request:** the API route requires a NoonApp internal-role principal (`admin`, `sales_manager`, `sales`, `pm`). Anonymous, client-facing, or token-only access is forbidden.
+2. **Outbound provenance:** the route refuses any flow whose origin is the NoonWeb inbound bridge (current implementation: rejects `lead_origin === 'inbound'`). Inbound payment links stay owned by NoonWeb per decision #8.
+3. **Operator-mediated delivery to the client final:** the seller / operator receives the Checkout URL inside App and is responsible for sharing it out-of-band (email, message, link copy). The client final must not be sent into App to retrieve the URL.
+4. **No client identity in App:** the client final is never authenticated into App for the purpose of paying. Payment completion is verified by App via the existing Stripe webhook (`/api/webhooks/stripe`), not by any client-side surface in App.
+
+The route `app/api/payments/checkout/route.ts` already satisfies (1), (2), and (4) by construction (auth guard at line 28, inbound rejection at lines 45-50, webhook idempotency ledger via `lib/server/stripe/webhook-events.ts`). Constraint (3) is operational, not code-enforceable; it is recorded as an operating rule for sellers.
+
+Under this amendment, that route is **architecturally consistent with ADR-010**, not a violation. The original "What this forbids" bullet has been rewritten in place to use the precise wording "client-facing Stripe Checkout creation" and to make the operator-driven exception explicit.
+
+### Why this is not erosion of the principle
+
+The principle of ADR-010 is **surface separation by repository**: client-facing surfaces live in NoonWeb; operator-facing surfaces live in App. Each surface owns its own identity, its own auth model, and its own UI.
+
+The outbound Checkout flow is an operator-facing surface (the URL-creation request originates from a seller authenticated into App). It is not a client-facing surface (the client final never sees an App URL during the operator-driven path). The amendment realigns the rule with the principle, rather than weakening either.
+
+The amendment does **not** open the door to:
+
+- Adding a client login / sign-up to App.
+- Building a portal / project-status / publish surface in App.
+- Routing inbound payment links through App (they stay owned by NoonWeb).
+- Allowing client-side JS in App to call `/api/payments/checkout` without an operator principal.
+
+If any of those start looking attractive in a future iteration, ADR-010 must be re-opened, not stretched further.
+
+### What this enables
+
+- **B1 unblocks for Plan C.** The Stripe live keys cutover can proceed without removing `/api/payments/checkout/route.ts` first. The outbound seller flow continues to work in production under the amended interpretation. Plan B (cross-repo migration to NoonWeb-owned outbound checkout) remains a future option if outbound volume justifies the cross-repo work, but it is no longer a blocker for cutover.
+- **F-V08** (Stripe checkout link persistence in App) remains a relevant in-scope finding, because the outbound Checkout URL now stays an App-side artifact that can be persisted on `lead_proposals` for audit / re-share without violating ADR-010.
+
+### What this preserves
+
+- **Inbound (client pays from NoonWeb portal) → NoonWeb owns the Checkout creation, App receives the webhook.** Unchanged.
+- **`/client/[token]` legacy placeholder → still legacy debt scheduled for removal.** Unchanged.
+- **No client-facing UI in App.** Unchanged.
+- **NoonWeb is the canonical home of the future `/portal/[projectId]` client experience.** Unchanged.
+
+### Operating rule added to `project.context.core.md`
+
+> Treat `app/api/payments/checkout/route.ts` and the `Crear/copiar link de pago` UI in `components/lead-detail.tsx` as the operator-driven outbound Checkout flow per ADR-010 amendment 2026-05-14. Allowed because (1) the route requires an internal-role principal, (2) it rejects `lead_origin === 'inbound'`, (3) the seller delivers the URL to the client out-of-band, and (4) payment completion is verified by App via the Stripe webhook with no client-side authentication into App. Do not re-introduce a client-authenticated path to this route. Do not let inbound flows bypass the rejection guard.
+
+### Re-evaluation triggers (amendment-specific)
+
+The amendment must be revisited when:
+
+- An outbound flow proposal surfaces that requires the client final to authenticate into App to complete payment (the principle says no — escalate to revise scope).
+- Cross-repo migration of outbound checkout to NoonWeb becomes desirable (volume, regulatory, or unification reasons). The amendment does not block migration; Plan B remains the documented path.
+- F-V08 (Checkout link persistence) is implemented — confirm the persistence layer does not introduce a client-side read path.
+
+---
+
 ## Lifecycle
 
 - **Author:** Pedro (system-docs)
 - **Supersedes:** nothing
 - **Superseded by:** nothing
+- **Amendments:** 2026-05-14 (operator-driven outbound Checkout exception — `What this forbids` clarified, new operating rule recorded in `project.context.core.md`)
