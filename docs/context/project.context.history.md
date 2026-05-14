@@ -2095,3 +2095,51 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - B18 closed; first FASE 1 iteration COMPLETE
   - dev-mode validation sufficient for cutover prep; production visual check of `global-error.tsx` deferred but non-blocking
   - next FASE 1 iteration candidate: B1 (Stripe live keys cutover) or the UX honesty bundle (F-V03 + F-V09 + bundle copy F-V11/13/18/19/20)
+
+## Session note: B14 distributed rate limiter via Upstash Redis (FASE 1 second iteration)
+- Date: 2026-05-13
+- Iteration id: `fase-1-b14-rate-limiter-upstash`
+- Route used: system-analysis -> system-backend -> system-testing -> system-infra (light, env-only) -> system-docs -> system-validator
+- Objective: close the Active risk on in-memory per-process rate limiting (TDR-002) by migrating `lib/server/api/rate-limit.ts` to a distributed implementation backed by Upstash Redis via the Vercel Marketplace, preserving the public API surface and policy values bit-for-bit, while retaining the in-memory implementation as a dev-local fallback.
+- Spec landed: `specs/fase-1-b14-rate-limiter-upstash.md` (Approved 2026-05-13 via PR #35).
+- Implemented (PR #36, merged as `adc6ab0`):
+  - Engine pattern introduced. `inMemoryEngine` (constant) keeps the existing Map-based fixed-window logic intact; `makeUpstashEngine(url, token)` factory wraps `@upstash/ratelimit` sliding window and caches `Ratelimit` instances per `(limit, windowMs)` config so each unique policy gets its own SDK instance sharing a single `Redis` client. Selection happens at module load on `process.env.UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` presence; `resetRateLimitStoreForTests()` clears the cache and forces re-detection.
+  - `assertRateLimit` is now async (`Promise<void>`). All 11 caller sites across 10 routes updated to `await assertRateLimit(...)`:
+    - `app/api/client/comments/route.ts` (2 callsites)
+    - `app/api/client/resolve/route.ts`
+    - `app/api/integrations/website/inbound-proposal/route.ts`
+    - `app/api/integrations/website/payment-confirmed/route.ts`
+    - `app/api/maxwell/lead-searches/route.ts`
+    - `app/api/maxwell/route.ts`
+    - `app/api/payments/checkout/route.ts` (still violates ADR-010; not addressed by B14 — separate deferred iteration)
+    - `app/api/proposals/[proposalId]/open/route.ts`
+    - `app/api/proposals/[proposalId]/review/route.ts`
+    - `app/api/webhooks/stripe/route.ts`
+  - `withFailOpenLogging(inner)` extracted as a separate wrapper around the Upstash engine. `RateLimitExceededError` from the inner engine is re-thrown so callers still return HTTP 429 as designed; any other error (Upstash unreachable, timeout, quota exhausted, auth failure) is swallowed and recorded via `logger.warn('rate_limit.upstash.fallback', { namespace, error })`. Rationale: rate-limit is smoothing, not auth — denying all rate-limited traffic during a Redis outage would convert a Redis incident into a full-service outage.
+  - Test seams added: `__setRateLimitEngineForTests(engine | null)` for engine injection and `__withFailOpenLoggingForTests(inner)` for fail-open policy testing without mocking the Upstash SDK at the module boundary.
+  - New deps: `@upstash/ratelimit 2.0.8` + `@upstash/redis 1.38.0`. Pinned to current stable minors.
+  - `.env.example`: `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` documented with an explanatory note about auto-injection via the Vercel Marketplace Upstash integration.
+  - `scripts/validate-runtime-env.ts`: new distributed-rate-limit section. In production, warns (does not fail) when Upstash vars are missing — the in-memory fallback keeps the app running but the operator sees the gap.
+  - `tests/infra/env-example.test.ts`: Upstash vars added to the required-keys assertion.
+  - `docs/tdrs/TDR-002-rate-limiting-in-memory.md` renamed to `docs/tdrs/TDR-002-rate-limiting-distributed.md` and rewritten: engine interface, storage shape per branch, algorithm tradeoffs (Upstash sliding window vs Map fixed window — sub-percent divergence accepted intentionally), fail-open rationale, test seams, provisioning runbook, known gaps post-migration, history of the original 2026-05-04 TDR.
+- Scope boundary kept:
+  - no rate-limit policy changes (same limits / windows / namespaces preserved exactly)
+  - no removal of the in-memory fallback (intentional dev-mode behavior)
+  - no per-user-id keying (client IP from forwarded headers still used)
+  - no Edge runtime variant (all routes are still `runtime = 'nodejs'`)
+  - no migration of other in-memory caches (idempotency, dedupe) — out of B14 scope
+  - no changes to `app/api/payments/checkout/route.ts` beyond the `await` addition; the ADR-010 violation in that route stays as deferred deuda
+  - no Sentry / external telemetry wiring — `logger.warn` to Vercel native logs is the agreed observability path per PR #30
+- Validation outcome:
+  - `pnpm run typecheck`: clean
+  - `pnpm run lint`: clean
+  - `pnpm test`: **210/210 pass** (5 new over 205 baseline). New tests cover: engine injection allow, engine injection deny with `retryAfterSeconds`, fail-open swallow of non-rate-limit errors, fail-open re-throw of `RateLimitExceededError`, and `NOON_RATE_LIMIT_DISABLED='true'` escape hatch.
+  - `pnpm run build`: ok
+  - `pnpm audit --prod --audit-level=high`: no known vulnerabilities
+  - Production verification with real Upstash (provisioning via Vercel Marketplace + rapid-request test → expected HTTP 429 from cluster-wide limiter + absence of `rate_limit.upstash.fallback` warnings in Vercel logs) is deferred to operator-side ops post-merge. Documented as next step in the spec's Success Criterion.
+- Docs updated:
+  - `project.context.core.md` (Active risk on in-memory rate limiter downgraded; Closed-in-runtime entry added)
+- Completion status:
+  - B14 closed at the code-deliverable level; tests + audit + build all green
+  - production deployment behavior identical to pre-merge until the operator provisions Upstash via the Vercel Marketplace (the in-memory fallback runs in both branches transparently)
+  - one open follow-up: real-traffic verification on Upstash, scheduled when the operator provisions; not blocking the iteration closure
