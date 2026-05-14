@@ -6,11 +6,14 @@ import { useState } from 'react'
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
+  rectIntersection,
+  useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
@@ -67,6 +70,15 @@ export function KanbanBoard<T extends { id: string }>({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   )
+
+  // Pointer-first collision so empty columns become valid drop targets when the
+  // cursor is inside them; fall back to rectIntersection when the pointer is
+  // outside every droppable (mid-air / between columns) so card-to-card drags
+  // still resolve to the nearest column.
+  const collisionDetection: CollisionDetection = (args) => {
+    const pointerCollisions = pointerWithin(args)
+    return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args)
+  }
 
   const findColumn = (id: string) => {
     for (const column of columns) {
@@ -125,7 +137,7 @@ export function KanbanBoard<T extends { id: string }>({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -171,8 +183,10 @@ function KanbanColumnComponent<T extends { id: string }>({
   getStats,
   isOver,
 }: KanbanColumnProps<T>) {
+  const { setNodeRef } = useDroppable({ id: column.id })
+
   return (
-    <div className="flex-1 min-w-[170px] max-w-[240px]">
+    <div ref={setNodeRef} className="flex-1 min-w-[170px] max-w-[240px]">
       <div className={cn(
         "h-full flex flex-col rounded-xl border bg-muted/20 transition-colors",
         isOver && "ring-1 ring-primary/40 bg-primary/[0.05]"
