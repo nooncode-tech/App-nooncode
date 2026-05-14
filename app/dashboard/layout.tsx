@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { getAuthorizedDashboardPath, useAuth } from '@/lib/auth-context'
 import { DataProvider } from '@/lib/data-context'
+import { WalletProvider } from '@/lib/wallet/context'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
 import { Spinner } from '@/components/ui/spinner'
@@ -56,14 +57,16 @@ export default function DashboardLayout({
 
   return (
     <DataProvider>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset className="overflow-auto">
-          <CommandPalette />
-          {children}
-        </SidebarInset>
-        <MaxwellFab />
-      </SidebarProvider>
+      <WalletProvider>
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset className="overflow-auto">
+            <CommandPalette />
+            {children}
+          </SidebarInset>
+          <MaxwellFab />
+        </SidebarProvider>
+      </WalletProvider>
     </DataProvider>
   )
 }

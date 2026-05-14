@@ -47,6 +47,7 @@ import {
   getRoleLabel,
 } from '@/lib/auth-context'
 import { selectPersonalStatsAvailability } from '@/lib/dashboard-selectors'
+import { useWalletContext } from '@/lib/wallet/context'
 import { NOTIFICATIONS_UPDATED_EVENT } from '@/lib/notifications/client-events'
 import { useRouter } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
@@ -148,6 +149,7 @@ function NavGroup({
 export function AppSidebar() {
   const pathname = usePathname()
   const { authMode, user, logout } = useAuth()
+  const walletState = useWalletContext()
   const router = useRouter()
   const [unreadNotifications, setUnreadNotifications] = useState(0)
 
@@ -185,7 +187,7 @@ export function AppSidebar() {
 
   if (!user) return null
 
-  const personalStats = selectPersonalStatsAvailability(authMode, user)
+  const personalStats = selectPersonalStatsAvailability(authMode, user, walletState)
   const deliveryItems = deliveryNavItems
     .filter((item) => canAccessDashboardPath(user.role, item.href))
     .map((item) => {

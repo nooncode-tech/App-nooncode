@@ -13,6 +13,7 @@ import {
 import type { AuthMode } from '@/lib/auth-user'
 import type { Lead, PointEvent, Project, Reward, SettingsUser, Task, User, UserRole } from './types'
 import { deriveProjectDisplayStatus } from '@/lib/projects/progress'
+import type { WalletContextValue } from '@/lib/wallet/context'
 
 interface SalesSummary {
   openLeads: number
@@ -275,9 +276,30 @@ export const settingsNotificationOptions: Array<{
   { id: 'points_earned', label: 'Puntos ganados', desc: 'Cuando acumulas nuevos puntos' },
 ]
 
+// USD formatter for wallet display. Uses en-US locale with no decimals — the
+// monetary buckets in /api/wallet already arrive as whole-dollar values from
+// the API surface, matching how /dashboard/credits renders them.
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+})
+
+function formatLiquidBalance(wallet: NonNullable<WalletContextValue['wallet']>): string {
+  const monetary = wallet.monetaryWallet
+  if (!monetary) {
+    // Migration 0024 not applied locally / unexpected shape. Treat as zero
+    // rather than crashing; the operator will still see something sensible.
+    return usdFormatter.format(0)
+  }
+  const liquid = (monetary.availableToSpend ?? 0) + (monetary.availableToWithdraw ?? 0)
+  return usdFormatter.format(liquid)
+}
+
 export function selectPersonalStatsAvailability(
   authMode: AuthMode,
-  user: User
+  user: User,
+  walletState?: WalletContextValue
 ): PersonalStatsAvailabilityModel {
   if (authMode === 'mock') {
     return {
@@ -297,19 +319,63 @@ export function selectPersonalStatsAvailability(
     }
   }
 
+  // Supabase mode. Balance / earnings now read from the real wallet via the
+  // injected walletState (provided by WalletProvider mounted in the dashboard
+  // layout). Rewards / points stay as honest unavailable per the operating
+  // rule in project.context.core.md — F-V03 is bounded to the wallet side.
+
+  const status = walletState?.status ?? 'idle'
+
+  let balanceValueLabel: string
+  let balanceDescription: string
+  let sidebarBalanceLabel: string
+  let earningsTitle: string
+  let earningsDescription: string
+  let earningsActionLabel: string
+  let isRealDataAvailable: boolean
+
+  if (status === 'loaded' && walletState?.wallet) {
+    const liquid = formatLiquidBalance(walletState.wallet)
+    isRealDataAvailable = true
+    balanceValueLabel = liquid
+    balanceDescription = 'Disponible para gastar y retirar (USD).'
+    sidebarBalanceLabel = `Balance: ${liquid}`
+    earningsTitle = 'Ganancias'
+    earningsDescription = 'Balance, comisiones y retiros visibles en /dashboard/earnings.'
+    earningsActionLabel = 'Solicitar Retiro'
+  } else if (status === 'error') {
+    isRealDataAvailable = false
+    balanceValueLabel = 'No se pudo cargar'
+    balanceDescription = 'No se pudo conectar con la wallet. Refrescá la página o intentá de nuevo.'
+    sidebarBalanceLabel = 'Balance: no se pudo cargar'
+    earningsTitle = 'Ganancias'
+    earningsDescription = 'No se pudo cargar la wallet. Refrescá para reintentar.'
+    earningsActionLabel = 'Reintentar'
+  } else {
+    // loading or idle (no provider mounted yet) — show explicit loading copy
+    // instead of falling back to the previous fake "no disponible".
+    isRealDataAvailable = false
+    balanceValueLabel = 'Cargando…'
+    balanceDescription = 'Consultando la wallet…'
+    sidebarBalanceLabel = 'Balance: cargando…'
+    earningsTitle = 'Ganancias'
+    earningsDescription = 'Cargando la wallet…'
+    earningsActionLabel = 'Solicitar Retiro'
+  }
+
   return {
-    isRealDataAvailable: false,
-    balanceValueLabel: 'Sin datos reales',
-    balanceDescription: 'No hay una fuente real de comisiones o pagos conectada a tu cuenta.',
+    isRealDataAvailable,
+    balanceValueLabel,
+    balanceDescription,
     pointsValueLabel: 'Sin programa real',
-    pointsDescription: 'Puntos y recompensas todavia no estan conectados al runtime real.',
-    earningsTitle: 'Ganancias no conectadas',
-    earningsDescription: 'No existe una fuente real de comisiones, pagos o retiros para esta cuenta en modo Supabase.',
+    pointsDescription: 'Puntos y recompensas todavía no están conectados al runtime real.',
+    earningsTitle,
+    earningsDescription,
     rewardsTitle: 'Rewards no conectadas',
     rewardsDescription: 'No existe una fuente real de puntos, historial o canje para esta cuenta en modo Supabase.',
-    earningsActionLabel: 'Retiros no disponibles',
+    earningsActionLabel,
     rewardsActionLabel: 'Canje no disponible',
-    sidebarBalanceLabel: 'Balance: no disponible',
+    sidebarBalanceLabel,
     sidebarPointsLabel: 'Puntos: sin fuente real',
   }
 }
