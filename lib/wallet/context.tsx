@@ -50,6 +50,9 @@ export function WalletProvider({ children, __initialValue }: WalletProviderProps
     }
 
     if (lastFetchKey.current === userId) return
+
+    // Mark the attempt BEFORE awaiting, so concurrent renders don't double-fire.
+    // On failure we clear it in .catch so the next mount can retry.
     lastFetchKey.current = userId
 
     let cancelled = false
@@ -66,7 +69,7 @@ export function WalletProvider({ children, __initialValue }: WalletProviderProps
           const message =
             payload && typeof payload.error === 'string'
               ? payload.error
-              : 'No se pudo cargar la wallet.'
+              : `No se pudo cargar la wallet (HTTP ${response.status}).`
           throw new Error(message)
         }
 
@@ -79,6 +82,10 @@ export function WalletProvider({ children, __initialValue }: WalletProviderProps
       })
       .catch((error: unknown) => {
         if (cancelled) return
+        // Allow a retry on the next mount / user change. Without this clear,
+        // a transient failure would lock the provider into the error state
+        // until a hard reload.
+        lastFetchKey.current = null
         const err = error instanceof Error ? error : new Error(String(error))
         setFetchedValue({ status: 'error', wallet: null, error: err })
       })

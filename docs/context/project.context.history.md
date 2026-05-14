@@ -2143,3 +2143,45 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - B14 closed at the code-deliverable level; tests + audit + build all green
   - production deployment behavior identical to pre-merge until the operator provisions Upstash via the Vercel Marketplace (the in-memory fallback runs in both branches transparently)
   - one open follow-up: real-traffic verification on Upstash, scheduled when the operator provisions; not blocking the iteration closure
+
+## Session note: F-V03 dashboard wallet real reads (FASE 1 third iteration)
+- Date: 2026-05-13 (spec + implementation merged) → 2026-05-14 (validation unblocked + iteration closed)
+- Iteration id: `fase-1-f-v03-dashboard-wallet-real-reads`
+- Route used: system-analysis -> system-frontend -> system-testing -> system-validator -> system-docs
+- Objective: close the visible contradiction between the dashboard / sidebar "Balance: no disponible" chips and the real wallet UI at `/dashboard/earnings` + `/dashboard/credits`. In `supabase` mode, `selectPersonalStatsAvailability` should derive the balance chip from a real read of `/api/wallet` instead of returning fake "Sin datos reales" copy.
+- Spec landed: `specs/fase-1-f-v03-dashboard-wallet-real-reads.md` (PR #38, merged 2026-05-13).
+- Implemented (PR #39, merged as `6de3c3c` on 2026-05-13):
+  - `lib/wallet/context.tsx` — new `WalletProvider` + `useWalletContext`. Single fetch per dashboard mount when `authMode === 'supabase'` and `user !== null`. Deserializes wire shape via `deserializeWalletSummary` from `lib/wallet/serialization`. Mock mode bypasses the fetch and exposes `{ wallet: null, isLoading: false, error: null }` so the selector falls through to the existing mock branch.
+  - `app/dashboard/layout.tsx` — mounts `WalletProvider` inside `AuthProvider` so both the header chip and the sidebar dropdown consume the same context value.
+  - `lib/dashboard-selectors.ts` — `selectPersonalStatsAvailability(authMode, user)` → `selectPersonalStatsAvailability(authMode, user, walletSummary?)`. Renders `Cargando…`, real `$<n>`, or `No se pudo cargar` per state in supabase. Mock branch and rewards/points branches unchanged.
+  - `app/dashboard/page.tsx` — header chip reads `balanceValueLabel` + `balanceDescription` from the selector with the wallet context value passed through.
+  - `components/app-sidebar.tsx` — user-menu dropdown reads `sidebarBalanceLabel` from the selector with the same context value. No second fetch.
+  - `tests/lib/dashboard-selectors.test.ts` — 8 new tests covering loading, loaded, error, and mock-mode regression paths → 218/218 pass (210 baseline + 8 new).
+- Retry-on-error fix folded into closure (this iteration, PR #40):
+  - `lib/wallet/context.tsx` — clear `lastFetchKey.current = null` inside the `.catch` so a transient failure does not lock the provider into error state until hard reload; error message now includes the HTTP status code (`No se pudo cargar la wallet (HTTP ${response.status}).`). Discovered during the Scenario 1 investigation on 2026-05-13; folded rather than shipped as a standalone PR because it is five lines and conceptually part of the F-V03 contract.
+- Scope boundary kept:
+  - no change to `/dashboard/rewards` or to the rewards/points labels in the sidebar dropdown — operating rule preserved (`/dashboard/rewards` stays honest-unavailable until rewards is productized)
+  - no change to `/api/wallet` server contract — purely a client-side selector + provider change
+  - no new env vars, no new dependencies, no new migrations from F-V03 itself (the migration that had to be applied is preexisting; see G7 materialization below)
+- Validation blocker discovered and resolved on 2026-05-14:
+  - First attempt at Scenario 1 on 2026-05-13 hit a 500 from `/api/wallet`. F-V03 surface behaved correctly (rendered `Balance: No se pudo cargar`), surfacing a real database-layer defect that had been hidden behind the previous fake `Balance: no disponible` copy.
+  - Root cause: `pdotsdahsrnnsoroxbfe` was missing `public.ensure_user_wallet_for_profile(uuid)` and `public.ensure_monetary_wallet_for_profile(uuid)`, both defined in the local file `supabase/migrations/0042_phase_17b_wallet_maxwell_rpc_hardening.sql` but never registered in `supabase_migrations.schema_migrations` on the remote — one of the 15 unregistered local migrations that constitute risk **G7**. The remote only had the no-arg sibling RPCs that derive the profile from `auth.uid()` and therefore cannot serve the admin (`service_role`) path used by `getVisibleWallet`.
+  - Resolution: migration 0042 applied verbatim via `mcp__plugin_supabase_supabase__apply_migration` on 2026-05-14. Fully idempotent (`create or replace function`), additive only (two new RPC definitions + grant hardening on three existing sibling RPCs). Verification queries before/after confirmed the expected delta and nothing else. After this apply, Scenario 1 passed on first hard reload.
+  - Effect on risk register: G7 materialization recorded in `project.context.core.md` Active risks; priority of the dedicated reconciliation iteration `fase-0-b4b-ledger-reconciliation` bumped from "no fixed date" to "scheduled before next code-level migration push to remote".
+- Browser validation 2026-05-14 — full evidence in `docs/validations/Browser validation 2026-05-13 — F-V03 dashboard wallet real reads.md`:
+  - Scenario 1 (real `$<n>` in header + sidebar): PASS. `juan@noon.app` (profile_id `ff0ecbc0-7baa-4650-b93e-0bb952ee00e2`) saw `Balance: $5` in both surfaces (`available_to_spend=0.00 + available_to_withdraw=5.00`).
+  - Scenario 2 (shared context, no double-fetch): PASS. 1 `/api/wallet?limit=5` request total across `/dashboard` → `/dashboard/leads` → `/dashboard/projects` → `/dashboard/reports`; sidebar label stayed at `Balance: $5` without flashing.
+  - Scenario 3 (forced fetch error): PASS. Network-tab URL block on `*/api/wallet*` produced `No se pudo cargar` in the chip, `Balance: no se pudo cargar` in the sidebar, and `Reintentar` as the earnings action.
+  - Scenario 4 (loading state visible): PASS. With Slow 3G throttling the chip rendered `Cargando…` and the sidebar `Balance: cargando…` before transitioning to `$5`.
+  - Scenario 5 (mock mode regression): SKIPPED with explicit rationale — the existing unit test `mock mode: balance + points come from user.balance / user.points (regression net)` deterministically covers the mock branch.
+  - Scenario 6 (rewards/points honest unavailable): PASS. Sidebar `Puntos: sin fuente real`, header `Sin programa real`, rewards card title `Rewards no conectadas` — all unchanged from pre-F-V03.
+- Operating rule added in this closure (in `project.context.core.md`):
+  - "Treat the `/dashboard` header balance chip and the sidebar user-menu balance label in `supabase` as a real read of `availableToSpend + availableToWithdraw` (USD, no decimals) from `/api/wallet`, sourced via the shared `WalletProvider` context mounted at `app/dashboard/layout.tsx`. Both surfaces must consume `useWalletContext` — do not reintroduce fake `Balance: no disponible` copy, do not reintroduce independent fetches in either surface (single fetch per dashboard mount is the contract), and preserve the loading (`Cargando…`) / error (`No se pudo cargar`) states. Rewards/points stay honest unavailable per the rule below."
+- Docs updated:
+  - `project.context.core.md` (G7 Active risk now records materialization + OOB resolution + bumped priority; new Closed-in-runtime entry for F-V03; new operating rule for the balance chip)
+  - `project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot rewritten for 2026-05-14)
+- Completion status:
+  - F-V03 closed. FASE 1 third iteration COMPLETE.
+  - real database-layer defect discovered during validation and resolved, demonstrating operator-in-the-loop value — F-V03's honest error surface turned an invisible drift into a fixable incident.
+  - next FASE 1 iteration candidates: F-V09 + bundle copy (F-V11/V13/V18/V19/V20 + F-V04) for ~1 day, or B18 framework pages closure (already done) → next critical-path piece is the small UX/copy bundle, then B1 Stripe live keys + ADR-010 cleanup.

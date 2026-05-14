@@ -10,7 +10,7 @@
 
 ## Context
 
-The roadmap at `C:\Users\pbu50\Desktop\Noon App\roadmap\NoonApp Roadmap.md` §2 lists seven gating decisions that must be closed before FASE 1 (cutover pilot) can be safely scoped. Two of those decisions define the operational scope of the next 4-6 weeks:
+The local NoonApp Roadmap §2 lists seven gating decisions that must be closed before FASE 1 (cutover pilot) can be safely scoped. Two of those decisions define the operational scope of the next 4-6 weeks:
 
 - **Decision 1** — what was promised to the client final. This is the gating commercial question: if the sales path has already committed to delivering the v3 client portal (auth pre-pago + post-payment self-service portal), the hybrid A→B route described in roadmap §3 is unsafe because clients are expecting a feature that does not exist yet.
 - **Decision 7** — team availability. Roadmap timing estimates assume 1 senior developer full-time. With 2 devs and contract-first discipline (roadmap §10.1), the FASE 1-3 path compresses ~30%.

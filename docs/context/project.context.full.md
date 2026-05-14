@@ -7,7 +7,6 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
 ## Project identity
 - Project: `nooncode-app`
 - Product name in the UI: `NoonApp`
-- Repo path: `C:\Users\white\Documents\Codex\2026-04-23-quiero-que-trabajemos-sobre-este-repo`
 - Application type: Next.js App Router web application
 - Current observed stage: hybrid MVP with real Supabase auth/session, durable commercial flow into hand-off projects, multiple persisted finance/delivery foundations, and active Maxwell Lead Engine V1 consolidation
 
