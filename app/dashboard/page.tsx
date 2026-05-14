@@ -10,6 +10,7 @@ import {
   selectDashboardSummary,
   selectPersonalStatsAvailability,
 } from '@/lib/dashboard-selectors'
+import { useWalletContext } from '@/lib/wallet/context'
 import { Badge } from '@/components/ui/badge'
 import {
   Users,
@@ -27,6 +28,7 @@ import {
 export default function DashboardPage() {
   const { authMode, user } = useAuth()
   const { leads, projectBoardProjects, taskBoardTasks } = useData()
+  const walletState = useWalletContext()
 
   const summary = useMemo(
     () => selectDashboardSummary(leads, projectBoardProjects, taskBoardTasks),
@@ -112,7 +114,7 @@ export default function DashboardPage() {
 
   if (!user) return null
 
-  const personalStats = selectPersonalStatsAvailability(authMode, user)
+  const personalStats = selectPersonalStatsAvailability(authMode, user, walletState)
 
   return (
     <div className="app-page">
