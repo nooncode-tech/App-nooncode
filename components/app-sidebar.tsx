@@ -69,13 +69,13 @@ const workspaceNavItems = [
   { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { title: 'Actualizaciones', href: '/dashboard/updates', icon: Activity },
   { title: 'Notificaciones', href: '/dashboard/notifications', icon: Bell },
+  { title: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
 ]
 
 const financeNavItems = [
   { title: 'Creditos', href: '/dashboard/credits', icon: Wallet },
   { title: 'Earnings', href: '/dashboard/earnings', icon: DollarSign },
   { title: 'Recompensas', href: '/dashboard/rewards', icon: Gift },
-  { title: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
 ]
 
 type NavItem = { title: string; href: string; icon: LucideIcon; badge?: number }

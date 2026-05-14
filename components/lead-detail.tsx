@@ -30,8 +30,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LeadPrototypeCard } from '@/components/lead-prototype-card'
-import { MaxwellChat } from '@/components/maxwell-chat'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import {
   Select,
@@ -392,7 +390,6 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const [proposals, setProposals] = useState<LeadProposal[]>([])
   const [isActivityLoading, setIsActivityLoading] = useState(true)
   const [isProposalsLoading, setIsProposalsLoading] = useState(true)
-  const [showMaxwellDialog, setShowMaxwellDialog] = useState(false)
   const [isSavingNote, setIsSavingNote] = useState(false)
   const [isSavingProposal, setIsSavingProposal] = useState(false)
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false)
@@ -1615,19 +1612,8 @@ Total: 8 semanas
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft className="size-4 text-muted-foreground" />
-                <p className="text-sm font-medium">Hand-off comercial</p>
+                <p className="text-sm font-medium">Propuestas</p>
               </div>
-              {isSupabaseMode && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowMaxwellDialog(true)}
-                >
-                  <Sparkles className="size-3.5 mr-1.5" />
-                  Generar con Maxwell
-                </Button>
-              )}
             </div>
 
             {isProposalsLoading ? (
@@ -1637,7 +1623,7 @@ Total: 8 semanas
               </div>
             ) : proposals.length === 0 ? (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                Aun no hay propuestas persistidas para este lead.
+                Todavia no creaste una propuesta para este lead. Usa el formulario de arriba para guardar la primera.
               </div>
             ) : (
               <div className="space-y-3">
@@ -1997,19 +1983,6 @@ Total: 8 semanas
           )}
         </TabsContent>
       </Tabs>
-
-      {/* Maxwell dialog — con contexto del lead */}
-      <Dialog open={showMaxwellDialog} onOpenChange={setShowMaxwellDialog}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden h-[600px] flex flex-col">
-          <MaxwellChat
-              className="size-full border-0 rounded-none"
-            onClose={() => setShowMaxwellDialog(false)}
-            leadId={lead.id}
-            leadName={lead.name}
-            channel={lead.leadOrigin ?? undefined}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

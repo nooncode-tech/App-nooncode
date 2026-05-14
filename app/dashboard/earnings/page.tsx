@@ -311,7 +311,7 @@ export default function EarningsPage() {
             <div className="metric-card">
               <p className="metric-label">Pendiente</p>
               <p className="metric-value text-yellow-600">{fmt(summary?.pending ?? 0)}</p>
-              <p className="metric-note">En validacion por PM</p>
+              <p className="metric-note">En revision por administracion</p>
             </div>
 
             <div className="metric-card">

@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -23,10 +22,8 @@ import {
   Zap,
   Type,
   Star,
-  ArrowRight,
   Loader2,
   DollarSign,
-  Sparkles,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PROJECT_TYPE_LABELS, COMPLEXITY_LABELS } from '@/lib/maxwell/pricing'
@@ -297,43 +294,6 @@ export default function WebAnalysisPage() {
             </CardContent>
           </Card>
 
-          <Separator />
-
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button
-              className="flex-1"
-              onClick={() => {
-                const domain = new URL(result.url).hostname.replace('www.', '')
-                const msg = encodeURIComponent(
-                  `Analicé el sitio ${result.url}. Es un proyecto tipo "${PROJECT_TYPE_LABELS[result.projectType]}" con complejidad ${COMPLEXITY_LABELS[result.complexity]}. ` +
-                  `Las principales oportunidades son: ${result.opportunities.slice(0, 3).map(o => o.title).join(', ')}. ` +
-                  `Quiero generar una propuesta con activación $${result.pricing.activationFinal} y membresía $${result.pricing.membership}/mes. ` +
-                  `El lead es de ${domain}.`
-                )
-                window.location.href = `/dashboard/leads?maxwell=1&msg=${msg}`
-              }}
-            >
-              <Sparkles className="size-4 mr-2" />
-              Abrir en Maxwell
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                const domain = new URL(result.url).hostname.replace('www.', '')
-                const params = new URLSearchParams({
-                  newLead: '1',
-                  company: domain,
-                  notes: `Sitio analizado: ${result.url}. ${result.summary}`,
-                })
-                window.location.href = `/dashboard/leads?${params.toString()}`
-              }}
-            >
-              <ArrowRight className="size-4 mr-2" />
-              Crear Lead desde análisis
-            </Button>
-          </div>
         </div>
       )}
     </div>

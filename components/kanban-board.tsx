@@ -22,7 +22,15 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { Inbox } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 
 export interface KanbanColumn<T> {
   id: string
@@ -201,12 +209,23 @@ function KanbanColumnComponent<T extends { id: string }>({
                 </SortableCard>
               ))}
               {column.items.length === 0 && (
-                <div className={cn(
-                  "h-[80px] border-2 border-dashed rounded-lg flex items-center justify-center text-muted-foreground/50 text-xs transition-colors",
-                  isOver && "border-primary/50 bg-primary/5 text-primary"
-                )}>
-                  {isOver ? 'Suelta aquí' : 'Vacío'}
-                </div>
+                isOver ? (
+                  <div className="h-[80px] border-2 border-dashed rounded-lg flex items-center justify-center text-xs transition-colors border-primary/50 bg-primary/5 text-primary">
+                    Suelta aquí
+                  </div>
+                ) : (
+                  <Empty className="min-h-[120px] gap-3 rounded-lg border-2 border-dashed p-4">
+                    <EmptyHeader className="gap-1">
+                      <EmptyMedia variant="icon">
+                        <Inbox className="size-5" />
+                      </EmptyMedia>
+                      <EmptyTitle className="text-sm">Sin leads</EmptyTitle>
+                      <EmptyDescription className="text-xs">
+                        Arrastra un lead a esta etapa.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )
               )}
             </div>
           </SortableContext>
