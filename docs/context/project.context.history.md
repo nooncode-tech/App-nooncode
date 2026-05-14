@@ -2185,3 +2185,60 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - F-V03 closed. FASE 1 third iteration COMPLETE.
   - real database-layer defect discovered during validation and resolved, demonstrating operator-in-the-loop value — F-V03's honest error surface turned an invisible drift into a fixable incident.
   - next FASE 1 iteration candidates: F-V09 + bundle copy (F-V11/V13/V18/V19/V20 + F-V04) for ~1 day, or B18 framework pages closure (already done) → next critical-path piece is the small UX/copy bundle, then B1 Stripe live keys + ADR-010 cleanup.
+
+## Session note: FASE 1 UX honesty bundle — F-V04/05/09/11/13/18/19/20 (FASE 1 fourth iteration)
+- Date: 2026-05-14
+- Iteration id: `fase-1-ux-honesty-bundle`
+- Route used: system-router -> system-analysis -> system-frontend -> system-testing -> system-validator -> system-docs
+- Objective: close 8 UX findings from the 2026-05-10 audit (`NoonApp UX findings 10-05-2026.md`) in a single Bugfix Lite pass. Six items are pure copy / label / empty-state honesty fixes (F-V09 earnings helper, F-V11 pipeline empty cells, F-V13 lead-detail Propuesta empty state, F-V18 sidebar group restructure, F-V19 role-aware quick action label, F-V20 login copy). Two items are hide-or-wire decisions on contradictory CTAs (F-V04 web-analysis CTAs build dead query strings; F-V05 Maxwell-on-Propuesta contradicts the IA Asistente non-operational rule). Router pre-decided hide-not-wire as the default for both.
+- Spec landed: `specs/fase-1-ux-honesty-bundle.md` (Approved 2026-05-14 as part of PR #41, commit `9768642`).
+- Implemented (PR #41, impl commit `41b550a`):
+  - `app/dashboard/earnings/page.tsx` — `metric-note` under `Pendiente` rewritten as `En revision por administracion`. Diacritics-free to match the surrounding strings (`En disputa o retencion`, `Consolidado y listo`).
+  - `components/kanban-board.tsx` — `isOver` branch preserved verbatim (`Suelta aquí` drop-target hint, same 80px height); default branch replaced with the `Empty` component pattern (`min-h-[120px]`, `Inbox` icon, `Sin leads` title, `Arrastra un lead a esta etapa.` description). Affects only `/dashboard/pipeline`; `/dashboard/projects` builds its own kanban inline and is untouched.
+  - `components/lead-detail.tsx` — Propuesta tab section header `Hand-off comercial` → `Propuestas`. Empty body `Aun no hay propuestas persistidas para este lead.` → `Todavia no creaste una propuesta para este lead. Usa el formulario de arriba para guardar la primera.`. F-V05 removed the `Generar con Maxwell` button (only call site of `setShowMaxwellDialog`); after the button was deleted the state setter, the `Dialog`/`DialogContent` mount at line 2001-2012, and the `MaxwellChat` + `Dialog`/`DialogContent` imports all became orphaned and were removed under the same change. `Sparkles` import preserved — still used by the `IA Asistente` tab.
+  - `components/app-sidebar.tsx` — `Reportes` moved from `financeNavItems` (now 3 items) into `workspaceNavItems` (now 4 items, appended after `Notificaciones`). `BarChart3` icon import preserved (still referenced).
+  - `app/dashboard/page.tsx` — `Mis tareas` quick action label inlines `authMode === 'supabase' && user.role !== 'developer'` → `Tareas del equipo` vs `Mis tareas`. Same inline pattern the sidebar already uses; no new helper. `user` is non-null inside the render path (guarded by the existing `if (!user) return null` early return at line 115).
+  - `app/page.tsx` — third value-prop block rewritten (`Comisiones y recompensas` → `Wallet y comisiones internas`; `Sistema de puntos y pagos automatizados para todo el equipo` → `Balance, comisiones y créditos internos visibles para tu equipo.`). The `TrendingUp` icon and surrounding markup unchanged.
+  - `app/dashboard/web-analysis/page.tsx` — Deleted the `<Separator />` and the entire action-strip `<div>` containing both CTAs (lines 300-336 in pre-change layout). Dropped now-unused imports: `Separator` (from `@/components/ui/separator`), `Sparkles` and `ArrowRight` (from `lucide-react`). All other lucide imports still referenced elsewhere in the file.
+- Validation finding folded into iteration closure (same PR #41, follow-up commit on `feature/fase-1-ux-bundle-dia-2`):
+  - Scenario 2 browser validation surfaced a pre-existing limitation: dropping into truly-empty kanban columns silently failed because `components/kanban-board.tsx` only registered cards as droppable via `useSortable`, never the column container, so the `closestCorners` collision strategy had no empty-column target to resolve to. The previous `isOver ? 'Suelta aquí' : 'Vacío'` branch was effectively dead code for empty columns.
+  - Fix landed in the same iteration (rather than as a separate iteration) because (a) the visual change in F-V11 is what made the bug operator-noticeable in the first place, so completing F-V11 to a working state belongs with the same audit finding; (b) the change is ~15 lines, low-risk, no cross-file or contract changes; and (c) leaving empty-column drop broken would re-surface the same complaint immediately.
+  - Concrete change: `useDroppable({ id: column.id })` registered on `KanbanColumnComponent` with `setNodeRef` attached to the column outer wrapper, and the `DndContext` `collisionDetection` swapped from `closestCorners` to a `pointerWithin → rectIntersection` fallback. After the fix, dropping into an empty column shows `Suelta aquí` while hovering and accepts the drop (column counter 0 → 1). Card-to-card drag in populated columns continues to work normally (re-checked in the same browser session before closure).
+- Scope boundary kept:
+  - no migrations
+  - no API route changes
+  - no contract changes (no shape change to `/api/wallet`, `/api/leads`, `/api/notifications`, or any other endpoint)
+  - no new dependencies
+  - no new env vars
+  - no new tests (pure copy / label / empty-state / hide changes; the kanban drop-target fix is behavioral but the repo's `tsx --test` runner has no jsdom or dnd-kit test infrastructure — adding it would expand scope; the baseline 218/218 remained green throughout)
+  - no edits to any existing operating rule in `core.md`; the bundle leans on existing rules. Seven new rules are appended in the closure (one per audit-finding contract) without weakening any existing one.
+- Validation outcome:
+  - `npm run typecheck`: clean (pre-fix and post-fix)
+  - `npm run lint`: clean (pre-fix and post-fix)
+  - `npm run build`: clean (Compiled successfully in 28.7s, pre-fix)
+  - `npm test`: **218/218 pass** (no regression from F-V03 baseline; no new tests added)
+  - Browser validation 2026-05-14 — full evidence in `docs/validations/Browser validation 2026-05-14 — fase-1 UX honesty bundle.md`:
+    - Scenario 1 (F-V09 earnings helper): PASS — `Pendiente` reads `En revision por administracion`; old PM-validation copy gone.
+    - Scenario 2 (F-V11 pipeline empty cells + drop target): PASS — Inbox icon + `Sin leads` + `Arrastra un lead a esta etapa.` rendered; `Suelta aquí` hint appears on drag-over; drops into empty columns accepted (counter 0 → 1) after the closure-folded kanban fix; card-to-card in populated columns unchanged.
+    - Scenario 3 (F-V13 Propuesta empty state + rename): PASS — section header `Propuestas`; empty body uses the new wayfinding hint; populated proposals path unchanged.
+    - Scenario 4 (F-V18 sidebar restructure): PASS — `Reportes` under workspace group after `Notificaciones`; `Finanzas` has exactly 3 items.
+    - Scenario 5 (F-V19 role-aware label): PASS for both paths — admin/pm in supabase see `Tareas del equipo`; developer in supabase sees `Mis tareas`; mock-mode regression skipped (covered by existing unit test).
+    - Scenario 6 (F-V20 login copy): PASS — new headline + body rendered; no `automatizados` / `sistema de puntos` substring anywhere.
+    - Scenario 7 (F-V04 web-analysis hide): PASS — analysis result card preserved; both CTAs gone; no leftover `<Separator />`.
+    - Scenario 8 (F-V05 Maxwell-on-Propuesta hide): PASS — no `Generar con Maxwell` button on the Propuesta tab in supabase; `IA Asistente` tab still in its existing non-operational state.
+- Operating rules added in this closure (in `project.context.core.md`):
+  - `Pendiente` earnings helper copy
+  - pipeline kanban empty-cell pattern AND drop-target contract (collision-detection swap explicitly part of the rule)
+  - lead-detail Propuesta tab section header + Maxwell-CTA agreement
+  - sidebar `Finanzas` membership
+  - dashboard `Mis tareas` quick action role-awareness
+  - web-analysis read-only analysis surface until prefilled-dialog contract exists
+  - login value-prop honesty-first pre-launch
+- Docs updated:
+  - `project.context.core.md` (Closed-in-runtime entry + 7 new operating rules)
+  - `project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot rewritten for 2026-05-14 closure of the UX bundle)
+- Completion status:
+  - FASE 1 UX honesty bundle closed. FASE 1 fourth iteration COMPLETE.
+  - operator-in-the-loop value reaffirmed: F-V11's richer visual empty state made an invisible pre-existing kanban-drop bug visible to a human operator, and the bug was fixed inside the same iteration rather than queued as a separate sprint item. Same pattern as F-V03 surfacing the G7 migration drift.
+  - next FASE 1 iteration candidates (per roadmap §17): (a) provisioning Upstash via Vercel Marketplace + B14 production verification, (b) `fase-0-b4b-ledger-reconciliation` for the broader G7 desync, (c) B1 Stripe live keys + ADR-010 cleanup in `app/api/payments/checkout/route.ts`.
