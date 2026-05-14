@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const requestId = getRequestId(request)
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'maxwell-lead-searches',
       limit: 8,
       windowMs: 15 * 60_000,

@@ -24,6 +24,11 @@ const integrationKeys = [
   'CRON_SECRET',
 ] as const
 
+const distributedRateLimitKeys = [
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+] as const
+
 function presence(key: string): EnvState {
   return process.env[key]?.trim() ? 'present' : 'missing'
 }
@@ -75,6 +80,15 @@ for (const key of integrationKeys) {
   }
 }
 
+const upstashMissing = distributedRateLimitKeys.filter((key) => presence(key) === 'missing')
+if (upstashMissing.length > 0) {
+  if (process.env.NODE_ENV === 'production') {
+    warnings.push(
+      `Distributed rate limiter not configured (${upstashMissing.join(', ')}); falling back to in-memory per-process buckets — inconsistent across Fluid Compute instances. Provision Upstash Redis via Vercel Marketplace.`
+    )
+  }
+}
+
 if (secretMode === 'live' || publishableMode === 'live') {
   warnings.push('Stripe is configured in live mode; do not create checkout/payment side effects without action-time approval')
 }
@@ -91,6 +105,11 @@ console.log(`- NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${publishableMode}`)
 
 console.log('Integration keys:')
 for (const key of integrationKeys) {
+  console.log(`- ${key}: ${presence(key)}`)
+}
+
+console.log('Distributed rate limiter (Upstash):')
+for (const key of distributedRateLimitKeys) {
   console.log(`- ${key}: ${presence(key)}`)
 }
 

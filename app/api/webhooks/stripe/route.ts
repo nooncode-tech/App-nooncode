@@ -392,7 +392,7 @@ export async function POST(request: Request) {
   let event: Stripe.Event | null = null
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'stripe-webhook',
       limit: 600,
       windowMs: 60_000,

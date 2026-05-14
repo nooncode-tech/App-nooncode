@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const requestId = getRequestId(req)
 
   try {
-    assertRateLimit(req, {
+    await assertRateLimit(req, {
       namespace: 'maxwell-chat',
       limit: 20,
       windowMs: 60_000,
