@@ -106,8 +106,8 @@ export default function LoginPage() {
                 <TrendingUp className="size-5 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold mb-1">Comisiones y recompensas</h3>
-                <p className="text-sm text-sidebar-foreground/60">Sistema de puntos y pagos automatizados para todo el equipo</p>
+                <h3 className="font-semibold mb-1">Wallet y comisiones internas</h3>
+                <p className="text-sm text-sidebar-foreground/60">Balance, comisiones y créditos internos visibles para tu equipo.</p>
               </div>
             </div>
           </div>

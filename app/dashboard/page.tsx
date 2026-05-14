@@ -344,7 +344,11 @@ export default function DashboardPage() {
                   <CheckCircle2 className="size-4 text-accent" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">Mis tareas</p>
+                  <p className="text-sm font-medium">
+                    {authMode === 'supabase' && user.role !== 'developer'
+                      ? 'Tareas del equipo'
+                      : 'Mis tareas'}
+                  </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{delivery.actionableTasks} pendientes</p>
                 </div>
                 <ArrowUpRight className="size-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
