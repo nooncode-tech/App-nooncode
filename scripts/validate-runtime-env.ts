@@ -24,9 +24,12 @@ const integrationKeys = [
   'CRON_SECRET',
 ] as const
 
-const distributedRateLimitKeys = [
-  'UPSTASH_REDIS_REST_URL',
-  'UPSTASH_REDIS_REST_TOKEN',
+// The rate limiter accepts either naming convention Vercel uses for the
+// Upstash-backed Redis integration. UPSTASH_* is preferred; KV_REST_API_* is
+// the same backend exposed under Vercel's KV product branding.
+const distributedRateLimitKeyPairs = [
+  ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+  ['KV_REST_API_URL', 'KV_REST_API_TOKEN'],
 ] as const
 
 function presence(key: string): EnvState {
@@ -80,13 +83,13 @@ for (const key of integrationKeys) {
   }
 }
 
-const upstashMissing = distributedRateLimitKeys.filter((key) => presence(key) === 'missing')
-if (upstashMissing.length > 0) {
-  if (process.env.NODE_ENV === 'production') {
-    warnings.push(
-      `Distributed rate limiter not configured (${upstashMissing.join(', ')}); falling back to in-memory per-process buckets — inconsistent across Fluid Compute instances. Provision Upstash Redis via Vercel Marketplace.`
-    )
-  }
+const distributedRateLimitConfigured = distributedRateLimitKeyPairs.some(
+  ([urlKey, tokenKey]) => presence(urlKey) === 'present' && presence(tokenKey) === 'present'
+)
+if (!distributedRateLimitConfigured && process.env.NODE_ENV === 'production') {
+  warnings.push(
+    'Distributed rate limiter not configured (neither UPSTASH_REDIS_REST_URL/_TOKEN nor KV_REST_API_URL/_TOKEN are set); falling back to in-memory per-process buckets — inconsistent across Fluid Compute instances. Provision the Upstash Redis or Vercel KV integration via Vercel Marketplace.'
+  )
 }
 
 if (secretMode === 'live' || publishableMode === 'live') {
@@ -108,10 +111,12 @@ for (const key of integrationKeys) {
   console.log(`- ${key}: ${presence(key)}`)
 }
 
-console.log('Distributed rate limiter (Upstash):')
-for (const key of distributedRateLimitKeys) {
-  console.log(`- ${key}: ${presence(key)}`)
+console.log('Distributed rate limiter (Upstash via Vercel Marketplace):')
+for (const [urlKey, tokenKey] of distributedRateLimitKeyPairs) {
+  console.log(`- ${urlKey}: ${presence(urlKey)}`)
+  console.log(`- ${tokenKey}: ${presence(tokenKey)}`)
 }
+console.log(`- configured: ${distributedRateLimitConfigured ? 'yes' : 'no (using in-memory fallback)'}`)
 
 if (warnings.length > 0) {
   console.warn('\nWarnings:')

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  __resolveDistributedRedisCredentialsForTests,
   __setRateLimitEngineForTests,
   __withFailOpenLoggingForTests,
   assertRateLimit,
@@ -180,6 +181,126 @@ test('fail-open: wrapped engine re-throws RateLimitExceededError so callers can 
 
   __setRateLimitEngineForTests(null)
   resetRateLimitStoreForTests()
+})
+
+// Env-var resolution tests — the rate limiter accepts either Vercel naming
+// convention for the Upstash-backed Redis integration. UPSTASH_REDIS_REST_*
+// is preferred; KV_REST_API_* is the same backend exposed under Vercel's KV
+// product branding.
+
+function withRedisEnv(
+  values: Partial<{
+    UPSTASH_REDIS_REST_URL: string | null
+    UPSTASH_REDIS_REST_TOKEN: string | null
+    KV_REST_API_URL: string | null
+    KV_REST_API_TOKEN: string | null
+  }>,
+  fn: () => void
+) {
+  const keys = [
+    'UPSTASH_REDIS_REST_URL',
+    'UPSTASH_REDIS_REST_TOKEN',
+    'KV_REST_API_URL',
+    'KV_REST_API_TOKEN',
+  ] as const
+  const previous: Record<string, string | undefined> = {}
+  for (const key of keys) {
+    previous[key] = process.env[key]
+    const next = values[key]
+    if (next === undefined) continue
+    if (next === null) {
+      delete process.env[key]
+    } else {
+      process.env[key] = next
+    }
+  }
+  try {
+    fn()
+  } finally {
+    for (const key of keys) {
+      const prev = previous[key]
+      if (prev === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = prev
+      }
+    }
+  }
+}
+
+test('env resolution: prefers UPSTASH_REDIS_REST_* when both pairs are set', () => {
+  withRedisEnv(
+    {
+      UPSTASH_REDIS_REST_URL: 'https://upstash.example',
+      UPSTASH_REDIS_REST_TOKEN: 'upstash-token',
+      KV_REST_API_URL: 'https://kv.example',
+      KV_REST_API_TOKEN: 'kv-token',
+    },
+    () => {
+      const creds = __resolveDistributedRedisCredentialsForTests()
+      assert.deepEqual(creds, { url: 'https://upstash.example', token: 'upstash-token' })
+    }
+  )
+})
+
+test('env resolution: falls back to KV_REST_API_* when UPSTASH_* are absent', () => {
+  withRedisEnv(
+    {
+      UPSTASH_REDIS_REST_URL: null,
+      UPSTASH_REDIS_REST_TOKEN: null,
+      KV_REST_API_URL: 'https://kv.example',
+      KV_REST_API_TOKEN: 'kv-token',
+    },
+    () => {
+      const creds = __resolveDistributedRedisCredentialsForTests()
+      assert.deepEqual(creds, { url: 'https://kv.example', token: 'kv-token' })
+    }
+  )
+})
+
+test('env resolution: returns null when neither pair is configured', () => {
+  withRedisEnv(
+    {
+      UPSTASH_REDIS_REST_URL: null,
+      UPSTASH_REDIS_REST_TOKEN: null,
+      KV_REST_API_URL: null,
+      KV_REST_API_TOKEN: null,
+    },
+    () => {
+      const creds = __resolveDistributedRedisCredentialsForTests()
+      assert.equal(creds, null)
+    }
+  )
+})
+
+test('env resolution: empty-string UPSTASH_* values fall through to KV_REST_API_* (the .env.example default shape)', () => {
+  withRedisEnv(
+    {
+      UPSTASH_REDIS_REST_URL: '',
+      UPSTASH_REDIS_REST_TOKEN: '',
+      KV_REST_API_URL: 'https://kv.example',
+      KV_REST_API_TOKEN: 'kv-token',
+    },
+    () => {
+      const creds = __resolveDistributedRedisCredentialsForTests()
+      assert.deepEqual(creds, { url: 'https://kv.example', token: 'kv-token' })
+    }
+  )
+})
+
+test('env resolution: requires both halves of the same or mixed pair (URL alone is insufficient)', () => {
+  withRedisEnv(
+    {
+      UPSTASH_REDIS_REST_URL: 'https://upstash.example',
+      UPSTASH_REDIS_REST_TOKEN: null,
+      KV_REST_API_URL: null,
+      KV_REST_API_TOKEN: null,
+    },
+    () => {
+      const creds = __resolveDistributedRedisCredentialsForTests()
+      assert.equal(creds, null)
+    }
+  )
 })
 
 test('NOON_RATE_LIMIT_DISABLED escape hatch bypasses the engine entirely', async () => {

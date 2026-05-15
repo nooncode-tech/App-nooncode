@@ -148,13 +148,29 @@ function makeUpstashEngine(url: string, token: string): RateLimitEngine {
 
 let activeEngine: RateLimitEngine | null = null
 
+/**
+ * Resolve the Redis REST credentials for the distributed engine. Accepts two
+ * naming conventions because Vercel's Marketplace integration exposes Upstash
+ * Redis under the Vercel KV product naming (`KV_REST_API_URL` /
+ * `KV_REST_API_TOKEN`), while the standalone Upstash Marketplace listing uses
+ * `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. Both point at the
+ * same underlying Redis. UPSTASH_* wins when set to a non-empty value; an
+ * empty/whitespace value (the default `.env.example` shape) falls through to
+ * KV_REST_API_* so a Vercel KV-naming deploy is detected correctly.
+ */
+function resolveDistributedRedisCredentials(): { url: string; token: string } | null {
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL?.trim() || process.env.KV_REST_API_URL?.trim()
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN?.trim() || process.env.KV_REST_API_TOKEN?.trim()
+  return url && token ? { url, token } : null
+}
+
 function getEngine(): RateLimitEngine {
   if (activeEngine !== null) return activeEngine
 
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim()
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
-
-  activeEngine = url && token ? makeUpstashEngine(url, token) : inMemoryEngine
+  const creds = resolveDistributedRedisCredentials()
+  activeEngine = creds ? makeUpstashEngine(creds.url, creds.token) : inMemoryEngine
   return activeEngine
 }
 
@@ -193,4 +209,13 @@ export function __setRateLimitEngineForTests(engine: RateLimitEngine | null) {
  */
 export function __withFailOpenLoggingForTests(inner: RateLimitEngine): RateLimitEngine {
   return withFailOpenLogging(inner)
+}
+
+/**
+ * Test-only seam. Exposes the env-var resolution so tests can verify that
+ * the limiter accepts both Vercel naming conventions (UPSTASH_REDIS_REST_*
+ * and KV_REST_API_*) without having to load a Redis client.
+ */
+export function __resolveDistributedRedisCredentialsForTests() {
+  return resolveDistributedRedisCredentials()
 }
