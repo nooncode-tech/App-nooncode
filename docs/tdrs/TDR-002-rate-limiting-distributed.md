@@ -92,10 +92,14 @@ Test coverage in `tests/server/api/rate-limit.test.ts`:
 
 ## Provisioning (operator runbook)
 
-1. Vercel Dashboard → project `App-nooncode` → Storage tab → Add → Upstash → Upstash Redis.
+1. Vercel Dashboard → project `App-nooncode` → Storage tab → Add → Upstash → Upstash Redis (or the equivalent Vercel KV listing, which is the same Upstash backend rebranded — both work).
 2. Pick a region close to the function region (typically `us-east-1` / `iad1`). Free plan is sufficient for FASE 1.
-3. Vercel auto-injects `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` into the project's env vars (Production + Preview scopes).
-4. (Optional) `vercel env pull` to populate `.env.local` if you want dev to also use Upstash. Otherwise dev keeps using the in-memory fallback.
+3. Vercel auto-injects credentials into the project's env vars (Production + Preview scopes). The exact env var names depend on which Marketplace listing you picked:
+   - **Standalone Upstash listing** → `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`.
+   - **Vercel KV listing** → `KV_REST_API_URL` + `KV_REST_API_TOKEN` (and a few read-only / URL aliases the limiter ignores).
+
+   `resolveDistributedRedisCredentials` in `lib/server/api/rate-limit.ts` accepts either pair, preferring UPSTASH_* when both are present. A non-empty UPSTASH_* wins; an empty/whitespace UPSTASH_* value (the `.env.example` shape) falls through to KV_REST_API_* so a fresh Vercel KV install is detected without manual aliasing.
+4. (Optional) `vercel env pull` to populate `.env.local` if you want dev to also use the distributed engine. Otherwise dev keeps using the in-memory fallback.
 5. Trigger a redeploy. Subsequent function invocations pick up the engine on cold start.
 
 To verify in production:
