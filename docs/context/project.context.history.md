@@ -2278,3 +2278,61 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - B1 architectural blocker closed via amendment.
   - B1 ops side (Stripe live keys to Vercel Production + webhook endpoint configuration + first-event validation + Día 4 smoke + runbook) remains deferred; Pedro will pick the timing.
   - F-V08 (Stripe checkout link persistence) becomes a valid in-scope follow-up if/when outbound volume justifies the audit / re-share UX improvement.
+
+## Session note: B14 ops verification + Vercel KV env-detection fallback (FASE 1 fifth iteration)
+- Date: 2026-05-15
+- Iteration id: `fix-b14-vercel-kv-env-fallback`
+- Route used: operator-side ops (Upstash provisioning) → Bugfix Lite (env-detection code fix discovered during ops) → ops verification (production smoke + Upstash dashboard cross-check) → system-docs (closure)
+- Objective: complete B14 production verification — the operator-side step that had been deferred at the close of the original B14 iteration (2026-05-13, PR #36). Provision Upstash via Vercel Marketplace, redeploy, run a real-traffic smoke against a rate-limited route, and confirm requests route through Redis (not the in-memory fallback) using the Upstash dashboard.
+- What happened (chronological):
+  - Step 1 — Upstash provisioning (operator). Pedro added the Upstash Redis integration from the Vercel Marketplace to the `App-nooncode` project; integration auto-injected `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`, `REDIS_URL` into Production + Preview scopes. Free tier, `us-east-1` (N. Virginia), region-pinned to the Vercel Functions default region. Note that this set of env var names does **not** include `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — Vercel's current Marketplace flow exposes the Upstash backend under its KV product branding.
+  - Mismatch discovered. The B14 code in `lib/server/api/rate-limit.ts` only checked for `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. With only `KV_REST_API_*` set, the engine selector would silently fall back to the in-memory implementation on Production — same multi-instance correctness gap the B14 iteration was meant to close. The TDR-002 runbook (written 2026-05-13) had assumed the standalone Upstash Marketplace listing and was therefore stale against the current Marketplace UX.
+  - Two paths considered: (A) manual env-var aliases in Vercel that point UPSTASH_* values at the KV_REST_API_* values, no code change; (B) make the env detection tolerant of either pair, future-proof. Pedro chose (B) to make any future fresh deploy work without manual aliasing.
+- Implemented (PR #43, merged as `5eba6e9`):
+  - `lib/server/api/rate-limit.ts` — extracted `resolveDistributedRedisCredentials()` helper. Reads `UPSTASH_REDIS_REST_URL?.trim() || KV_REST_API_URL?.trim()` and `UPSTASH_REDIS_REST_TOKEN?.trim() || KV_REST_API_TOKEN?.trim()`. Returns `null` when neither pair is fully present, otherwise returns `{ url, token }`. The `||` after `.trim()` (instead of `??` on the raw env) is deliberate: `.env.example` ships `UPSTASH_REDIS_REST_URL=` (empty string) so `??` would treat that as "configured" and skip the KV fallback; `||` falls through correctly on empty / whitespace values. `getEngine()` simplified to delegate to the helper.
+  - New test-only seam `__resolveDistributedRedisCredentialsForTests` exposed so tests can verify env resolution paths without constructing a Redis client.
+  - `.env.example` — added `KV_REST_API_URL=` and `KV_REST_API_TOKEN=` blocks with an explanatory comment that names both naming conventions and the UPSTASH_* preference rule. The Upstash-naming block now documents both options.
+  - `scripts/validate-runtime-env.ts` — replaced the single `distributedRateLimitKeys` array with `distributedRateLimitKeyPairs` (two pairs). The Production warning now triggers only when **neither** pair is present; the runtime check output lists both pairs and a derived `configured: yes|no (using in-memory fallback)` line.
+  - `tests/infra/env-example.test.ts` — added `KV_REST_API_URL` and `KV_REST_API_TOKEN` to `requiredExampleKeys` so the template documents both pairs forever.
+  - `tests/server/api/rate-limit.test.ts` — added 5 new tests using a `withRedisEnv(values, fn)` harness that swaps the four env vars deterministically and restores prior values in a `finally`. Tests cover: UPSTASH_* preferred when both pairs are set; fall-back to KV_REST_API_* when UPSTASH_* absent; empty-string UPSTASH_* falls through to KV_REST_API_* (the `.env.example` default shape); `null` when neither pair set; `null` when only URL is set without a matching token.
+  - `docs/tdrs/TDR-002-rate-limiting-distributed.md` — Provisioning runbook §3 rewritten to enumerate both naming conventions, point at `resolveDistributedRedisCredentials`, and document the empty-string fall-through contract.
+- Scope boundary kept:
+  - no change to the engine pattern, the fail-open wrapper, the cache map for per-policy `Ratelimit` instances, or the public `assertRateLimit` API surface
+  - no change to per-route limits / windows / namespaces
+  - no removal of the in-memory fallback
+  - no per-user-id keying — IP-based identity still in use (a known gap from the original B14 iteration, deliberately unchanged here)
+  - no change to the fail-open log line `rate_limit.upstash.fallback` — still the operator signal for Upstash outages
+  - no Vercel Deployment Protection changes — that was a separate ops landmine surfaced during smoke (see below)
+- Validation outcome (code side, on the PR branch before merge):
+  - `npm run typecheck`: clean
+  - `npm run lint`: clean
+  - `npm run build`: clean (production build succeeds; route list as expected)
+  - `npm test`: **223/223 pass** (5 new over 218 baseline)
+- Validation outcome (operator side, after the PR merged and Vercel deployed):
+  - Initial sanity GET (single request) against the deploy URL `https://nooncode-5gwntvow1-noons-projects-749dcf47.vercel.app/api/client/resolve?token=...` returned HTTP 401 with a Vercel auth HTML page. Vercel Deployment Protection is active on the deploy URL. Worked around for this smoke by generating a Protection Bypass for Automation token (Vercel Dashboard → Settings → Deployment Protection → Generate) and sending it as the `x-vercel-protection-bypass` header on each request. Token can be revoked or rotated after the smoke without affecting the rate limiter.
+  - Sanity GET with bypass header returned HTTP 404 with the expected JSON body `{"error":"Invalid or expired token"}`, confirming the request reached the route handler and the `assertRateLimit` call before the token validation step.
+  - Smoke burst — 80 parallel GETs via `xargs -P 20` against `/api/client/resolve?token=smoketest-<n>` (unique tokens per request, but rate limit identity is IP-keyed so all share the same bucket). Wall time 6 seconds (well inside the 60-second window). Result: exactly **60 × 404 + 20 × 429**, matching the configured limit of 60 per 60_000ms for namespace `client-resolve`.
+  - Upstash dashboard cross-check (Free Tier `Rate-Limit` database in `us-east-1`): **253 total commands** (126 writes + 127 reads), zero bandwidth used, $0.00 cost. Roughly 3 Redis ops per `Ratelimit.limit()` call from the `slidingWindow` Lua script, so ~80 requests producing ~250 commands is the expected envelope. Definitive evidence that **all 80 requests routed through Upstash**, not the in-memory fallback — if any had fallen back, those commands would not have appeared.
+  - Vercel logs check for `rate_limit.upstash.fallback` warnings: ruled redundant after the Upstash command count confirmed full coverage (fallback warnings only fire when an Upstash op fails; if all 80 ops succeeded and were counted, fallback could not have triggered for them).
+- Ops landmines observed during this iteration:
+  - Vercel Deployment Protection on the deploy URL. Future smoke tests against the production deploy URL will need either a Protection Bypass for Automation token, a custom-domain alias that is not protected, or a temporary Deployment Protection disable. Recorded as an Active risks item.
+  - Vercel auto-deploys not triggering for Pedro on the merge — manual redeploy from the Deployments tab unblocked this run, but the underlying GitHub integration / Production Branch setting / Ignored Build Step config still needs to be diagnosed at a calmer moment (not iteration-blocking).
+  - LF→CRLF line-ending churn on `lib/server/seller-fees/schema.ts` was observed in the working copy throughout the session. Not part of this PR (intentionally excluded from `git add`); cleanup deferred.
+- Operating rule added in this closure (in `project.context.core.md`):
+  - "Treat `lib/server/api/rate-limit.ts` env detection as tolerant of both Vercel Marketplace naming conventions: `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (standalone Upstash listing, preferred when set to a non-empty trimmed value) OR `KV_REST_API_URL` + `KV_REST_API_TOKEN` (Vercel KV listing — same Upstash backend rebranded; the convention the current Marketplace flow actually injects). The empty-string fall-through is part of the contract because `.env.example` ships UPSTASH_* empty by default and a fresh `.env.local` derived from it must not block KV_REST_API_* detection. Do not collapse this to single-pair env reading without first verifying which naming the live Vercel Marketplace flow uses against the destination project — both pairs documented in `.env.example` and both pairs required by `tests/infra/env-example.test.ts`."
+- Active risk updates in `project.context.core.md`:
+  - Rate-limiter risk bullet rewritten: removed the "Production still runs on in-memory" branch since Upstash is now live and verified; added the smoke evidence inline; new sub-bullets capture (a) Upstash free tier exhaustion (current 253 / 500k cmds/month), (b) per-user-id keying still not implemented, (c) Vercel Deployment Protection on the deploy URL as a smoke-test constraint.
+- Docs updated:
+  - `lib/server/api/rate-limit.ts` (extracted helper + tolerant env reading + new test seam)
+  - `.env.example` (both naming conventions documented)
+  - `scripts/validate-runtime-env.ts` (pair-aware presence check + updated runtime output)
+  - `tests/infra/env-example.test.ts` (both pairs in template assertion)
+  - `tests/server/api/rate-limit.test.ts` (5 new env-resolution tests)
+  - `docs/tdrs/TDR-002-rate-limiting-distributed.md` (provisioning runbook updated for current Marketplace flow)
+  - `docs/context/project.context.core.md` (rate-limiter Active risks rewritten + new Closed-in-runtime entry + new operating rule + amended B14 closure note to point at this iteration for evidence)
+  - `docs/context/project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot rewritten — B14 ops removed from Gaps abiertos; remaining FASE 1 gap is purely B1 Stripe live keys)
+- Completion status:
+  - B14 fully closed at both code and Production-verified levels. FASE 1 fifth iteration COMPLETE.
+  - Operational debt outside of B1 Stripe live keys is now zero.
+  - Next FASE 1 iteration candidates (per roadmap §17): (a) `fase-0-b4b-ledger-reconciliation` for G7 backend cleanup, (b) Tier 3 UX audit items F-V06/V07/V08 (including the newly in-scope F-V08 Stripe checkout link persistence enabled by the ADR-010 amendment), (c) B1 Stripe live keys + Día 4 smoke + cutover runbook + team sign-off — the last remaining path to FASE 1 close.
