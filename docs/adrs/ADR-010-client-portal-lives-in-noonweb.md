@@ -165,7 +165,7 @@ If any of those start looking attractive in a future iteration, ADR-010 must be 
 ### What this enables
 
 - **B1 unblocks for Plan C.** The Stripe live keys cutover can proceed without removing `/api/payments/checkout/route.ts` first. The outbound seller flow continues to work in production under the amended interpretation. Plan B (cross-repo migration to NoonWeb-owned outbound checkout) remains a future option if outbound volume justifies the cross-repo work, but it is no longer a blocker for cutover.
-- **F-V08** (Stripe checkout link persistence in App) remains a relevant in-scope finding, because the outbound Checkout URL now stays an App-side artifact that can be persisted on `lead_proposals` for audit / re-share without violating ADR-010.
+- **F-V08** (Stripe checkout link persistence in App) — **implemented 2026-05-16**. Migration `0045_phase_18c_payment_checkout_link_persistence.sql` adds `payments.stripe_checkout_url` + `payments.stripe_checkout_expires_at`; `lib/server/stripe/service.ts` writes both columns on session create and on legacy-row backfill during reuse; `lib/server/payments/checkout-link-repository.ts` + `lib/server/leads/proposal-mappers.ts` surface `activeCheckoutLink` (with server-computed `isExpired`) on `GET /api/leads/[leadId]/proposals`; `components/lead-detail.tsx` consumes it as a four-state UI (paid / active / expired / none) and no longer carries an ephemeral `checkoutLinksByProposalId` React state. The link is delivered via the existing proposal read path; no new client-facing surface introduced. Confirmed not to introduce a client-side read path (re-evaluation trigger below satisfied).
 
 ### What this preserves
 
@@ -193,4 +193,4 @@ The amendment must be revisited when:
 - **Author:** Pedro (system-docs)
 - **Supersedes:** nothing
 - **Superseded by:** nothing
-- **Amendments:** 2026-05-14 (operator-driven outbound Checkout exception — `What this forbids` clarified, new operating rule recorded in `project.context.core.md`)
+- **Amendments:** 2026-05-14 (operator-driven outbound Checkout exception — `What this forbids` clarified, new operating rule recorded in `project.context.core.md`); 2026-05-16 (F-V08 Checkout link persistence implemented — durable `payments` columns + server-side `activeCheckoutLink` enrichment; re-evaluation trigger #3 satisfied)

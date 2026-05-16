@@ -2336,3 +2336,69 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - B14 fully closed at both code and Production-verified levels. FASE 1 fifth iteration COMPLETE.
   - Operational debt outside of B1 Stripe live keys is now zero.
   - Next FASE 1 iteration candidates (per roadmap §17): (a) `fase-0-b4b-ledger-reconciliation` for G7 backend cleanup, (b) Tier 3 UX audit items F-V06/V07/V08 (including the newly in-scope F-V08 Stripe checkout link persistence enabled by the ADR-010 amendment), (c) B1 Stripe live keys + Día 4 smoke + cutover runbook + team sign-off — the last remaining path to FASE 1 close.
+
+
+## Session note: F-V08 / B7 Stripe checkout link persistence (FASE 1/2 sixth iteration)
+- Date: 2026-05-16
+- Iteration id: `fase-2-b7-checkout-link-persistence`
+- Route used: spec (`specs/fase-2-b7-checkout-link-persistence.md` merged via PR #46 2026-05-15) → system-backend (migration + service + enrichment) → system-frontend (UI states) → system-testing (4+4 unit tests) → system-docs (this closure)
+- Objective: implement F-V08 (UX audit Tier 3) / B7 (FASE 2 Bloque B) — persist the Stripe Checkout URL + expiration on the `payments` table so the operator-driven outbound payment link is a durable artifact visible on the proposal surface without an ephemeral React state and without a Stripe API round-trip on page load.
+- What happened:
+  - Pre-flight: verified PR #46 merged into develop (commit `d6ed146`); confirmed `whsec_*` not yet received from Stripe account owner (B1.2 STANDBY ongoing) so Branch B per roadmap §17 plan; created `feature/fase-2-b7-checkout-link-persistence` from `develop`.
+  - Migration: `supabase/migrations/0045_phase_18c_payment_checkout_link_persistence.sql` adds two additive nullable columns (`stripe_checkout_url text`, `stripe_checkout_expires_at timestamptz`). No RLS change, no index, no defaults — the existing `(proposal_id, status)` access pattern already serves the enrichment read path. Idempotent (`add column if not exists`). **Not yet applied to remote**: Supabase MCP session auth expired this session (recorded landmine in §17). Operator step pending — re-auth and `mcp__supabase__apply_migration`, or apply via Dashboard SQL Editor before the next code-level push touching the new write path.
+  - Service write path: `lib/server/stripe/service.ts` `createCheckoutSession`:
+    - New-session branch: same single UPDATE now includes `stripe_checkout_url: session.url` and `stripe_checkout_expires_at: new Date(session.expires_at * 1000).toISOString()`; rejects null expiry with explicit error (Stripe should always return `expires_at` on the API version `2026-03-25.dahlia`).
+    - Reuse-open-session branch: the SELECT now pulls the two new columns; if either is null on a legacy pending row (pre-0045), the function back-fills them in a side UPDATE during the same operator click — one-time UX nudge per legacy row, no data loss, no race introduced.
+    - Return shape gains `expiresAt: string` (ISO 8601).
+  - Route response: `app/api/payments/checkout/route.ts` passes `expiresAt` through `jsonWithRequestId({ data: { url, paymentId, checkoutSessionId, expiresAt } })`. Pure addition; existing consumers unaffected.
+  - Enrichment repository: new module `lib/server/payments/checkout-link-repository.ts` exposes `listActiveCheckoutLinksByProposalIds(client, proposalIds)` returning a Map keyed by proposal id, filtering on `status='pending'` plus non-null URL plus DESC `created_at` ordering (most recent kept first). Excludes legacy null-URL rows.
+  - Mapper: `lib/server/leads/proposal-mappers.ts` `mapLeadProposalRowToWire` gains an optional third parameter `activeCheckoutLink: ActiveCheckoutLinkRow | null`. New internal helper `mapActiveCheckoutLinkToWire` computes `isExpired` server-side at read time (`new Date() > new Date(link.expiresAt)`).
+  - Handler factory: `app/api/leads/[leadId]/proposals/route.ts` `GetHandlerDeps` gains `listActiveCheckoutLinksByProposalIds`; the GET handler injects + invokes it after the existing per-proposal project + activity fan-out, and the per-proposal mapper call now receives the active link as the third argument. The test factory at `tests/server/api/leads/lead-proposals-paginated.test.ts` updated with the new stub returning an empty Map.
+  - Wire/domain types: `lib/leads/proposal-serialization.ts` `LeadProposalWire` gains `activeCheckoutLink: { url, sessionId, expiresAt: string, isExpired } | null`. `deserializeLeadProposal` parses `expiresAt` into a `Date`. `lib/types.ts` `LeadProposal` gains the same field with `expiresAt: Date`. `lib/data-context.tsx` `createMockLeadProposal` initializes `activeCheckoutLink: null` (mock mode never has a real checkout link).
+  - UI state machine: `components/lead-detail.tsx`:
+    - Removed `checkoutLinksByProposalId` React state + setter.
+    - Added local `formatCheckoutLinkExpiry(expiresAt, now=new Date())`: returns `Vence en Xh Ym` / `Vence en Xm` when `delta < 12h` (and > 0); else `Vence el DD/MM HH:mm` formatted via `toLocaleDateString('es-MX')` plus `toLocaleTimeString('es-MX', { hour12: false })`. Static render — no countdown ticker.
+    - `handleRequestPayment` reads `data.url`, `data.checkoutSessionId`, `data.expiresAt` from the POST response and optimistically merges `activeCheckoutLink: { url, sessionId, expiresAt: new Date(expiresAtIso), isExpired: false }` into the matching proposal in local `proposals` state via `setProposals`. Clipboard write + toast preserved.
+    - Replaced the single `Crear/copiar link de pago` block with four mutually-exclusive branches: **paid** renders a `Pago confirmado` badge (`CheckCircle2` icon); **active** renders `Copiar link` (primary, `Copy` icon) + `Abrir link` (ghost, `ExternalLink` icon) + `Crear link nuevo` (link variant) + a `Vence en … / Vence el …` muted hint (`Timer` icon); **expired** renders `Link expirado` + `Crear link nuevo` (primary, `CreditCard` icon); **none** renders the original `Crear link de pago` CTA. Eligibility gates (review approved, status in sent/accepted/handoff_ready) preserved on the link-creating branches; paid branch is independent.
+- Tests added (8 new over 223 baseline → 231/231 pass):
+  - `tests/server/payments/checkout-link-repository.test.ts` (4 tests): empty-input early-return without DB call / null-URL exclusion and most-recent-per-proposal retention / status=pending + non-null URL filter + proposal_id IN filter / DB error surfacing.
+  - `tests/server/leads/proposal-mappers-active-checkout-link.test.ts` (4 tests): null override → null output / future expiresAt → isExpired=false + pass-through of url/sessionId/expiresAt / past expiresAt → isExpired=true / linkedProject override and activeCheckoutLink both populated independently.
+  - Updated `tests/server/api/leads/lead-proposals-paginated.test.ts` `makeHandler` factory to add the new `listActiveCheckoutLinksByProposalIds` dep stub (empty Map).
+- Validation:
+  - `npm run typecheck`: clean.
+  - `npm run lint`: clean.
+  - `npm run build`: clean (Compiled successfully in 35.6s; 50 static pages generated; no route regressions).
+  - `npm test`: **231/231 pass** (8 new over 223 baseline). Duration 15.0s. Zero skipped, zero failed.
+  - Browser validation: **DEFERRED** until migration `0045` is applied to remote — the UI states require the persisted columns to exercise the active / expired branches end-to-end. Migration application is the next operator step.
+- Documentation updates in this iteration:
+  - `supabase/migrations/0045_phase_18c_payment_checkout_link_persistence.sql` (new, additive only)
+  - `lib/server/stripe/service.ts` (write path + return shape)
+  - `app/api/payments/checkout/route.ts` (response gains `expiresAt`)
+  - `lib/server/payments/checkout-link-repository.ts` (new module)
+  - `lib/server/leads/proposal-mappers.ts` (third param + activeCheckoutLink emit + isExpired compute)
+  - `app/api/leads/[leadId]/proposals/route.ts` (handler dep injection)
+  - `lib/leads/proposal-serialization.ts` (wire type + deserializer)
+  - `lib/types.ts` (`LeadProposal.activeCheckoutLink`)
+  - `lib/data-context.tsx` (`createMockLeadProposal` initializes `activeCheckoutLink: null`)
+  - `components/lead-detail.tsx` (state machine + helper + optimistic update)
+  - `tests/server/payments/checkout-link-repository.test.ts` (new, 4 tests)
+  - `tests/server/leads/proposal-mappers-active-checkout-link.test.ts` (new, 4 tests)
+  - `tests/server/api/leads/lead-proposals-paginated.test.ts` (factory stub for new dep)
+  - `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md` (Implementation hooks F-V08 marked implemented + Lifecycle amendment line 2026-05-16)
+  - `docs/context/project.context.core.md` (Closed-in-runtime entry + new operating rule for the persistence contract)
+  - `docs/context/project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot rewritten — F-V08 removed from Tier 3 backlog; remaining FASE 1 gap is B1.2/B1.3/B1.4/B1.5)
+- Operating rule added in this closure (in `project.context.core.md`):
+  - "Treat `payments.stripe_checkout_url` + `payments.stripe_checkout_expires_at` (migration `0045_phase_18c_payment_checkout_link_persistence.sql`) as the canonical durable artifact of the outbound Checkout link. The proposal read enrichment `activeCheckoutLink` (with server-computed `isExpired`) is surfaced by `GET /api/leads/[leadId]/proposals` via `lib/server/payments/checkout-link-repository.ts` + `lib/server/leads/proposal-mappers.ts`, so the `components/lead-detail.tsx` four-state UI (paid / active / expired / none) never needs a client-side fetch to display the link on mount. Do not re-introduce ephemeral React state for the URL — server is the source of truth on page load; `handleRequestPayment` updates the local proposals state optimistically with the API response. The `isExpired` flag is a static render-time computation; do not introduce a real-time countdown ticker without a separate UX iteration. `createCheckoutSession` writes both new columns on the new-session branch and back-fills them on the reuse-open-session branch for legacy rows — preserve this behavior so the UX nudge per legacy row stays one click only."
+- Operational pendings outside the iteration:
+  - Apply migration `0045` to remote Supabase (`pdotsdahsrnnsoroxbfe`) — Supabase MCP auth expired this session.
+  - Browser validation of the four UI states (paid / active / expired / none) once the migration is applied.
+- Completion status (initial close): PARTIAL until migration `0045` is applied to remote and browser validation runs.
+- **Closure addendum 2026-05-16 (later same day): COMPLETE.**
+  - Migration `0045` applied to `pdotsdahsrnnsoroxbfe` via Supabase Dashboard SQL Editor (operator verified both columns in Table Editor). G7 ongoing — row not registered in `supabase_migrations.schema_migrations`.
+  - Browser validation: 4/4 UI states PASS (none / active / expired / paid). Evidence in `docs/validations/Browser validation 2026-05-16 — F-V08 checkout link persistence.md`.
+  - **Key invariant verified**: post-reload, the GET `/api/leads/<leadId>/proposals` returns `activeCheckoutLink` populated with `url` / `sessionId` / `expiresAt` / `isExpired: false`, AND there is zero POST to `/api/payments/checkout` during the load — confirming the server is the source of truth on mount and the legacy ephemeral state machine is gone.
+  - **Landmine surfaced** (not part of the spec but worth recording for future iterations + the B1.4 runbook): `.env.local` still had `sk_live_*` from before the B1.1 rotation/scope-split (B1.1 only touched Vercel env scopes, not the developer's local file). Clicking "Crear link de pago" during validation produced a real Stripe Live mode session (`cs_live_a1BfLygQ82EmKAuS5...`) pagable for $350 USD. No charge happened — the clipboard URL was never pasted to a public surface. Operator-side cleanup: (a) expire the dangling session via Stripe Dashboard Live → Payments → Checkout sessions, (b) rotate `.env.local` to `sk_test_*` / `pk_test_*` before any future validation, (c) the B1.4 cutover runbook (when drafted) must include a pre-flight check that local Stripe keys are test mode.
+  - **Decision deferred during this iteration**: smoke E2E with Stripe CLI (a complete validation of the `/api/webhooks/stripe` activation path via `stripe listen --forward-to localhost`) was considered as an unlock to close B1.2 functionally without waiting for the Stripe account owner. User chose to wait for the account owner instead, keeping B1.2 in STANDBY per the original §17 plan. The CLI path is documented in conversation transcripts as a fallback if the standby drags on.
+  - This iteration is fully COMPLETE: ADR-010 §Amendment §Implementation hooks #3 (F-V08) closed, ADR-010 amendment line for 2026-05-16 added.
+- Next iteration candidates (per refreshed roadmap §17): (a) F-V07 disclaimer notifications (1h), (b) G8 plan-refs cleanup in `scripts/check-migrations.mjs` (30 min), (c) B1.2 once `whsec_*` is delivered (~15 min) — the remaining critical path to FASE 1 close, (d) FASE 3 lifecycle (auto-credit earnings from webhook) — the biggest remaining FASE 2 item.

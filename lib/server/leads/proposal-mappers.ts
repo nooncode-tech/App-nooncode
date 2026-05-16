@@ -9,6 +9,7 @@ import type {
   LeadProposalUpdate,
 } from '@/lib/server/leads/proposal-types'
 import type { ProjectRowWithLineage } from '@/lib/server/projects/types'
+import type { ActiveCheckoutLinkRow } from '@/lib/server/payments/checkout-link-repository'
 
 type EmbeddedLinkedProjectRow = NonNullable<LeadProposalRowWithLinkedProject['linked_project']>[number]
 export interface LeadProposalLinkedProjectSource {
@@ -31,9 +32,26 @@ function mapLinkedProjectToWire(project: LeadProposalLinkedProjectSource | Embed
   }
 }
 
+function mapActiveCheckoutLinkToWire(
+  link: ActiveCheckoutLinkRow | null,
+  now: Date = new Date(),
+): LeadProposalWire['activeCheckoutLink'] {
+  if (!link) {
+    return null
+  }
+  const expiry = new Date(link.expiresAt)
+  return {
+    url: link.url,
+    sessionId: link.sessionId,
+    expiresAt: link.expiresAt,
+    isExpired: now.getTime() > expiry.getTime(),
+  }
+}
+
 export function mapLeadProposalRowToWire(
   row: LeadProposalRowWithLinkedProject,
-  linkedProjectOverride: LeadProposalLinkedProjectSource | null = null
+  linkedProjectOverride: LeadProposalLinkedProjectSource | null = null,
+  activeCheckoutLink: ActiveCheckoutLinkRow | null = null,
 ): LeadProposalWire {
   const linkedProject = linkedProjectOverride ?? row.linked_project?.[0] ?? null
 
@@ -61,6 +79,7 @@ export function mapLeadProposalRowToWire(
     paymentStatus: (row.payment_status as import('@/lib/types').ProposalPaymentStatus | null) ?? null,
     paidAt: row.paid_at ?? null,
     linkedProject: mapLinkedProjectToWire(linkedProject),
+    activeCheckoutLink: mapActiveCheckoutLinkToWire(activeCheckoutLink),
   }
 }
 

@@ -232,6 +232,7 @@ function createMockLeadProposal(
     sentAt: input.status === 'sent' ? now : undefined,
     acceptedAt: input.status === 'accepted' || input.status === 'handoff_ready' ? now : undefined,
     handoffReadyAt: input.status === 'handoff_ready' ? now : undefined,
+    activeCheckoutLink: null,
   }
 }
 

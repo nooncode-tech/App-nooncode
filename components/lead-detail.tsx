@@ -77,6 +77,23 @@ interface LeadDetailProps {
   onStatusChange: (leadId: string, newStatus: LeadStatus) => Promise<Lead> | void
 }
 
+function formatCheckoutLinkExpiry(expiresAt: Date, now: Date = new Date()): string {
+  const deltaMs = expiresAt.getTime() - now.getTime()
+  const twelveHoursMs = 12 * 60 * 60 * 1000
+  if (deltaMs > 0 && deltaMs < twelveHoursMs) {
+    const totalMinutes = Math.floor(deltaMs / (60 * 1000))
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+    if (hours > 0) {
+      return `Vence en ${hours}h ${minutes}m`
+    }
+    return `Vence en ${minutes}m`
+  }
+  const day = expiresAt.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit' })
+  const time = expiresAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return `Vence el ${day} ${time}`
+}
+
 const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
   new: { label: 'Nuevo', color: 'bg-blue-500/10 text-blue-700' },
   contacted: { label: 'Contactado', color: 'bg-amber-500/10 text-amber-700' },
@@ -396,7 +413,6 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const [isMutatingAssignment, setIsMutatingAssignment] = useState(false)
   const [creatingProjectProposalId, setCreatingProjectProposalId] = useState<string | null>(null)
   const [checkoutLoadingProposalId, setCheckoutLoadingProposalId] = useState<string | null>(null)
-  const [checkoutLinksByProposalId, setCheckoutLinksByProposalId] = useState<Record<string, string>>({})
   const [prototypeRefreshKey, setPrototypeRefreshKey] = useState(0)
   const [activeTab, setActiveTab] = useState('activity')
   const [speechVariant, setSpeechVariant] = useState<SpeechVariant>('inPerson')
@@ -893,14 +909,29 @@ Total: 8 semanas
       }
 
       const checkoutUrl = json.data?.url as string | undefined
-      if (!checkoutUrl) {
+      const sessionId = json.data?.checkoutSessionId as string | undefined
+      const expiresAtIso = json.data?.expiresAt as string | undefined
+
+      if (!checkoutUrl || !sessionId || !expiresAtIso) {
         throw new Error('La sesion de pago no regreso un link.')
       }
 
-      setCheckoutLinksByProposalId((current) => ({
-        ...current,
-        [proposal.id]: checkoutUrl,
-      }))
+      const expiresAt = new Date(expiresAtIso)
+      setProposals((current) =>
+        current.map((entry) =>
+          entry.id === proposal.id
+            ? {
+                ...entry,
+                activeCheckoutLink: {
+                  url: checkoutUrl,
+                  sessionId,
+                  expiresAt,
+                  isExpired: false,
+                },
+              }
+            : entry,
+        ),
+      )
 
       try {
         await navigator.clipboard.writeText(checkoutUrl)
@@ -1787,13 +1818,109 @@ Total: 8 semanas
                       </div>
                     )}
 
+                    {isSupabaseMode && proposal.paymentStatus === 'succeeded' && (
+                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                        <CheckCircle2 className="size-3.5 mr-1.5" />
+                        Pago confirmado
+                      </Badge>
+                    )}
+
                     {isSupabaseMode &&
                       proposal.reviewStatus === 'approved' &&
                       ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
-                      proposal.paymentStatus !== 'succeeded' && (
+                      proposal.paymentStatus !== 'succeeded' &&
+                      proposal.activeCheckoutLink &&
+                      !proposal.activeCheckoutLink.isExpired && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          onClick={() => {
+                            const url = proposal.activeCheckoutLink?.url
+                            if (!url) return
+                            navigator.clipboard
+                              .writeText(url)
+                              .then(() => toast.success('Link de pago copiado al portapapeles'))
+                              .catch(() => toast.error('No se pudo copiar el link'))
+                          }}
+                          disabled={isReleasedLeadPendingClaim}
+                        >
+                          <Copy className="size-4 mr-2" />
+                          Copiar link
+                        </Button>
+                        <Button asChild type="button" variant="ghost" size="sm">
+                          <a
+                            href={proposal.activeCheckoutLink.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <ExternalLink className="size-3.5 mr-1.5" />
+                            Abrir link
+                          </a>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          onClick={() => handleRequestPayment(proposal)}
+                          disabled={
+                            isReleasedLeadPendingClaim ||
+                            checkoutLoadingProposalId === proposal.id
+                          }
+                        >
+                          {checkoutLoadingProposalId === proposal.id ? (
+                            <Loader2 className="size-4 mr-2 animate-spin" />
+                          ) : null}
+                          Crear link nuevo
+                        </Button>
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Timer className="size-3.5" />
+                          {formatCheckoutLinkExpiry(proposal.activeCheckoutLink.expiresAt)}
+                        </span>
+                      </>
+                    )}
+
+                    {isSupabaseMode &&
+                      proposal.reviewStatus === 'approved' &&
+                      ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
+                      proposal.paymentStatus !== 'succeeded' &&
+                      proposal.activeCheckoutLink &&
+                      proposal.activeCheckoutLink.isExpired && (
+                      <>
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Timer className="size-3.5" />
+                          Link expirado
+                        </span>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleRequestPayment(proposal)}
+                          disabled={
+                            isReleasedLeadPendingClaim ||
+                            checkoutLoadingProposalId === proposal.id
+                          }
+                        >
+                          {checkoutLoadingProposalId === proposal.id ? (
+                            <Loader2 className="size-4 mr-2 animate-spin" />
+                          ) : (
+                            <CreditCard className="size-4 mr-2" />
+                          )}
+                          Crear link nuevo
+                        </Button>
+                      </>
+                    )}
+
+                    {isSupabaseMode &&
+                      proposal.reviewStatus === 'approved' &&
+                      ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
+                      proposal.paymentStatus !== 'succeeded' &&
+                      !proposal.activeCheckoutLink && (
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="default"
+                        size="sm"
                         onClick={() => handleRequestPayment(proposal)}
                         disabled={
                           isReleasedLeadPendingClaim ||
@@ -1805,19 +1932,7 @@ Total: 8 semanas
                         ) : (
                           <CreditCard className="size-4 mr-2" />
                         )}
-                        Crear/copiar link de pago
-                      </Button>
-                    )}
-                    {checkoutLinksByProposalId[proposal.id] && (
-                      <Button asChild type="button" variant="ghost" size="sm">
-                        <a
-                          href={checkoutLinksByProposalId[proposal.id]}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <ExternalLink className="size-3.5 mr-1.5" />
-                          Abrir link
-                        </a>
+                        Crear link de pago
                       </Button>
                     )}
                   </div>
