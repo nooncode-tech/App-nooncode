@@ -8,9 +8,12 @@ const MIGRATIONS_DIR = join(ROOT, 'supabase', 'migrations');
 const PREFIX_RE = /^(\d{4})_/;
 
 // Files involved in known historical prefix collisions (0024-0027).
-// Tracked in docs/context/project.context.core.md and resolved by R1.1
-// (Sprint 2). Until R1.1 lands, the check grandfathers these exact files
-// so CI stays green; any *new* file colliding at any prefix still fails.
+// Permanent grandfathered set per ADR-006 §Reconciliation required
+// (Option B2 — additive convention permanent — adopted 2026-05-11
+// after ledger verification confirmed 4 of 8 colliding filenames were
+// already registered in `supabase_migrations.schema_migrations`,
+// foreclosing the rename branch). Any *new* file colliding at any
+// prefix still fails.
 const KNOWN_COLLISION_FILES = new Set([
   '0024_phase_3a_monetary_wallet_foundation.sql',
   '0024_phase_5a_prototype_settings_admin_write.sql',
@@ -52,7 +55,7 @@ for (const [prefix, group] of byPrefix) {
 }
 
 if (grandfathered.length > 0) {
-  console.log(`Known historical collisions (grandfathered, pending R1.1):`);
+  console.log(`Known historical collisions (grandfathered per ADR-006):`);
   for (const { prefix, group } of grandfathered.sort((a, b) => a.prefix.localeCompare(b.prefix))) {
     console.log(`  ${prefix}_*  ->  ${group.sort().join(', ')}`);
   }
