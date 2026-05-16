@@ -2430,3 +2430,47 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 - Completion status: COMPLETE for the F-V07 scope. Roadmap §6 Bloque B F-V07 item closed.
 - Why no spec: the audit item was a 1-hour copy + Alert change with zero contract risk, and follows the existing "FASE 1 UX honesty bundle" precedent (2026-05-14, F-V04/V05/V09/V11/V13/V18/V19/V20 also handled as a single Bugfix Lite without a per-item spec). Spec overhead for sub-2h copy-only iterations is intentionally avoided.
 - Next FASE 2 iteration candidates: (a) G8 plan-refs cleanup in `scripts/check-migrations.mjs` (30 min, trivial), (b) F-V06 prototypes iframe embed (4h, Bloque B closure), (c) FASE 3 lifecycle (auto-credit earnings from Stripe webhook — biggest remaining FASE 2 item, ~2-3d, blocked end-to-end by B1.2 standby but the code can be written and merged ahead of the webhook coming online), (d) B15 webhook_event_seen ledger for website inbound (~4h, Bloque C), (e) B26 schema_migrations gating endpoint (~4h, Bloque C), (f) F-V12 leads pagination wire (~4-6h, Bloque C). FASE 1 critical path (B1.2-B1.5) remains gated by Stripe account owner.
+
+
+
+## Session note: B1.2 partial + B1.3a outbound smoke PARTIAL (FASE 1 sub-iteration)
+- Date: 2026-05-16 (late evening)
+- Iteration id: `fase-1-b1-stripe-live-cutover` sub-iteration B1.3a (outbound smoke).
+- Route used: operator-side ops (whsec_* delivery + Vercel env subir + manual redeploy) → guided browser validation (Scenarios 1-4 PASS, Scenarios 5-9 DEFERRED).
+- Objective: cerrar B1.2 (webhook live config) + B1.3a (outbound smoke E2E con $1 real) per roadmap §19.2 camino crítico FASE 1. Validar que la integración Stripe Live end-to-end funciona desde click "Crear link de pago" hasta activación de proyecto + earnings credit + (deferido) withdraw via Connect.
+- What happened (chronological):
+  - **whsec_* recibido**: el dueño de la cuenta Stripe le pasó a Pedro el `whsec_*` del endpoint `NoonApp production webhook` (`we_1TXpLvRC5LvlmWeuVxdXmOoh`) que apunta a `https://nooncode-app-pi.vercel.app/api/webhooks/stripe`. Endpoint configurado activo con 6 eventos suscritos (`checkout.session.completed`, `payment_intent.payment_failed`, `charge.refunded`, `account.updated`, `transfer.paid`, `transfer.reversed`).
+  - **B1.2 paso 1 ejecutado**: Pedro subió `STRIPE_WEBHOOK_SECRET=whsec_*` a Vercel scope `Production only` y disparó un manual redeploy. El redeploy completó OK.
+  - **B1.2 paso 2 (test event) bloqueado**: Stripe Workbench Shell muestra `stripe trigger is disabled in live mode. Switch to testmode to run stripe trigger.` Stripe no permite test events fake en live mode. La UI Dashboard tampoco tiene un botón "Send test webhook" en la Workbench beta. Sub-finding: en la Workbench la pantalla del endpoint mostraba el counter "Entregas de eventos: Total 0" como baseline limpio. La única vía de validación es disparar un evento real (e.g. account.updated por cambio benigno en Settings, o un pago real via B1.3a).
+  - **Decisión**: usar B1.3a como validador implícito de B1.2 con safeguards: importe $1 USD, refund-ready, reconciliation SQL ready, monitoreo paralelo en 3 tabs. Doc skeleton creado en `docs/validations/B1.3a outbound smoke 2026-05-16.md` con 10 scenarios pre-stage + SQL queries.
+  - **Pre-flight evidencia**:
+    - Query A (Stripe Connect status): ningún seller activo (admin/maria/juan) tiene `stripe_connect_account_id` poblado. Step 7 (withdraw via Connect) automáticamente diferido a B1.3b iteración separada.
+    - Query B (legacy live session): `cs_live_a1BfLyg...` de F-V08 sigue pending. **CRÍTICO**: el `amount` era `35000.00` = **$35,000 USD live**, no $350 como interpreté del wire payload. Pedro expiró la session via Stripe Dashboard antes de empezar el smoke.
+    - Query C (webhook ledger baseline): empty (0 rows). Baseline limpio para atribución del smoke.
+  - **Scenarios ejecutados**:
+    - Scenario 1 (crear lead outbound): PASS. Lead `2b46b7f8-9728-4502-bac4-d1455b20ff84`, lead_origin=outbound, assigned_to=juan.
+    - Scenario 2 (crear proposal sent $1): PASS. Proposal `3860ace8-46a8-4345-88cd-bb134b6aeee3`, status=sent, review_status=pending_review, seller_fee row creada automaticamente en state=potential con amount=100 (B3 integration verificada).
+    - Scenario 3 (admin approve): PASS. review_status=approved, reviewer_id=admin, reviewed_at populated.
+    - Scenario 4 (crear checkout link): PASS PARCIAL. Session `cs_live_a1TJpTZDzoCXn2Yicri...` creada en Stripe Live, customer `cus_UWucYadZYxbV4w` creado, payment row id=`f15232ba-d3d8-4310-87df-0d816b9cae54` con status=pending. **Críticamente**: `stripe_checkout_url=NULL` y `stripe_checkout_expires_at=NULL` post-creación — eso significa que el **deploy de producción está corriendo código pre-F-V08** (G11 landmine confirmado en escala: ninguno de los merges F-V08/F-V07/G8 de hoy llegaron a producción porque Vercel no auto-deploya en push a develop, y el redeploy manual de B1.2 esta mañana usó el deploy anterior — pre-F-V08).
+    - Scenarios 5-9 DEFERRED: operador sin tarjeta para hacer el cobro real $1. Sin Scenario 5, no se dispara webhook real, no se valida signature verification end-to-end, no se prueba activación.
+- **Findings críticos surfaceados** (no parte del scope original, surfaceados durante el smoke):
+  - **F-V08 landmine $35K USD**: la session de F-V08 era $35K pagables, no $350. Mistake mío de interpretación del wire payload `amount: 35000` (dollars, no cents — la columna `lead_proposals.amount` está en USD, y `createCheckoutSession` multiplica por 100 para cents). Expirada manualmente.
+  - **G11 confirmed**: el deploy de producción está stale (pre-F-V08). El redeploy de B1.2 esta mañana en Vercel re-usó el deploy anterior (Vercel's "Redeploy" sin commit nuevo). Las 3 PRs de hoy (#47 F-V08 + #48 F-V07 + #49 G8) están en develop pero NO en prod. La schema sí está adelantada (migration 0045 aplicada via Dashboard SQL Editor ayer); la mismatch schema/code es source de futuros bugs si no se resuelve.
+  - **No Connect onboarded**: el §17 mencionó "Stripe Connect onboarded" como pre-flight de B1.0 pero eso era la cuenta Stripe Platform de Pedro (que sí está onboarded), no las cuentas Connect individuales de los sellers. Ningún seller tiene Connect account creado todavía. Step 7 del original Día 4 smoke (withdraw via Connect) no puede ejecutarse hasta que al menos un seller onboard Connect. Diferido a B1.3b.
+- **Decisión sobre cleanup**: lead + proposal + payment + seller_fee rows quedan en DB para retomar el smoke desde Scenario 5 cuando haya tarjeta. La cs_live_a1TJp... session se debe expirar manualmente para evitar pagable accidental.
+- **B1.2 status**: configuración completa pero verification end-to-end de la firma sigue pendiente. La única vía de validación es un pago real (Scenario 5 de B1.3a) o el primer pago real del pilot.
+- **B1.3a status**: PARTIAL — 4/9 scenarios PASS, 5/9 DEFERRED.
+- **Step 7 (B1.3b)**: BLOCKED — necesita seller con Stripe Connect onboarded. Tracking aparte.
+- Files modified in this iteration:
+  - `docs/validations/B1.3a outbound smoke 2026-05-16.md` (new, full smoke evidence + DEFERRED status)
+  - `docs/context/project.context.core.md` (Partial in runtime entry para B1.3a)
+  - `docs/context/project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 + §19 (snapshot update — FASE 1 progress + pendings)
+- Operating rule updates: ninguno (B1.3a no agrega contract durable; el flow Stripe ya tiene operating rule existente).
+- Completion status: **PARTIAL** for B1.3a; FASE 1 critical path no cerrado todavía. Cuando se retome con tarjeta + redeploy producción, los Scenarios 5-9 se completan y B1.2/B1.3a quedan COMPLETE. Tiempo estimado para cerrar: ~30 min de smoke + 5 min redeploy + 2 min refund = ~40 min.
+- Next iteration candidates:
+  - **B1.3a Scenarios 5-9** cuando haya tarjeta disponible.
+  - **Redeploy producción** con develop head (`599d223+`) para activar F-V08/F-V07/G8 en prod.
+  - **B1.4 cutover runbook** se puede draftear en paralelo (es solo docs, no depende de B1.3 close).
+  - **F-V06 prototypes iframe** PAUSADO esperando B1 close, retomar después.
+  - **G11 diagnosis**: Vercel auto-deploys siguen sin disparar. Settings → Git → Production Branch + Ignored Build Step + GitHub App pending check.
