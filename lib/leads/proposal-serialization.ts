@@ -29,6 +29,12 @@ export interface LeadProposalWire {
     status: ProjectStatus
     createdAt: string
   } | null
+  activeCheckoutLink: {
+    url: string
+    sessionId: string
+    expiresAt: string
+    isExpired: boolean
+  } | null
 }
 
 export function deserializeLeadProposal(proposal: LeadProposalWire): LeadProposal {
@@ -63,5 +69,13 @@ export function deserializeLeadProposal(proposal: LeadProposalWire): LeadProposa
           createdAt: new Date(proposal.linkedProject.createdAt),
         }
       : undefined,
+    activeCheckoutLink: proposal.activeCheckoutLink
+      ? {
+          url: proposal.activeCheckoutLink.url,
+          sessionId: proposal.activeCheckoutLink.sessionId,
+          expiresAt: new Date(proposal.activeCheckoutLink.expiresAt),
+          isExpired: proposal.activeCheckoutLink.isExpired,
+        }
+      : null,
   }
 }

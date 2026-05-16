@@ -75,7 +75,7 @@ export async function POST(request: Request) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.headers.get('origin') ?? 'http://localhost:3000'
 
-    const { url, paymentId, checkoutSessionId } = await createCheckoutSession(
+    const { url, paymentId, checkoutSessionId, expiresAt } = await createCheckoutSession(
       adminClient,
       principal,
       {
@@ -90,7 +90,11 @@ export async function POST(request: Request) {
       appUrl,
     )
 
-    return jsonWithRequestId({ data: { url, paymentId, checkoutSessionId } }, undefined, requestId)
+    return jsonWithRequestId(
+      { data: { url, paymentId, checkoutSessionId, expiresAt } },
+      undefined,
+      requestId,
+    )
   } catch (error) {
     return toErrorResponse(error, { requestId })
   }

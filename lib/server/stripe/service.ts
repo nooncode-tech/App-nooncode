@@ -59,7 +59,7 @@ export async function createCheckoutSession(
     proposalTitle: string
   },
   appUrl: string,
-): Promise<{ url: string; paymentId: string; checkoutSessionId: string }> {
+): Promise<{ url: string; paymentId: string; checkoutSessionId: string; expiresAt: string }> {
   const stripe = getStripeClient()
   const stripeCustomerId = await getOrCreateStripeCustomer(
     client,
@@ -87,7 +87,7 @@ export async function createCheckoutSession(
 
   const { data: existingPending, error: pendingLookupError } = await client
     .from('payments')
-    .select('id, stripe_checkout_session_id')
+    .select('id, stripe_checkout_session_id, stripe_checkout_url, stripe_checkout_expires_at')
     .eq('proposal_id', params.proposalId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
@@ -102,10 +102,34 @@ export async function createCheckoutSession(
     const session = await stripe.checkout.sessions.retrieve(existingPending.stripe_checkout_session_id)
 
     if (session.status === 'open' && session.url) {
+      const expiresAtIso = session.expires_at
+        ? new Date(session.expires_at * 1000).toISOString()
+        : existingPending.stripe_checkout_expires_at ?? null
+
+      // Backfill legacy rows that have a session id but no persisted URL/expiry
+      // the first time the operator clicks the button on them.
+      if (
+        !existingPending.stripe_checkout_url ||
+        !existingPending.stripe_checkout_expires_at
+      ) {
+        await client
+          .from('payments')
+          .update({
+            stripe_checkout_url: session.url,
+            stripe_checkout_expires_at: expiresAtIso,
+          })
+          .eq('id', existingPending.id)
+      }
+
+      if (!expiresAtIso) {
+        throw new Error('Stripe did not return an expiration for the reused checkout session.')
+      }
+
       return {
         url: session.url,
         paymentId: existingPending.id,
         checkoutSessionId: session.id,
+        expiresAt: expiresAtIso,
       }
     }
 
@@ -188,10 +212,16 @@ export async function createCheckoutSession(
     idempotencyKey: `checkout:${pendingPaymentId}`,
   })
 
+  const expiresAtIso = session.expires_at
+    ? new Date(session.expires_at * 1000).toISOString()
+    : null
+
   const { error } = await client
     .from('payments')
     .update({
       stripe_checkout_session_id: session.id,
+      stripe_checkout_url: session.url,
+      stripe_checkout_expires_at: expiresAtIso,
       metadata: {
         source: 'outbound',
         actorProfileId: principal.profile.id,
@@ -216,5 +246,14 @@ export async function createCheckoutSession(
     throw new Error('Stripe did not return a checkout URL.')
   }
 
-  return { url: session.url, paymentId: pendingPaymentId, checkoutSessionId: session.id }
+  if (!expiresAtIso) {
+    throw new Error('Stripe did not return an expiration for the checkout session.')
+  }
+
+  return {
+    url: session.url,
+    paymentId: pendingPaymentId,
+    checkoutSessionId: session.id,
+    expiresAt: expiresAtIso,
+  }
 }

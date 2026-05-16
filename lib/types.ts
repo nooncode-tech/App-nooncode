@@ -235,6 +235,12 @@ export interface LeadProposal {
     status: ProjectStatus
     createdAt: Date
   }
+  activeCheckoutLink: {
+    url: string
+    sessionId: string
+    expiresAt: Date
+    isExpired: boolean
+  } | null
 }
 
 // Project Types

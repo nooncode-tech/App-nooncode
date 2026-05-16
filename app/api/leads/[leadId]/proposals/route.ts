@@ -14,6 +14,10 @@ import {
 import { findProposalLinkedProjectFromActivities } from '@/lib/server/leads/proposal-lineage'
 import { listProjectsByProposalIds } from '@/lib/server/projects/repository'
 import {
+  listActiveCheckoutLinksByProposalIds,
+  type ActiveCheckoutLinkRow,
+} from '@/lib/server/payments/checkout-link-repository'
+import {
   mapCreateLeadProposalInputToInsert,
   mapLeadProposalRowToWire,
 } from '@/lib/server/leads/proposal-mappers'
@@ -56,6 +60,10 @@ type GetHandlerDeps = {
   ) => Promise<unknown[]>
   listProjectsByProposalIds: (client: DatabaseClient, ids: string[]) => Promise<unknown[]>
   listLeadActivities: (client: DatabaseClient, leadId: string) => Promise<unknown[]>
+  listActiveCheckoutLinksByProposalIds: (
+    client: DatabaseClient,
+    ids: readonly string[]
+  ) => Promise<Map<string, ActiveCheckoutLinkRow>>
   createSupabaseServerClient: () => Promise<DatabaseClient>
 }
 
@@ -103,6 +111,10 @@ export function createGetLeadProposalsHandler(deps: GetHandlerDeps) {
           .map((project) => [project.source_proposal_id as string, project])
       )
       const leadActivities = await deps.listLeadActivities(client, leadId)
+      const activeCheckoutLinkByProposalId = await deps.listActiveCheckoutLinksByProposalIds(
+        client,
+        proposalIds,
+      )
 
       const envelope = buildCursorResponse(proposals, {
         limit: pagination.limit,
@@ -117,7 +129,8 @@ export function createGetLeadProposalsHandler(deps: GetHandlerDeps) {
               findProposalLinkedProjectFromActivities(
                 leadActivities as Parameters<typeof findProposalLinkedProjectFromActivities>[0],
                 proposal.id
-              )
+              ),
+            activeCheckoutLinkByProposalId.get(proposal.id) ?? null,
           )
         ),
         meta: envelope.meta,
@@ -138,6 +151,7 @@ export async function GET(
     listLeadProposals,
     listProjectsByProposalIds,
     listLeadActivities,
+    listActiveCheckoutLinksByProposalIds,
     createSupabaseServerClient,
   })(request, context)
 }
