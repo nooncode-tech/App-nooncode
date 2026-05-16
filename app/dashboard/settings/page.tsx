@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
@@ -48,6 +49,7 @@ import {
   Coins,
   DollarSign,
   Loader2,
+  Info,
 } from 'lucide-react'
 
 export default function SettingsPage() {
@@ -620,10 +622,16 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="text-base">Preferencias de Notificaciones</CardTitle>
               <CardDescription>
-                Configura qué notificaciones recibir. Las críticas no se pueden desactivar.
+                Elige qué eventos aparecen en tu inbox de notificaciones. Las críticas no se pueden desactivar.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <Alert>
+                <Info />
+                <AlertDescription>
+                  Estas preferencias solo afectan tu inbox interno en <span className="font-medium">/dashboard/notifications</span>. El envío por email y push notifications no está implementado todavía.
+                </AlertDescription>
+              </Alert>
               {([
                 { key: 'lead_assigned',          label: 'Lead asignado',               desc: 'Cuando se te asigna un nuevo prospecto',          critical: true },
                 { key: 'lead_status_changed',     label: 'Cambio de estado de lead',    desc: 'Cuando un lead cambia de estado',                  critical: false },
