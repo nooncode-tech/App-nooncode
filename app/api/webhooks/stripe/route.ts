@@ -7,8 +7,8 @@ import { getStripeClient } from '@/lib/server/stripe/client'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import type { Database, Json } from '@/lib/server/supabase/database.types'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
-import { getSellerFeeByProposalId } from '@/lib/server/seller-fees/repository'
-import { confirmSellerFee } from '@/lib/server/seller-fees/service'
+import { getSellerFeeByPaymentId, getSellerFeeByProposalId } from '@/lib/server/seller-fees/repository'
+import { cancelSellerFee, confirmSellerFee } from '@/lib/server/seller-fees/service'
 import {
   beginStripeWebhookEvent,
   markStripeWebhookEventFailed,
@@ -366,24 +366,107 @@ async function handleChargeRefunded(
   const paymentIntentId = charge.payment_intent as string
   if (!paymentIntentId) return
 
-  await client
-    .from('payments')
-    .update({ status: 'refunded', refunded_at: new Date().toISOString() })
-    .eq('stripe_payment_intent_id', paymentIntentId)
-
-  // Find and pause related project
+  // Load payment row first so we have the full context for downstream
+  // reversal (seller_fees, earnings_ledger).
   const { data: payment } = await client
     .from('payments')
-    .select('project_id')
+    .select('id, project_id, proposal_id, status')
     .eq('stripe_payment_intent_id', paymentIntentId)
     .maybeSingle()
 
-  if (payment?.project_id) {
+  if (!payment) {
+    logger.warn('stripe.charge_refunded.payment_not_found', {
+      paymentIntentId,
+      chargeId: charge.id,
+    })
+    return
+  }
+
+  // 1. Mark payment refunded (idempotent — repeats just rewrite the timestamp)
+  await client
+    .from('payments')
+    .update({ status: 'refunded', refunded_at: new Date().toISOString() })
+    .eq('id', payment.id)
+
+  // 2. Pause related project (existing behavior)
+  if (payment.project_id) {
     await client
       .from('projects')
       .update({ payment_activated: false, status: 'backlog' })
       .eq('id', payment.project_id)
   }
+
+  // 3. Cancel seller_fees row if present (B3 state machine reversal).
+  //    Uses cancelSellerFee service which is idempotent (returns early if
+  //    already cancelled) and enforces ADR-007 §Hard rule 3 (forbids
+  //    auto-cancel from paid_out) + Hard rule 4 (rejects pending_payout
+  //    pending future implementation). Either of those guards will throw,
+  //    which we catch and log — refund payment + project reversal stay
+  //    committed, and the operator gets an actionable error to escalate.
+  const sellerFee = await getSellerFeeByPaymentId(client, payment.id)
+  if (sellerFee && sellerFee.state !== 'cancelled') {
+    try {
+      await cancelSellerFee(client, {
+        sellerFeeId: sellerFee.id,
+        reason: `refund:${charge.id}`,
+        actorProfileId: null,
+      })
+    } catch (error) {
+      logger.error('stripe.charge_refunded.seller_fee_cancel_failed', {
+        ...errorToLogContext(error),
+        sellerFeeId: sellerFee.id,
+        priorState: sellerFee.state,
+        paymentId: payment.id,
+        chargeId: charge.id,
+      })
+    }
+  }
+
+  // 4. Reverse earnings_ledger entries. INSERT mirror rows with negative
+  //    amounts and a refund-scoped idempotency_key so Stripe webhook
+  //    retries don't double-reverse, and so a manual Dashboard refund
+  //    + a later admin-endpoint refund attempt against the same charge
+  //    produce a single reversal pair.
+  const { data: earnings } = await client
+    .from('earnings_ledger')
+    .select('id, actor_id, actor_role, amount, currency, lead_id, proposal_id')
+    .eq('payment_id', payment.id)
+    .gt('amount', 0)
+
+  if (earnings && earnings.length > 0) {
+    const reversalRows = earnings.map((row) => ({
+      actor_id: row.actor_id,
+      actor_role: row.actor_role,
+      earning_type: 'activation' as const,
+      amount: -Number(row.amount),
+      currency: row.currency,
+      lead_id: row.lead_id,
+      proposal_id: row.proposal_id,
+      payment_id: payment.id,
+      idempotency_key: `refund:${charge.id}:earning:${row.actor_role}:${row.actor_id ?? 'unassigned'}`,
+      notes: `Reversal of activation earnings (charge ${charge.id})`,
+    }))
+
+    const { error: reversalError } = await client
+      .from('earnings_ledger')
+      .upsert(reversalRows, {
+        onConflict: 'idempotency_key',
+        ignoreDuplicates: true,
+      })
+
+    if (reversalError) {
+      throw new Error(
+        `Failed to insert earnings reversal rows: ${reversalError.message}`
+      )
+    }
+  }
+
+  // Wallet credit reversal (debiting `pending` bucket) is intentionally
+  // out of scope of this iteration — it requires a `debit_wallet_bucket`
+  // RPC that doesn't exist yet. Seller's `pending` balance retains the
+  // original credit; no financial harm because `pending` is not
+  // withdrawable until admin consolidates to `available_to_withdraw`.
+  // Tracked as follow-up; admin can manually adjust if needed.
 }
 
 export async function POST(request: Request) {
