@@ -9,6 +9,7 @@ import type { Database, Json } from '@/lib/server/supabase/database.types'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
 import { getSellerFeeByPaymentId, getSellerFeeByProposalId } from '@/lib/server/seller-fees/repository'
 import { cancelSellerFee, confirmSellerFee } from '@/lib/server/seller-fees/service'
+import { debitWalletForRefund } from '@/lib/server/earnings/refund-service'
 import {
   beginStripeWebhookEvent,
   markStripeWebhookEventFailed,
@@ -461,12 +462,50 @@ async function handleChargeRefunded(
     )
   }
 
-  // Wallet credit reversal (debiting `pending` bucket) is intentionally
-  // out of scope of this iteration — it requires a `debit_wallet_bucket`
-  // RPC that doesn't exist yet. Seller's `pending` balance retains the
-  // original credit; no financial harm because `pending` is not
-  // withdrawable until admin consolidates to `available_to_withdraw`.
-  // Tracked as follow-up; admin can manually adjust if needed.
+  // 5. Wallet bucket reversal (Path G, ADR-015 §Amendment closure of G14).
+  //    Invokes the `debit_wallet_for_refund` RPC (migration 0050) which
+  //    atomically debits the bucket that currently holds the credit
+  //    (`pending` if pre-consolidation, `available_to_withdraw` if
+  //    post-consolidation). Idempotent on Stripe webhook retries.
+  //    Defensive bucket-balance check inside the RPC handles the case
+  //    where funds were already moved to `locked` (payout initiated)
+  //    or paid out — those actors are surfaced in
+  //    `actorsSkippedAlreadyPaidOut` for downstream alerting.
+  //
+  //    Failures here do NOT fail the webhook: payment + project +
+  //    seller_fees + earnings_ledger reversal already committed. The
+  //    error is logged for operator follow-up.
+  try {
+    const result = await debitWalletForRefund(client, {
+      paymentId: payment.id,
+      actorProfileId: null,
+    })
+
+    if (result.actorsSkippedAlreadyPaidOut > 0) {
+      logger.warn('stripe.charge_refunded.actors_already_paid_out', {
+        paymentId: payment.id,
+        chargeId: charge.id,
+        actorsDebited: result.actorsDebited,
+        actorsSkippedAlreadyPaidOut: result.actorsSkippedAlreadyPaidOut,
+        amountDebited: result.amountDebited,
+        bucketUsed: result.bucketUsed,
+      })
+    } else {
+      logger.info('stripe.charge_refunded.wallet_debited', {
+        paymentId: payment.id,
+        chargeId: charge.id,
+        actorsDebited: result.actorsDebited,
+        amountDebited: result.amountDebited,
+        bucketUsed: result.bucketUsed,
+      })
+    }
+  } catch (error) {
+    logger.error('stripe.charge_refunded.wallet_debit_failed', {
+      ...errorToLogContext(error),
+      paymentId: payment.id,
+      chargeId: charge.id,
+    })
+  }
 }
 
 export async function POST(request: Request) {
