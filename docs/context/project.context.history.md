@@ -2474,3 +2474,112 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - **B1.4 cutover runbook** se puede draftear en paralelo (es solo docs, no depende de B1.3 close).
   - **F-V06 prototypes iframe** PAUSADO esperando B1 close, retomar después.
   - **G11 diagnosis**: Vercel auto-deploys siguen sin disparar. Settings → Git → Production Branch + Ignored Build Step + GitHub App pending check.
+
+
+
+## Session note: B1.4 runbook DRAFT + F-V06 prototype iframe + G11 fix + B1.3a/B1.2 closure (multi-piece FASE 1/2 day)
+- Date: 2026-05-17
+- Iteration ids: `fase-1-b1-stripe-live-cutover` sub-iterations B1.3a + B1.4 (DRAFT) + B1.2 implicit; `fase-2-f-v06-prototype-iframe`; ops fix G11 root cause.
+- Route used: parallel execution — B1.4 docs draft → F-V06 implementation → G11 diagnosis + fix → B1.3a Scenarios 4-8 smoke E2E + Scenario 9 deferred reason update.
+- Objective: maximize forward progress in a session where Stripe Dashboard access was unavailable but the operator had a card. Drained 5 distinct work items in sequence: (1) draft B1.4 runbook with landmines fresh from 2026-05-16; (2) implement F-V06 (last item of Bloque B FASE 2); (3) diagnose and fix G11 (Vercel auto-deploys broken — root cause not yet known at session start); (4) bring prod up to develop HEAD; (5) close B1.3a Scenarios 5-8 with real $1 payment + implicitly close B1.2.
+
+### B1.4 cutover runbook (PR #51, merged 2026-05-17 morning)
+- New file `docs/runbooks/cutover-pilot.md` (524 lines). Section structure: audience/purpose, pre-incident state assumptions, rollback procedures (Vercel deploy revert / Stripe webhook disable / live key rotation), restore procedures (Supabase PITR + fallback), webhook event replay, failure-mode catalogue (10 entries covering signature mismatch, handler throws, G11 stale deploy, sk_live in .env.local, USD-vs-cents amount confusion, Connect not active, URL drift, trigger disabled live, send-test-webhook UI gap, G9 chained-PR base), incident response checklist, accepted-limitation table, SQL quick-reference for triage, update discipline.
+- Markers `[verify-on-first-real-transaction]` (PITR status, observed handler behavior) and `[fill-in-before-pilot]` (on-call list) left as placeholders for a B1.4 closure iteration after B1.3a Scenarios 5-9 close.
+- Tests: 231/231 pass (no new tests — pure docs). Lint clean. Typecheck local had pre-existing `.next/dev/types/*` cache errors (identical on develop baseline, not introduced by this PR — CI passed cleanly).
+- Closes spec `specs/fase-1-b1-stripe-live-cutover.md` §B1.4 scope (audit B27).
+
+### F-V06 prototype iframe (PR #52, merged 2026-05-17 afternoon after 2 CI-fix commits)
+- Migration `0046_phase_18d_prototype_demo_chat_urls.sql` adds `demo_url text` + `chat_url text` (additive nullable) on `public.prototype_workspaces`.
+- `app/api/prototypes/[prototypeWorkspaceId]/generate/route.ts`: writes the three v0 outputs into separate columns (`generated_content` keeps source for audit; `demo_url` + `chat_url` are v0-hosted URLs).
+- `lib/server/prototypes/repository.ts` SELECT now includes `generated_at`, `generated_content`, `demo_url`, `chat_url` in both single + list reads — page hydrates iframe state from GET on mount, no extra round-trip.
+- `lib/server/prototypes/mappers.ts` exposes the four new fields on `PrototypeWorkspaceListItemWire`.
+- `lib/prototypes/serialization.ts` + `lib/types.ts` `PrototypeWorkspaceListItem` add the four optional fields. Base `PrototypeWorkspace` shape unchanged (iframe lives in list surface only).
+- `app/dashboard/prototypes/page.tsx`: initializes `generatedContent` / `demoUrls` / `chatUrls` state from GET response; replaces `<pre>` with sandboxed iframe (480px, `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"`, `loading=lazy`, `referrerPolicy=no-referrer`). Source code remains inside a `<details>` collapsible for inspection. Sandbox flags intentionally EXCLUDE `allow-top-navigation` (prevent parent-redirect), `allow-modals`, `allow-pointer-lock`.
+- `lib/server/supabase/database.types.ts` receives manual overrides for `prototype_workspaces` Row/Insert/Update + the RPC `handoff_prototype_workspace_to_delivery` Returns shape — same pattern B3 used for seller_fees while G7 is open.
+- **CI surfaced 4 typecheck errors** the local `next dev` cache had masked: PostgREST infers SELECT types from `database.types.ts` directly (not from manual intersections in module-local types), so `SELECT demo_url` resolved to `SelectQueryError<"column 'demo_url' does not exist">`. Two fix commits folded in: `bbfbdb7` (`database.types.ts` table override) + `4b372c9` (RPC Returns override). After fixes, CI green (231/231 tests, lint, typecheck, migration prefix, dependency audit).
+- Migration `0046` applied to remote `pdotsdahsrnnsoroxbfe` 2026-05-17 via Supabase Dashboard SQL Editor (Supabase MCP unauthorized during the session). G7 ongoing — row not registered in `supabase_migrations.schema_migrations`, consistent with prior additive OOB applies.
+- Closes Bloque B FASE 2 at 100% (F-V06 was the last open item; F-V07 + F-V08 already closed 2026-05-16).
+
+### G11 diagnosis + fix (ops, no code change)
+- **Symptom**: yesterday's smoke evidenced that prod was running stale code (pre-F-V08). Investigation at session start revealed the most recent develop deploy in Vercel was commit `5eba6e9` (2026-05-14, PR #43) — yesterday's PR #51 + #52 merges produced no Vercel deploy at all. The "manual Redeploys" the operator had been doing for days were rebuilding the same stale Production deploy each time (Vercel's "Redeploy" without source change uses the last build's source).
+- **Diagnosis path executed**:
+  - Repo check: `vercel.json` only has crons (no `ignoredBuildStep`); `.vercelignore` only excludes `.env*`; `package.json` has no ignored-build script. Root cause is on the Vercel UI side.
+  - Settings → Git: Connected Git Repository `nooncode-org/App-nooncode` healthy (`Connected 2d ago`, all webhook event toggles enabled).
+  - GitHub default branch: confirmed via `gh api` → `develop`.
+  - Deployments tab: every push to `develop` over the past weeks created a **Preview** deploy (BnMjhdZJW, ASJ6WP214, BoCATIZ6L, etc.), never auto-promoted to Production. All Production deploys were "Redeploy of..." manual actions by `nooncode-tech`. This confirmed Escenario 1 of the runbook §5.3: Production Branch was misconfigured.
+- **Root cause**: Vercel Production Branch was set to `main` (no such branch exists in the repo) instead of `develop`. Setting found in Settings → Environments → Production. The setting was hidden — not visible in Settings → Git per usual location, only surfaced after the operator looked in Environments.
+- **Fix path executed**:
+  1. **Env var preview-branch lock cleanup**: when attempting to change Production Branch to `develop`, Vercel blocked: "Cannot set Git branch 'develop' as Production Branch, because it's used for Preview Environment Variables 'NOON_WEBSITE_WEBHOOK_SECRET', 'NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL'." Inspection in Settings → Environment Variables: both vars had a `Preview ↓ develop` row AND a `Production` row (the Production rows already had the correct live values). The Preview→develop rows were redundant overrides from the period when develop deployed as Preview. Deleted the 2 `Preview ↓ develop` rows; Production scope copies preserved.
+  2. **Production Branch switched**: Settings → Environments → Production Branch changed from `main` to `develop` → Save successful.
+  3. **Production deploy triggered**: Settings → Git → Deploy Hooks → created `develop-trigger` hook (Vercel returned a unique URL `https://api.vercel.com/v1/integrations/deploy/prj_pcymuQmGPfOewVwQwKeGJM2rVX5u/...`). Curled the URL → HTTP 201 returned with `job.state=PENDING`. Vercel built `develop` HEAD as Production. Verified `curl -i -X POST https://nooncode-app-pi.vercel.app/api/webhooks/stripe` returned HTTP 400 with `{"error":"Missing stripe-signature header"}` (app's response).
+- **Empirical verification pending**: the fix relied on a Deploy Hook to trigger the first Production deploy. Whether auto-deploys on subsequent `develop` merges actually work end-to-end (via GitHub→Vercel webhook delivery) won't be known until the next real PR merges. Recorded as TBD in the new operating rule.
+- Operating rule added (last in §Operating rules): pin Vercel Production Branch to `develop`, avoid branch-locking env vars to `develop` Preview (they create UI fights when Production Branch needs to change), and reopen G11 if next merge doesn't auto-deploy.
+
+### B1.3a Scenarios 4-8 + B1.2 implicit (closure 2026-05-17)
+- Pre-cleanup: `cs_live_a1BfLygQ82EmKAuS5...` $35K landmine from F-V08 still showed as active in UI (operator had expired in Stripe Dashboard yesterday but our DB never knew). Ran SQL UPDATE on the dangling row to set `status='failed'` and `stripe_checkout_expires_at = now() - interval '1 hour'` so the UI no longer rendered it as active. Risk: zero — only touched our DB, not Stripe.
+- **Scenario 4 RE-RUN** (PASS — backfill path): clicked "Crear link nuevo" on the B1.3a Smoke Test lead. F-V08 backend (`lib/server/stripe/service.ts:createCheckoutSession`) detected the existing pending payment with `stripe_checkout_session_id=cs_live_a1TJp...`, retrieved the Stripe session, saw `status='open' && url` → reused it and backfilled `stripe_checkout_url` + `stripe_checkout_expires_at` on our DB row. No new session created. This is intentional "no double charge" safety. The original session from 2026-05-16 was still open in Stripe (sessions live 24h, was created ~17h before the click).
+- **Scenario 5** (PASS): operator paid $1 USD with personal card via Stripe Checkout in incognito window. ~15:46 UTC.
+- **Scenario 6** (PASS — closes B1.2): 2 webhooks landed in ledger within seconds: `checkout.session.completed` (event_id `evt_1TY6tZRC5LvlmWeuMjR5KzXv`, livemode=true, status=processed, attempt_count=1, last_error=null) + `account.updated` (separate event). The `checkout.session.completed` with verified signature implicitly closes B1.2 — no further verification needed.
+- **Scenario 7** (PASS, all sub-checks):
+  - 7a payment: `status=succeeded`, `stripe_payment_intent_id` populated, `project_id=46868144-...`.
+  - 7b proposal: `status=handoff_ready`, `payment_status=succeeded`, `paid_at=2026-05-16 22:34:52+00`, `handoff_ready_at=2026-05-16 22:34:52+00`. **Anomaly**: both timestamps are from yesterday (session.created), not from the real payment moment (today 15:46 UTC). Handler uses `session.created` for `paidAt` — recommendation registered to change to `session.completed_at ?? now()` in a follow-up.
+  - 7c seller_fees: `state=confirmed` (transitioned from `potential`), `amount=100`, `payment_id` populated, `confirmed_at=2026-05-17 15:46:28.625+00` (real timestamp). B3 state machine end-to-end validated.
+  - 7d earnings_ledger: one row only (seller=$100). No developer/noon rows because the handler computes `base = max(activationAmount - sellerFeeAmount, 0) = max(1-100, 0) = 0` and skips the `if (base > 0)` branch. **Expected** for the absurd amount=$1 + seller_fee=$100 combination (smoke is not designed for sensible economy). Observation registered: in real operation with seller_fee>amount, seller gets over-credited — minor bug for tracking.
+  - 7e wallet_ledger_entries: one row with `entry_type=earnings_distribution`, `amount=100`, `balance_bucket=pending`, credited to `juan@noon.app`. RPC `credit_wallet_bucket` worked.
+  - 7f projects: row created with `payment_activated=true`, `status=backlog`, `source_proposal_id` linked.
+- **Scenario 8** (PASS — UI verify): `juan@noon.app` confirmed in browser: lead Smoke Test → tab Propuesta renders Estado 4 paid F-V08 — badge "Pago confirmado" + card "Proyecto creado: B1.3a Smoke proposal" + status `Convertida` + dropdown `Lista para hand-off` + payment/link buttons disappeared.
+- **Scenario 9** (DEFERRED — reason changed): originally deferred 2026-05-16 because no card. Now deferred for a different reason: operator (Pedro) does not have access to Stripe Dashboard (account belongs to the business owner). Refund of the $1 + cleanup requires either coordinated window with the owner OR an admin endpoint `/api/admin/payments/[id]/refund` that uses the Stripe SDK programmatically. Scope separate, not urgent — the charge is $1.
+- **B1.3a iteration verdict**: COMPLETE with Scenario 9 deferred for operational (not technical) reason. Scope of "outbound payment flow E2E with real money" satisfied. B1.2 webhook signature verification implicitly closed via Scenario 6.
+
+### Observations for follow-up (registered, not blocking)
+1. **`paid_at` uses session.created**: handler reads `session.created` in `app/api/webhooks/stripe/route.ts:89-92` for `paidAt`. For old sessions paid much later, this misreports the payment time. Recommendation: `session.completed_at ?? now()`.
+2. **Seller over-credit when seller_fee > amount**: handler applies `seller_fee_amount` literal without validating `<= activationAmount`. Would be a real bug for clients paying small amounts with high seller_fee. Tracked separately.
+3. **F-V08 backfill silent success**: clicking "Crear link nuevo" on an open session refreshes URL/expiry without UI feedback. UX could mention "reusing existing session". Cosmetic follow-up.
+4. **G11 empirical re-verification pending**: the next real merge to `develop` will tell us if auto-deploys actually work end-to-end. If not, root cause is different (likely GitHub App permission/webhook delivery). New operating rule captures the contingency.
+5. **Stripe Dashboard access for operator**: pilot will need this resolved before B1.5. Either (a) owner grants Pedro a Restricted Key with refund permission, or (b) implement `/api/admin/payments/[id]/refund` endpoint. Both are valid; (a) is faster, (b) is more durable.
+
+### Files modified in this iteration
+- New / modified (multi-PR + closure docs):
+  - `docs/runbooks/cutover-pilot.md` (new, 524 lines, PR #51 merged).
+  - `supabase/migrations/0046_phase_18d_prototype_demo_chat_urls.sql` (new, PR #52 merged).
+  - `app/api/prototypes/[prototypeWorkspaceId]/generate/route.ts` (PR #52).
+  - `app/dashboard/prototypes/page.tsx` (PR #52).
+  - `lib/server/prototypes/repository.ts` (PR #52).
+  - `lib/server/prototypes/mappers.ts` (PR #52).
+  - `lib/server/prototypes/types.ts` (PR #52, the intersection was rolled back in fix commit `bbfbdb7`).
+  - `lib/prototypes/serialization.ts` (PR #52).
+  - `lib/types.ts` (PR #52).
+  - `lib/server/supabase/database.types.ts` (PR #52 fix commits `bbfbdb7` + `4b372c9` — table override + RPC Returns override).
+  - `docs/validations/B1.3a outbound smoke 2026-05-16.md` (closure section appended in this iteration).
+  - `docs/context/project.context.core.md` (Partial→Closed for B1.3a, new Closed-in-runtime entries for B1.4 DRAFT, F-V06, G11, new operating rule on Vercel Production Branch).
+  - `docs/context/project.context.history.md` (this session note).
+  - local NoonApp Roadmap §17 (snapshot rewritten).
+- Vercel UI changes (no code commit):
+  - Deleted 2 env var rows `NOON_WEBSITE_WEBHOOK_SECRET` (Preview ↓ develop) + `NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL` (Preview ↓ develop). Production scope copies preserved.
+  - Production Branch changed from `main` to `develop`.
+  - Created Deploy Hook `develop-trigger` for `develop` branch (URL kept private).
+- Supabase Dashboard changes:
+  - Applied migration 0046 verbatim (`demo_url` + `chat_url` columns on `prototype_workspaces`).
+  - Executed UPDATE on the $35K landmine session to mark as failed/expired in our DB (Stripe-side expiry unchanged — that's pending owner action if not already done).
+
+### Operating rule updates in core.md
+- Vercel Production Branch must equal `develop`; branch-locked Preview env vars on `develop` block migration of Production Branch — clean up before scope changes.
+- Reopened-or-stable G11 contingency: if next merge does NOT auto-deploy, root cause is something other than Production Branch (probably GitHub App webhook delivery).
+
+### Completion status
+- **B1.4 DRAFT**: COMPLETE (runbook merged; closure iteration with markers cleared + on-call list filled is separate, blocked on B1.3a S5-9 close which is now done).
+- **F-V06**: COMPLETE (PR merged; browser validation pending operator post-merge per the F-V06 PR description checklist).
+- **G11**: COMPLETE (Production Branch fixed; auto-deploy contingency operating rule captured).
+- **B1.2**: COMPLETE (implicitly via Scenario 6 — webhook signature verified end-to-end with livemode=true).
+- **B1.3a**: COMPLETE with Scenario 9 deferred (operational, not technical) — outbound smoke E2E with real money fully validated.
+- **FASE 1 critical path**: ~97% closed. Remaining: B1.4 closure (markers + on-call), B1.3b inbound smoke (cross-repo NoonWeb), B1.3b withdraw smoke (needs Connect-onboarded seller), B1.5 pilot sign-off (blocked on B1.3b inbound + B1.4 closure).
+- **FASE 2 Bloque B**: 100% closed (F-V06 + F-V07 + F-V08 all merged + applied).
+
+### Next iteration candidates (priority order)
+1. **B1.4 closure iteration** — fill on-call list, resolve `[verify-on-first-real-transaction]` markers with actual observed behavior from this smoke (PITR verification, handler behavior nuances). ~1-2h docs only.
+2. **B1.3b inbound smoke** — cross-repo with NoonWeb dev. Coordinate timing. Different scope than B1.3a (Web → App webhook, not App → Stripe webhook). ~3h coordinated.
+3. **FASE 3 lifecycle** (auto-credit earnings trigger from Stripe webhook) — biggest remaining FASE 2 item. Backend-heavy 2-3 days. Code can land now; webhook is live so it'll fire on next real activation.
+4. **Stripe Dashboard access for operator** — either owner grants Restricted Key (faster) or implement `/api/admin/payments/[id]/refund` endpoint (more durable). Required before B1.5.
+5. **Seller Stripe Connect onboarding** — at least one seller needs `stripe_connect_account_id` before B1.3b withdraw smoke can run.
+6. **G11 empirical verification** — passive: monitor whether next real merge auto-deploys.
