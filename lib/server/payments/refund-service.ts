@@ -28,7 +28,7 @@ type SupabaseAdminClient = Awaited<ReturnType<typeof createSupabaseAdminClient>>
 export interface RefundResult {
   paymentId: string
   refundId: string
-  refundStatus: Stripe.Refund.Status | null
+  refundStatus: Stripe.Refund['status']
   paymentIntentId: string
 }
 
