@@ -2068,6 +2068,17 @@ export type Database = {
         Args: { p_external_reference: string; p_payout_id?: string }
         Returns: boolean
       }
+      consolidate_payment_earnings: {
+        Args: { p_actor_profile_id?: string; p_payment_id: string }
+        Returns: {
+          actors_consolidated: number
+          amount_consolidated: number
+          new_state: Database["public"]["Enums"]["seller_fee_state"]
+          payment_id: string
+          prior_state: Database["public"]["Enums"]["seller_fee_state"]
+          seller_fee_id: string
+        }[]
+      }
       consolidate_pending_earnings: {
         Args: { consolidate_amount: number; target_profile_id: string }
         Returns: {
