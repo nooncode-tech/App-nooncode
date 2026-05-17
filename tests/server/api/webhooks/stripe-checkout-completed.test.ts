@@ -439,3 +439,110 @@ test('webhook: retry with already-confirmed seller_fees row is idempotent (no se
   const activityInserts = client._ops.filter((o) => o.table === 'lead_activities' && o.op === 'insert')
   assert.equal(activityInserts.length, 0, 'no duplicate activity row on retry')
 })
+
+// ---------------------------------------------------------------------------
+// Test 6: Path I — paidAt is derived from event timestamp (event.created),
+// not session.created. Regression guard for B1.3a observation §1, 2026-05-17:
+// payment row's paid_at + projects.handoff_ready_at + lead_proposals.paid_at
+// were reflecting session creation time (often days before actual payment)
+// instead of payment time. The fix passes `event.created` through the
+// handler so all three columns reflect the moment of payment.
+// ---------------------------------------------------------------------------
+
+test('webhook: paidAt is derived from eventCreatedAt, not session.created', async () => {
+  const SESSION_CREATED = 1747000000           // 2025-05-11T22:13:20Z (link creation)
+  const EVENT_CREATED   = 1747086400           // 2025-05-12T22:13:20Z (24h later — payment)
+  const EXPECTED_PAID_AT = new Date(EVENT_CREATED * 1000).toISOString()
+
+  const sellerFee = makeSellerFeeRow(300)
+  const confirmedRow = { ...sellerFee, state: 'confirmed', confirmed_at: EXPECTED_PAID_AT, payment_id: PAYMENT_ID }
+
+  const client = makeMockClient({
+    maybeSingleByTable: {
+      payments: [{ data: { id: PAYMENT_ID, amount: 599, proposal_id: PROPOSAL_ID, project_id: PROJECT_ID }, error: null }],
+      lead_proposals: [{ data: { id: PROPOSAL_ID, lead_id: LEAD_ID, amount: 599 }, error: null }],
+      leads: [{ data: { lead_origin: 'outbound', assigned_to: SELLER_ID, created_by: SELLER_ID }, error: null }],
+      seller_fees: [
+        { data: sellerFee, error: null },
+        { data: sellerFee, error: null },
+      ],
+      projects: [{ data: { developer_user_id: DEVELOPER_ID }, error: null }],
+    },
+    singleByTable: {
+      seller_fees: [{ data: confirmedRow, error: null }],
+      lead_activities: [{ data: { id: 'act-1' }, error: null }],
+    },
+    upsertByTable: {
+      earnings_ledger: [{ data: null, error: null }],
+      points_ledger: [{ data: null, error: null }],
+    },
+    rpcByName: {
+      activate_paid_proposal: [{ data: [activationRpcResult], error: null }],
+      credit_wallet_bucket: [
+        { data: null, error: null },
+        { data: null, error: null },
+      ],
+    },
+  })
+
+  await handleCheckoutSessionCompleted(
+    client as never,
+    makeSession({ created: SESSION_CREATED }),
+    EVENT_CREATED,
+  )
+
+  const activationCall = client._rpcCalls.find((c) => c.name === 'activate_paid_proposal')
+  assert.ok(activationCall, 'activate_paid_proposal RPC must be invoked')
+  const args = activationCall!.args as { p_paid_at: string }
+  assert.equal(
+    args.p_paid_at,
+    EXPECTED_PAID_AT,
+    'p_paid_at must come from event.created, not session.created',
+  )
+})
+
+test('webhook: paidAt falls back to current time when eventCreatedAt is omitted', async () => {
+  const sellerFee = makeSellerFeeRow(300)
+  const confirmedRow = { ...sellerFee, state: 'confirmed', payment_id: PAYMENT_ID }
+
+  const client = makeMockClient({
+    maybeSingleByTable: {
+      payments: [{ data: { id: PAYMENT_ID, amount: 599, proposal_id: PROPOSAL_ID, project_id: PROJECT_ID }, error: null }],
+      lead_proposals: [{ data: { id: PROPOSAL_ID, lead_id: LEAD_ID, amount: 599 }, error: null }],
+      leads: [{ data: { lead_origin: 'outbound', assigned_to: SELLER_ID, created_by: SELLER_ID }, error: null }],
+      seller_fees: [
+        { data: sellerFee, error: null },
+        { data: sellerFee, error: null },
+      ],
+      projects: [{ data: { developer_user_id: DEVELOPER_ID }, error: null }],
+    },
+    singleByTable: {
+      seller_fees: [{ data: confirmedRow, error: null }],
+      lead_activities: [{ data: { id: 'act-1' }, error: null }],
+    },
+    upsertByTable: {
+      earnings_ledger: [{ data: null, error: null }],
+      points_ledger: [{ data: null, error: null }],
+    },
+    rpcByName: {
+      activate_paid_proposal: [{ data: [activationRpcResult], error: null }],
+      credit_wallet_bucket: [
+        { data: null, error: null },
+        { data: null, error: null },
+      ],
+    },
+  })
+
+  const before = Date.now()
+  await handleCheckoutSessionCompleted(client as never, makeSession())
+  const after = Date.now()
+
+  const activationCall = client._rpcCalls.find((c) => c.name === 'activate_paid_proposal')
+  const args = activationCall!.args as { p_paid_at: string }
+  const paidAtMs = Date.parse(args.p_paid_at)
+  assert.ok(
+    paidAtMs >= before && paidAtMs <= after,
+    `p_paid_at (${args.p_paid_at}) should fall within the test window when eventCreatedAt is omitted`,
+  )
+})
+
