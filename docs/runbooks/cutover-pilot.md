@@ -230,19 +230,27 @@ Each entry is `Symptom → Likely cause → Mitigation`. Use it as a triage chea
 
 ### 5.3 Stale Vercel deploy after merge to `develop` (G11)
 
-**Symptom:** A PR merged to `develop`, but the live site behaves as if the new code is not present. Specifically: F-V08 columns (`stripe_checkout_url`, `stripe_checkout_expires_at`) stay NULL after creating a checkout link from `/api/payments/checkout` (because pre-F-V08 code does not write them); or a code change that should be visible in the UI is not visible.
+**Status: ROOT CAUSE IDENTIFIED + FIXED 2026-05-17.** Diagnosis details and the fix path are documented below. The entry remains in this section as a reference for the same symptom from a different cause (the underlying issue, if it recurs, is now likely GitHub App webhook delivery).
 
-**Likely cause:**
-- Vercel auto-deploys on `develop` are not firing (regression registered 2026-05-15 as G11). The last deploy is older than `develop` HEAD.
+**Symptom:** A PR merged to `develop`, but the live site behaves as if the new code is not present. Specifically: F-V08 columns (`stripe_checkout_url`, `stripe_checkout_expires_at`) stay NULL after creating a checkout link from `/api/payments/checkout` (because pre-F-V08 code does not write them); or a code change that should be visible in the UI is not visible. **Indicator that this is G11**: the SHA of the most recent Production deploy in Vercel Deployments tab is older than `git rev-parse origin/develop`, AND every recent deploy with branch `develop` is etiquetado **Preview** (not Production).
 
-**Mitigation:**
-1. Confirm: Vercel Dashboard → Deployments tab. Compare the SHA of the most recent Production deployment to `git rev-parse origin/develop` locally.
-2. If they differ, click `⋯` on the latest `develop` commit in the Deployments tab → Redeploy → uncheck "Use existing Build Cache" → confirm.
-3. Wait ~2 minutes for status Ready. Verify via the symptom that originally surfaced the gap (e.g., a new checkout session now writes both F-V08 columns).
+**Root cause as observed 2026-05-17:** Vercel Production Branch was set to `main` (a branch that does not exist in the repo). The GitHub→Vercel webhook delivery was working — Vercel received push events and created **Preview** deploys for `develop` correctly — but Production Branch mismatch prevented any of those Preview deploys from auto-promoting to Production. The `nooncode-app-pi.vercel.app` Production alias stayed pinned to whichever older deploy was last manually promoted. Manual "Redeploy" actions rebuilt that same stale source without ever pulling `develop` HEAD.
 
-**Workaround until G11 is fixed:** every merge to `develop` requires a manual redeploy from the Deployments tab. Document in PR descriptions so the next operator does not forget.
+**Fix path executed 2026-05-17** (record for if it recurs):
 
-**Diagnosis path for G11 itself (when calmer):** Vercel project Settings → Git → confirm "Production Branch" is `develop`, no "Ignored Build Step" command is set, GitHub App integration is connected and has access to the repo, no recent revoke of the Vercel GitHub App permissions.
+1. **Diagnose first.** Vercel → Settings → Git: confirm Connected Git Repository is healthy (`nooncode-org/App-nooncode`, all webhook event toggles enabled). Deployments tab: look at recent rows — if every push to `develop` shows up as Preview (not Production) and Production rows are all manual "Redeploy of...", that's the smoking gun.
+2. **Find Production Branch setting.** It is **not** in Settings → Git as one might expect; it lives in **Settings → Environments → Production → Production Branch** in current Vercel UI. The setting is hidden from the top-level Git settings page.
+3. **Pre-clean env vars** that branch-lock `develop` for Preview. If `develop` is listed as the branch scope for any `Preview` env var, Vercel refuses to switch Production Branch off it. On 2026-05-17 the blockers were two rows: `NOON_WEBSITE_WEBHOOK_SECRET` (Preview ↓ develop) and `NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL` (Preview ↓ develop). Both already had Production scope copies, so the Preview→develop rows were redundant overrides from the period when develop was the Preview branch. Settings → Environment Variables → filter for the var name → click `⋯` on the `Preview ↓ develop` row → Delete. Production scope copy stays.
+4. **Switch Production Branch.** Settings → Environments → Production → change Production Branch from `main` to `develop` → Save. Now should succeed.
+5. **Trigger first Production deploy of develop HEAD.** The Production Branch change does not retroactively promote existing Preview deploys. To bring prod up to date now, the fastest path is a Deploy Hook: Settings → Git → Deploy Hooks → Name: `develop-trigger`, Branch: `develop` → Create Hook. Vercel returns a unique URL like `https://api.vercel.com/v1/integrations/deploy/<project-id>/<hook-id>`. Curl it: `curl -X POST <url>` returns HTTP 201 with `{"job":{"state":"PENDING"}}`. Vercel builds `develop` HEAD as Production. Wait ~2 min; verify Deployments tab shows a fresh row with branch `develop` etiquetada **Production · Current**.
+6. **Verify prod is live with the new code.** `curl -i -X POST https://nooncode-app-pi.vercel.app/api/webhooks/stripe` should return HTTP 400 with our app's body `{"error":"Missing stripe-signature header"}`. If anything else, the new deploy hasn't fully propagated yet.
+
+**Important after the fix:**
+- The Deploy Hook URL is effectively a "deploy to production" key without auth — anyone with that URL can trigger a Production build. Treat as a secret. Useful for emergency ops, but do not paste it in commits, public chats, or screenshots.
+- **Empirical verification of auto-deploys is pending** as of 2026-05-17 (the fix path used the Deploy Hook because no fresh push had happened yet). If the next real merge to `develop` does NOT auto-promote to Production within ~2 min, G11 reopens with a different root cause — most likely GitHub App webhook delivery broken. Check the next merge to confirm; if it fails, the diagnosis path becomes: GitHub repo Settings → Webhooks → look for a webhook pointing to `*.vercel.com` → check Recent Deliveries for 4xx/5xx responses or missing entries entirely.
+- If GitHub App webhook delivery is the new root cause: GitHub repo Settings → Integrations → Vercel → may need to re-authorize or grant repository access again. Stripe-style "test webhook" feature does not apply here — GitHub webhooks fire on real events only.
+
+**Pre-fix workaround (no longer needed if fix is verified):** every merge to `develop` requires a manual Redeploy from the Deployments tab with "Use existing Build Cache" unchecked.
 
 ### 5.4 `sk_live_*` accidentally in local `.env.local`
 
@@ -357,6 +365,72 @@ Each entry is `Symptom → Likely cause → Mitigation`. Use it as a triage chea
 
 (Convention adopted 2026-05-12 after this surfaced twice during B3.)
 
+### 5.11 `paid_at` reflects session creation time, not real payment time
+
+**Symptom:** `lead_proposals.paid_at` and `lead_proposals.handoff_ready_at` show a timestamp that's significantly earlier than when the customer actually paid. Observed 2026-05-17 during B1.3a smoke closure: the Stripe Checkout session was created 2026-05-16 22:34 UTC, the customer paid 2026-05-17 15:46 UTC, but both `paid_at` and `handoff_ready_at` saved as `2026-05-16 22:34:52+00`.
+
+**Likely cause:**
+- `app/api/webhooks/stripe/route.ts` line ~89-92 in `handleCheckoutSessionCompleted` derives `paidAt` from `session.created` (the timestamp Stripe set when the session was generated), not from `session.completed_at` or `now()`.
+- For new sessions paid within seconds, the discrepancy is negligible. For sessions that sit pending for hours or days and then get paid, the discrepancy is the entire pending duration.
+
+**Impact:**
+- Misleading data for cash-flow / time-to-cash reports.
+- Activity timelines that order by `paid_at` show payments at the wrong time.
+- Reconciliation against bank statements becomes harder because the dates don't match.
+
+**Mitigation (immediate, for current data):**
+- Do not "fix up" historical `paid_at` values in DB — the original `created`-based timestamp is what was authoritatively recorded. Document the convention in any report that uses the field.
+- For accurate payment timing, query `stripe_webhook_events.received_at` filtered to `event_type='checkout.session.completed'` and join by event payload's `session.id` → `payments.stripe_checkout_session_id`. Or use `seller_fees.confirmed_at` which uses real timestamps for outbound proposals.
+
+**Mitigation (durable, code fix follow-up):**
+- Change `paidAt = new Date(session.created * 1000).toISOString()` → `paidAt = session.completed_at ? new Date(session.completed_at * 1000).toISOString() : new Date().toISOString()`. This needs careful test coverage because Stripe's session object shape for already-completed sessions has `completed_at` populated, but the handler runs synchronously from the webhook so `now()` is also acceptable as the authoritative "payment confirmed at NoonApp" timestamp.
+
+### 5.12 Seller over-credit when `seller_fee_amount > activationAmount`
+
+**Symptom:** `earnings_ledger` shows a `seller` row with `amount` greater than the corresponding `payments.amount`. Observed 2026-05-17 during smoke: proposal amount=$1, seller_fee_amount=$100 (smoke test values) → seller credited $100 for a $1 sale. Noon (the business) gets $0, developer gets $0. Math: `base = max(activationAmount - sellerFeeAmount, 0) = max(1-100, 0) = 0`, so the `if (base > 0)` branch in the handler skips the developer + noon rows. Seller row is always pushed if `lead_origin === 'outbound'`, regardless of base.
+
+**Likely cause:**
+- The webhook handler (`app/api/webhooks/stripe/route.ts` ~lines 185-203) takes `seller_fee_amount` as a literal value to credit to the seller, without validating that it is `<= activationAmount`.
+- The UI selector (100 / 300 / 500 USD in `components/lead-detail.tsx`) is not gated by the proposal amount either, so a seller can select $500 fee on a $200 sale.
+
+**Impact:**
+- Seller balance reflects more than was actually collected.
+- The business eats the difference when consolidation moves seller's `pending` → `available_to_withdraw`.
+- For tiny smoke amounts it's negligible. For real sales it would be a financial bug — a $300 fee on a $150 sale credits the seller $300, the business loses $150.
+
+**Mitigation (immediate):**
+- Audit any earnings_ledger row with `actor_role='seller'` AND amount > corresponding payment amount:
+  ```sql
+  select el.id, el.amount as credited, p.amount as paid, p.proposal_id, el.idempotency_key
+  from earnings_ledger el
+  join payments p on p.id = el.payment_id
+  where el.actor_role = 'seller' and el.amount > p.amount;
+  ```
+- For each one, decide if the seller should have been credited that much (some prior agreement, gift, etc.) or if it's a bug. Manual ledger correction may be needed.
+
+**Mitigation (durable, code fix follow-up):**
+- Cap `sellerFeeAmount` at `activationAmount`: `const cappedSellerFee = Math.min(sellerFeeAmount, activationAmount)`. Or reject the proposal at creation time if the selected fee exceeds the amount.
+- Surface a warning in the UI when seller picks a fee equal-to or larger-than the proposal amount, with explicit confirmation ("seller fee equals/exceeds sale value — confirm?").
+
+### 5.13 F-V08 backfill silent reuse of open Stripe session
+
+**Symptom:** Operator clicks "Crear link nuevo" expecting a brand-new Stripe Checkout session; instead, the existing session (same `cs_live_*` ID) is reused and the UI just refreshes URL + expiry. No new payment row is created. Observed 2026-05-17 — caused initial confusion ("why isn't a new row showing in the SQL query?").
+
+**Likely cause:**
+- `lib/server/stripe/service.ts` `createCheckoutSession` intentionally checks for an existing pending payment with a `stripe_checkout_session_id`, retrieves the session from Stripe, and if `session.status === 'open' && session.url`, **reuses** the session and back-fills the URL + expiry columns on our DB row. The rationale is "no double charge" — prevents accumulating dangling cs_live sessions every time someone clicks the button.
+- The UI does not distinguish "created new session" vs "reused existing session" — both end up in Estado 2 active showing the link.
+
+**Impact:**
+- Not a bug, but the operator can be confused when expecting a new session. Especially during smoke testing where the original `created_at` is days/weeks old.
+- If the open session has expiry close to now, the reused session may expire soon after the click, looking like the "new" session expired prematurely.
+
+**Mitigation (immediate, just understanding):**
+- If the SQL query after a "Crear link nuevo" click does not show a new row, that is **expected behavior** when there was an open Stripe session.
+- To force a brand-new session, first invalidate the existing one in Stripe (manual Expire via Dashboard) — then click "Crear link nuevo" and the route will fall through to the `insert` path because Stripe will return `status: 'expired'` for the retrieved session.
+
+**Mitigation (durable, follow-up UX):**
+- The route response could include a flag like `reusedSession: boolean` and the UI toast could say "Sesión existente reutilizada" instead of "Link creado" when applicable. Tracked as cosmetic UX follow-up.
+
 ---
 
 ## 6. Incident response checklist
@@ -384,7 +458,7 @@ These are explicit gaps the team has decided to live with during the pilot. They
 |-----|--------|--------------|
 | **Sentry not installed (B5)** | No real-time alerting on 5xx. Operator must watch Vercel logs and Stripe Dashboard manually. | Deferred per PR #30 + ADR-009. Operator-in-the-loop is the explicit observability strategy for the pilot. Re-evaluable before external client exposure. |
 | **G7 — migration ledger desync** | 15 local migrations not registered in `supabase_migrations.schema_migrations`; 6 orphan ledger rows. Tables physically exist and work. `supabase db push` from CLI would re-apply migrations and fail. | Tracked as `fase-0-b4b-ledger-reconciliation` iteration. Workaround: use `mcp__supabase__apply_migration` or Dashboard SQL Editor for any new migration. Does not block runtime. |
-| **G11 — Vercel auto-deploys broken** | Every merge to `develop` requires a manual Redeploy. Easy to forget. | Workaround validated 2026-05-15. Diagnosis deferred to calmer ops window. Mentioned in every PR description for the duration. |
+| ~~**G11 — Vercel auto-deploys broken**~~ | ~~Every merge to `develop` requires a manual Redeploy.~~ | **RESOLVED 2026-05-17**: root cause was Vercel Production Branch misconfigured to `main` (no such branch) + Preview-branch-locked env vars on `develop`. Fix path documented in §5.3. Empirical verification of auto-deploys on next merge is pending — if it fails, reopen as GitHub App webhook delivery issue. |
 | **PITR status unverified** | If PITR is not enabled, restore granularity is daily backups, not arbitrary timestamps. | `[verify-on-first-real-transaction]` — check Supabase Dashboard → Database → Backups before the first real transaction. Upgrade to Pro plan if PITR is required and not present (cost: small, value: high during pilot). |
 | **Single-region Supabase** | A regional outage takes the pilot down. No cross-region replica. | Acceptable for 4-person internal pilot. Re-evaluate before external customer exposure. |
 | **No Stripe webhook delivery alert** | If Stripe stops delivering events (URL drift, signing secret mismatch), operator only sees it by manually checking Stripe Dashboard. | Mitigation: add a Stripe-side delivery failure alert. Stripe Dashboard → Developers → Webhooks → endpoint → notification settings. **Configure this during pilot day 1.** |
@@ -518,7 +592,11 @@ This runbook is a living document. The expected update cadence:
 Do **not** delete entries when fixed. Keep historical context — the next operator may face the same symptom from a different cause.
 
 Closure of B1.4 (the iteration that produced this runbook) requires:
-- This file exists at `docs/runbooks/cutover-pilot.md`.
-- All `[verify-on-first-real-transaction]` markers are resolved (i.e., B1.3a Scenarios 5-9 have run end-to-end).
-- §8 on-call list is filled before B1.5 pilot window starts.
-- `project.context.core.md` records B1.4 closure in the Closed-in-runtime list.
+- ✅ This file exists at `docs/runbooks/cutover-pilot.md` (landed 2026-05-17 PR #51).
+- ✅ B1.3a Scenarios 5-8 have run end-to-end (closed 2026-05-17 PR #53). Scenario 9 deferred for operational reason (operator lacks Stripe Dashboard access; Path D refund endpoint pending separately).
+- ✅ `[verify-on-first-real-transaction]` markers for observed behavior resolved (§5.3 G11 fix narrative, §5.11/5.12/5.13 new entries documenting smoke anomalies).
+- ⏳ `[verify-on-first-real-transaction]` marker for PITR (§3.1 / §3.2 / §7) — pending operator verification of Supabase Dashboard → Database → Backups for project `pdotsdahsrnnsoroxbfe`.
+- ⏳ §8 on-call list is filled before B1.5 pilot window starts — pending operator input.
+- ✅ `project.context.core.md` records B1.4 closure in the Closed-in-runtime list (entry landed 2026-05-17 PR #53, will be re-flipped from DRAFT to fully closed once §3.1 + §8 are resolved).
+
+**This iteration is COMPLETE-pending-operator-input on the two remaining `⏳` items above. Both are non-code, non-deploy, and do not block continued work on Path D (refund endpoint) or Path B (B1.3b inbound smoke).**
