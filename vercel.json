@@ -3,6 +3,10 @@
     {
       "path": "/api/leads/auto-followup",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/consolidate-earnings",
+      "schedule": "30 6 * * *"
     }
   ]
 }
