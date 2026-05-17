@@ -2583,3 +2583,35 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 4. **Stripe Dashboard access for operator** — either owner grants Restricted Key (faster) or implement `/api/admin/payments/[id]/refund` endpoint (more durable). Required before B1.5.
 5. **Seller Stripe Connect onboarding** — at least one seller needs `stripe_connect_account_id` before B1.3b withdraw smoke can run.
 6. **G11 empirical verification** — passive: monitor whether next real merge auto-deploys.
+
+
+
+## Session note: B1.4 closure pass (Path A) — runbook updates folding smoke evidence + G11 fix
+- Date: 2026-05-17 (same calendar day as B1.3a closure, immediately after that PR merged)
+- Iteration id: `fase-1-b1-stripe-live-cutover` sub-iteration B1.4 closure pass.
+- Route used: system-docs (single-file update of `docs/runbooks/cutover-pilot.md` + Closed-in-runtime entry flip in core.md).
+- Objective: take the B1.4 runbook DRAFT (which landed pre-B1.3a smoke close) and resolve the `[verify-on-first-real-transaction]` markers / fold the smoke evidence + G11 fix narrative + observed-anomaly entries into the catalogue. Goal is to flip B1.4 from DRAFT to as-closed-as-can-be-without-operator-pilot-input.
+- What changed in `docs/runbooks/cutover-pilot.md`:
+  - **§5.3 G11** rewritten with the actual root cause + fix path observed 2026-05-17 (Production Branch was `main` not `develop`; env var preview-branch lock on `develop` blocked the switch; fix = clean Preview→develop env vars, switch Production Branch to develop, trigger first deploy via Deploy Hook). Status header flipped to "ROOT CAUSE IDENTIFIED + FIXED 2026-05-17" with the contingency that if it recurs, the new likely root cause is GitHub App webhook delivery.
+  - **§5.11 NEW — `paid_at` reflects session.created not real payment time**. Documents the anomaly observed during B1.3a Scenario 7b (paid_at saved as `2026-05-16 22:34` even though payment was `2026-05-17 15:46`). Mitigation: use `stripe_webhook_events.received_at` or `seller_fees.confirmed_at` for accurate timing; code fix follow-up to use `session.completed_at ?? now()`.
+  - **§5.12 NEW — Seller over-credit when `seller_fee_amount > activationAmount`**. Documents the bug surfaced by smoke ($1 sale, $100 seller fee → seller credited $100; base=0 so no developer/noon). Mitigation: audit query for over-credited rows; code fix follow-up to cap at activationAmount.
+  - **§5.13 NEW — F-V08 backfill silent reuse of open Stripe session**. Documents the UX surprise during Scenario 4 re-run (clicking "Crear link nuevo" reused the existing open session instead of creating new). This is intentional "no double charge" safety in `lib/server/stripe/service.ts:createCheckoutSession`. Mitigation: understanding; UX follow-up to surface "reused session" feedback in the toast.
+  - **§7 known limitations** updated: G11 row strike-through with RESOLVED note pointing to §5.3.
+  - **§10 closure criteria** rewritten with real status: 3 items ✅ (runbook exists, B1.3a S5-8 done, observed-behavior markers folded), 2 items ⏳ (PITR verification by operator, on-call list by operator). Marked the iteration as "COMPLETE-pending-operator-input" — those 2 remaining items do not block Path D / B1.3b / FASE 1 progress.
+  - Untouched markers: §3.1 PITR `[verify-on-first-real-transaction]` (binary on/off — operator checks Supabase Dashboard), §3.2 PITR fallback (depends on §3.1), §7 PITR row (depends on §3.1), §8 on-call list `[fill-in-before-pilot]` (operator-only knowledge for Pedro's WhatsApp/Signal, NoonWeb dev contact, owner Stripe contact).
+- What changed in `docs/context/project.context.core.md`:
+  - The Closed-in-runtime entry for B1.4 was previously "B1.4 DRAFT — cutover-pilot runbook"; rewritten to "B1.4 — cutover-pilot runbook (DRAFT 2026-05-17 PR #51; closure pass 2026-05-17)" with description of the new §5.11/12/13 entries, §7 G11 resolution, §10 closure status. Notes that 2 operator-input items remain pending without blocking dependent work.
+- What did NOT change in this iteration:
+  - No new tests (pure docs).
+  - No code changes (the anomaly fixes for `paid_at` + seller over-credit are tracked as follow-ups, NOT in scope here).
+  - No new migrations, env vars, dependencies, or contracts.
+  - PITR verification still pending operator. On-call list still pending operator.
+- Validation:
+  - `npm test` not re-run (pure docs change, baseline 231/231 from PR #53 holds).
+  - `npm run lint` not re-run for the same reason.
+  - No browser validation needed.
+- Operating rule updates: none (the G11 operating rule landed in PR #53 already; this closure pass references it, does not change it).
+- Completion status:
+  - **COMPLETE-pending-operator-input**. The runbook is functionally usable for incident response today; the 2 ⏳ items are pilot-pre-flight checkboxes, not engineering gates.
+  - **B1.5 pilot sign-off** remains blocked on: B1.3b inbound smoke (cross-repo), B1.3b withdraw smoke (Connect-onboarded seller), AND the 2 operator-input items in this runbook closure. None of those block continued work on Path D (refund endpoint) which proceeds in parallel.
+- Next: Path D — refund endpoint implementation. Will run as a separate iteration / PR.
