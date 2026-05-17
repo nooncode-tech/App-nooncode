@@ -165,18 +165,9 @@ export async function handleCheckoutSessionCompleted(
     }
   }
 
-  // Cap the seller fee at the actual activation amount. If a proposal was
-  // created with `amount < seller_fee_amount` (data integrity issue from
-  // before the proposal API guard landed — B1.3a observation §2,
-  // 2026-05-17), the seller would otherwise be credited more than the
-  // client actually paid. Clamp at the moment of credit so the wallet
-  // movement can never exceed the payment. The proposal API also rejects
-  // this configuration at creation time, but the cap stays as the
-  // load-bearing defense for legacy rows and any future bypass paths.
-  const rawSellerFeeAmount = leadOrigin === 'outbound' && sellerFeeRow
+  const sellerFeeAmount = leadOrigin === 'outbound' && sellerFeeRow
     ? Number(sellerFeeRow.amount)
     : 0
-  const sellerFeeAmount = Math.min(rawSellerFeeAmount, activationAmount)
 
   // Fetch developer from project if linked
   let developerUserId: string | null = null
@@ -208,7 +199,6 @@ export async function handleCheckoutSessionCompleted(
 
   // Seller commission - outbound only, persisted value from seller_fees.
   if (leadOrigin === 'outbound') {
-    const wasCapped = rawSellerFeeAmount > activationAmount
     earningRows.push({
       actor_id: sellerId,
       actor_role: 'seller',
@@ -219,9 +209,7 @@ export async function handleCheckoutSessionCompleted(
       proposal_id: activation.proposal_id,
       payment_id: activation.payment_id,
       idempotency_key: `stripe:${session.id}:earning:seller:${sellerId}`,
-      notes: wasCapped
-        ? `Outbound activation - $${sellerFeeAmount} (capped from $${rawSellerFeeAmount} seller-selected; activation amount was $${activationAmount})`
-        : `Outbound activation - $${sellerFeeAmount} (seller-selected)`,
+      notes: `Outbound activation - $${sellerFeeAmount} (seller-selected)`,
     })
   }
 

@@ -22,7 +22,6 @@ import {
   mapLeadProposalRowToWire,
 } from '@/lib/server/leads/proposal-mappers'
 import { createLeadProposalSchema } from '@/lib/server/leads/proposal-schema'
-import { assertProposalAmountCoversSellerFee } from '@/lib/server/leads/proposal-amount-validation'
 import { createSellerFee } from '@/lib/server/seller-fees/service'
 import type { SellerFeeAmount } from '@/lib/server/seller-fees/types'
 import { cursorPaginationSchema } from '@/lib/server/pagination/schema'
@@ -172,8 +171,6 @@ export async function POST(
     if (!lead) {
       return leadNotFoundResponse()
     }
-
-    assertProposalAmountCoversSellerFee(lead.lead_origin, payload)
 
     const proposal = await createLeadProposal(
       client,
