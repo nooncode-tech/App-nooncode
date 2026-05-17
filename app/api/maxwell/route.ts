@@ -67,8 +67,14 @@ export async function POST(req: Request) {
           inputSchema: z.object({
             title: z.string().trim().min(1).max(160).describe('Titulo descriptivo de la propuesta'),
             body: z.string().trim().min(1).max(12000).describe('Texto completo de la propuesta en markdown'),
-            amount: z.number().positive().describe('Precio de activacion en USD'),
+            amount: z.number().positive().describe('Precio final de activacion en USD = activationBase + sellerFee. NO es el precio base solo.'),
             currency: z.string().trim().min(3).max(8).optional(),
+            projectType: z
+              .enum(['landing', 'ecommerce', 'webapp', 'mobile', 'saas_ai'])
+              .describe('Tipo de proyecto segun la tabla oficial de pricing. Obligatorio para outbound.'),
+            complexity: z
+              .enum(['low', 'medium', 'high'])
+              .describe('Complejidad estimada del proyecto. Obligatorio para outbound.'),
           }),
           execute: async (input) => {
             const {
@@ -76,7 +82,16 @@ export async function POST(req: Request) {
               body,
               amount,
               currency: cur,
-            } = input as { title: string; body: string; amount: number; currency?: string }
+              projectType,
+              complexity,
+            } = input as {
+              title: string
+              body: string
+              amount: number
+              currency?: string
+              projectType: 'landing' | 'ecommerce' | 'webapp' | 'mobile' | 'saas_ai'
+              complexity: 'low' | 'medium' | 'high'
+            }
             const currency = (cur ?? 'USD').toUpperCase()
 
             try {
@@ -95,6 +110,8 @@ export async function POST(req: Request) {
                   sent_at: null,
                   accepted_at: null,
                   handoff_ready_at: null,
+                  project_type: projectType,
+                  complexity,
                 } as never)
                 .select('id')
                 .single() as { data: { id: string } | null; error: unknown }

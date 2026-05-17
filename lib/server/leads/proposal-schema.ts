@@ -21,6 +21,23 @@ export const sellerFeeAmountSchema = z.union([
   z.literal(500),
 ])
 
+// Project type and complexity coordinates of the pricing matrix
+// (lib/maxwell/pricing.ts). Required for outbound proposals so the
+// server-side validator can revalidate `amount === computePricing(...)
+// .activationFinal` per ADR-013. Optional in the schema because (a)
+// inbound proposals do not use the matrix, and (b) legacy outbound rows
+// pre-ADR-013 may pre-date the requirement. The proposal route enforces
+// "required for outbound" at the validation layer.
+export const projectTypeSchema = z.enum([
+  'landing',
+  'ecommerce',
+  'webapp',
+  'mobile',
+  'saas_ai',
+])
+
+export const complexitySchema = z.enum(['low', 'medium', 'high'])
+
 export const createLeadProposalSchema = z.object({
   title: z.string().trim().min(1).max(160),
   body: z.string().trim().min(1).max(12000),
@@ -28,6 +45,8 @@ export const createLeadProposalSchema = z.object({
   currency: z.string().trim().min(3).max(8).default('USD').transform((value) => value.toUpperCase()),
   status: proposalStatusSchema.default('draft'),
   sellerFeeAmount: sellerFeeAmountSchema.optional(),
+  projectType: projectTypeSchema.optional(),
+  complexity: complexitySchema.optional(),
 })
 
 export const updateLeadProposalSchema = z.object({

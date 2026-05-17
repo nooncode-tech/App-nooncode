@@ -242,10 +242,15 @@ export type Database = {
         ]
       }
       lead_proposals: {
+        // Manual override 2026-05-17: project_type + complexity added by
+        // migration 0047 (ADR-013); database.types.ts regeneration
+        // blocked by G7 MCP unauthorized error. Remove this override
+        // when G7 lands and full regen runs cleanly.
         Row: {
           accepted_at: string | null
           amount: number
           body: string
+          complexity: string | null
           created_at: string
           created_by: string
           currency: string
@@ -257,6 +262,7 @@ export type Database = {
           lead_id: string
           paid_at: string | null
           payment_status: Database["public"]["Enums"]["payment_status"] | null
+          project_type: string | null
           review_status: Database["public"]["Enums"]["proposal_review_status"]
           reviewed_at: string | null
           reviewer_id: string | null
@@ -271,6 +277,7 @@ export type Database = {
           accepted_at?: string | null
           amount?: number
           body: string
+          complexity?: string | null
           created_at?: string
           created_by: string
           currency?: string
@@ -282,6 +289,7 @@ export type Database = {
           lead_id: string
           paid_at?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          project_type?: string | null
           review_status?: Database["public"]["Enums"]["proposal_review_status"]
           reviewed_at?: string | null
           reviewer_id?: string | null
@@ -296,6 +304,7 @@ export type Database = {
           accepted_at?: string | null
           amount?: number
           body?: string
+          complexity?: string | null
           created_at?: string
           created_by?: string
           currency?: string
@@ -307,6 +316,7 @@ export type Database = {
           lead_id?: string
           paid_at?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          project_type?: string | null
           review_status?: Database["public"]["Enums"]["proposal_review_status"]
           reviewed_at?: string | null
           reviewer_id?: string | null

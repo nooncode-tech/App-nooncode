@@ -99,6 +99,8 @@ export function mapCreateLeadProposalInputToInsert(
     sent_at: input.status === 'sent' ? new Date().toISOString() : null,
     accepted_at: input.status === 'accepted' || input.status === 'handoff_ready' ? new Date().toISOString() : null,
     handoff_ready_at: input.status === 'handoff_ready' ? new Date().toISOString() : null,
+    project_type: input.projectType ?? null,
+    complexity: input.complexity ?? null,
   }
 }
 
