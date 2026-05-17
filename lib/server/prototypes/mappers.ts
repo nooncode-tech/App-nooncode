@@ -29,5 +29,9 @@ export function mapPrototypeWorkspaceListItemRowToWire(
     leadName: row.lead?.name ?? 'Lead sin nombre',
     projectName: row.project?.name ?? null,
     requestedByName: row.requested_by?.full_name ?? 'Usuario desconocido',
+    generatedAt: row.generated_at,
+    generatedContent: row.generated_content,
+    demoUrl: row.demo_url,
+    chatUrl: row.chat_url,
   }
 }

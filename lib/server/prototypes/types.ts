@@ -1,6 +1,13 @@
 import type { Database } from '@/lib/server/supabase/database.types'
 
-export type PrototypeWorkspaceRow = Database['public']['Tables']['prototype_workspaces']['Row']
+// Manual extension of the generated Row with the F-V06 columns (migration 0046).
+// Regenerated types are blocked by G7 (schema↔ledger desync); remove the
+// intersection once `database.types.ts` is regenerated and these columns appear
+// in the generated Row.
+export type PrototypeWorkspaceRow = Database['public']['Tables']['prototype_workspaces']['Row'] & {
+  demo_url: string | null
+  chat_url: string | null
+}
 export type HandoffPrototypeWorkspaceRpcRow =
   Database['public']['Functions']['handoff_prototype_workspace_to_delivery']['Returns']
 export type LinkLeadPrototypeWorkspaceRpcRow =

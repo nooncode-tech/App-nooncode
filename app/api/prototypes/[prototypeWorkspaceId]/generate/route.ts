@@ -65,16 +65,22 @@ export async function POST(
     // Call v0
     const { content, demoUrl, chatUrl } = await generateV0Prototype(prompt)
 
-    // Save result
+    // Save result. Per migration 0046 (Phase 18D), demo_url + chat_url are now
+    // persisted in dedicated columns so the iframe can render on page reload
+    // without an extra v0 round-trip. generated_content keeps the source code
+    // for audit. Cast to Record<string, unknown> only because database.types.ts
+    // has not been regenerated post-0046 (G7).
     const now = new Date().toISOString()
     const { error: updateError } = await client
       .from('prototype_workspaces')
       .update({
         generation_prompt: prompt,
-        generated_content: demoUrl ?? chatUrl ?? content,
+        generated_content: content,
+        demo_url: demoUrl ?? null,
+        chat_url: chatUrl ?? null,
         generated_at: now,
         status: 'ready',
-      })
+      } as unknown as Record<string, unknown>)
       .eq('id', prototypeWorkspaceId)
 
     if (updateError) {
