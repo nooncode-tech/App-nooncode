@@ -422,43 +422,32 @@ async function handleChargeRefunded(
     }
   }
 
-  // 4. Reverse earnings_ledger entries. INSERT mirror rows with negative
-  //    amounts and a refund-scoped idempotency_key so Stripe webhook
-  //    retries don't double-reverse, and so a manual Dashboard refund
-  //    + a later admin-endpoint refund attempt against the same charge
-  //    produce a single reversal pair.
-  const { data: earnings } = await client
+  // 4. Reverse earnings_ledger entries by marking them status='cancelled'.
+  //    The original DB-level CHECK constraint forbids negative amounts on
+  //    earnings_ledger (earnings_ledger_amount_check), so we cannot insert
+  //    mirror rows. Using the existing 'cancelled' enum value is the
+  //    semantically correct reversal — it matches how seller_fees handles
+  //    refund-driven cancellation and keeps amounts positive. The update
+  //    is idempotent: rows already cancelled (e.g., from a previous
+  //    invocation of this handler) are filtered out via .neq('status',
+  //    'cancelled'), so Stripe webhook retries do not double-process.
+  //
+  //    Notes column captures the refund linkage for audit (charge id +
+  //    timestamp). The original credited_at timestamp stays untouched —
+  //    we only flip status and append a refund-note.
+  const { error: cancellationError } = await client
     .from('earnings_ledger')
-    .select('id, actor_id, actor_role, amount, currency, lead_id, proposal_id')
+    .update({
+      status: 'cancelled',
+      notes: `Cancelled by refund (charge ${charge.id})`,
+    })
     .eq('payment_id', payment.id)
-    .gt('amount', 0)
+    .neq('status', 'cancelled')
 
-  if (earnings && earnings.length > 0) {
-    const reversalRows = earnings.map((row) => ({
-      actor_id: row.actor_id,
-      actor_role: row.actor_role,
-      earning_type: 'activation' as const,
-      amount: -Number(row.amount),
-      currency: row.currency,
-      lead_id: row.lead_id,
-      proposal_id: row.proposal_id,
-      payment_id: payment.id,
-      idempotency_key: `refund:${charge.id}:earning:${row.actor_role}:${row.actor_id ?? 'unassigned'}`,
-      notes: `Reversal of activation earnings (charge ${charge.id})`,
-    }))
-
-    const { error: reversalError } = await client
-      .from('earnings_ledger')
-      .upsert(reversalRows, {
-        onConflict: 'idempotency_key',
-        ignoreDuplicates: true,
-      })
-
-    if (reversalError) {
-      throw new Error(
-        `Failed to insert earnings reversal rows: ${reversalError.message}`
-      )
-    }
+  if (cancellationError) {
+    throw new Error(
+      `Failed to cancel earnings_ledger rows on refund: ${cancellationError.message}`
+    )
   }
 
   // Wallet credit reversal (debiting `pending` bucket) is intentionally
