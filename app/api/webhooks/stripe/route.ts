@@ -57,9 +57,20 @@ async function creditWalletBucket(
 // Exported for unit testing in tests/server/api/webhooks/stripe-checkout-completed.test.ts.
 // Next.js route runtime only treats the named exports POST / GET / etc. as
 // route handlers, so an additional export here is safe.
+//
+// `eventCreatedAt` is `event.created` (Unix seconds) for the Stripe event
+// that triggered this handler — i.e. when Stripe fired
+// `checkout.session.completed`, which approximates the moment of payment.
+// We use it instead of `session.created` (when the checkout session was
+// originally created) because the session can be created days before the
+// customer actually pays; using session.created made `paid_at` /
+// `handoff_ready_at` reflect link-creation time instead of payment time
+// (B1.3a observation §1, 2026-05-17). Falls back to server `now()` if the
+// caller cannot supply a numeric event timestamp.
 export async function handleCheckoutSessionCompleted(
   client: SupabaseAdminClient,
   session: Stripe.Checkout.Session,
+  eventCreatedAt?: number,
 ) {
   const proposalId = session.metadata?.noon_proposal_id
   const paymentIdFromMetadata = session.metadata?.noon_payment_id
@@ -87,8 +98,8 @@ export async function handleCheckoutSessionCompleted(
   }
 
   const paidAt =
-    typeof session.created === 'number'
-      ? new Date(session.created * 1000).toISOString()
+    typeof eventCreatedAt === 'number'
+      ? new Date(eventCreatedAt * 1000).toISOString()
       : new Date().toISOString()
   const paymentIntentId =
     typeof session.payment_intent === 'string'
@@ -509,7 +520,11 @@ export async function POST(request: Request) {
     try {
       switch (eventType) {
         case 'checkout.session.completed':
-          await handleCheckoutSessionCompleted(client, event.data.object as Stripe.Checkout.Session)
+          await handleCheckoutSessionCompleted(
+            client,
+            event.data.object as Stripe.Checkout.Session,
+            event.created,
+          )
           break
         case 'payment_intent.payment_failed':
           await handlePaymentIntentFailed(client, event.data.object as Stripe.PaymentIntent)
