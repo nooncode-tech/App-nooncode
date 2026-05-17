@@ -456,6 +456,10 @@ export interface PrototypeWorkspaceListItem extends PrototypeWorkspace {
   leadName: string
   projectName?: string
   requestedByName: string
+  generatedAt?: Date
+  generatedContent?: string
+  demoUrl?: string
+  chatUrl?: string
 }
 
 // Payment Types
