@@ -242,10 +242,6 @@ export type Database = {
         ]
       }
       lead_proposals: {
-        // Manual override 2026-05-17: project_type + complexity added by
-        // migration 0047 (ADR-013); database.types.ts regeneration
-        // blocked by G7 MCP unauthorized error. Remove this override
-        // when G7 lands and full regen runs cleanly.
         Row: {
           accepted_at: string | null
           amount: number
@@ -362,6 +358,7 @@ export type Database = {
         Row: {
           assigned_to: string | null
           assignment_status: Database["public"]["Enums"]["lead_assignment_status"]
+          auto_followup_enabled: boolean
           company: string | null
           created_at: string
           created_by: string
@@ -394,11 +391,11 @@ export type Database = {
           updated_at: string
           value: number
           whatsapp: string | null
-          auto_followup_enabled: boolean
         }
         Insert: {
           assigned_to?: string | null
           assignment_status?: Database["public"]["Enums"]["lead_assignment_status"]
+          auto_followup_enabled?: boolean
           company?: string | null
           created_at?: string
           created_by: string
@@ -431,11 +428,11 @@ export type Database = {
           updated_at?: string
           value?: number
           whatsapp?: string | null
-          auto_followup_enabled?: boolean
         }
         Update: {
           assigned_to?: string | null
           assignment_status?: Database["public"]["Enums"]["lead_assignment_status"]
+          auto_followup_enabled?: boolean
           company?: string | null
           created_at?: string
           created_by?: string
@@ -468,7 +465,6 @@ export type Database = {
           updated_at?: string
           value?: number
           whatsapp?: string | null
-          auto_followup_enabled?: boolean
         }
         Relationships: [
           {
@@ -640,7 +636,9 @@ export type Database = {
           proposal_id: string
           refunded_at: string | null
           status: Database["public"]["Enums"]["payment_status"]
+          stripe_checkout_expires_at: string | null
           stripe_checkout_session_id: string | null
+          stripe_checkout_url: string | null
           stripe_customer_id: string | null
           stripe_payment_intent_id: string | null
           updated_at: string
@@ -657,7 +655,9 @@ export type Database = {
           proposal_id: string
           refunded_at?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
+          stripe_checkout_expires_at?: string | null
           stripe_checkout_session_id?: string | null
+          stripe_checkout_url?: string | null
           stripe_customer_id?: string | null
           stripe_payment_intent_id?: string | null
           updated_at?: string
@@ -674,7 +674,9 @@ export type Database = {
           proposal_id?: string
           refunded_at?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
+          stripe_checkout_expires_at?: string | null
           stripe_checkout_session_id?: string | null
+          stripe_checkout_url?: string | null
           stripe_customer_id?: string | null
           stripe_payment_intent_id?: string | null
           updated_at?: string
@@ -695,45 +697,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      stripe_webhook_events: {
-        Row: {
-          api_version: string | null
-          attempt_count: number
-          event_id: string
-          event_type: string
-          failed_at: string | null
-          last_error: string | null
-          livemode: boolean
-          processed_at: string | null
-          received_at: string
-          status: 'processing' | 'processed' | 'failed'
-        }
-        Insert: {
-          api_version?: string | null
-          attempt_count?: number
-          event_id: string
-          event_type: string
-          failed_at?: string | null
-          last_error?: string | null
-          livemode?: boolean
-          processed_at?: string | null
-          received_at?: string
-          status?: 'processing' | 'processed' | 'failed'
-        }
-        Update: {
-          api_version?: string | null
-          attempt_count?: number
-          event_id?: string
-          event_type?: string
-          failed_at?: string | null
-          last_error?: string | null
-          livemode?: boolean
-          processed_at?: string | null
-          received_at?: string
-          status?: 'processing' | 'processed' | 'failed'
-        }
-        Relationships: []
       }
       payout_batches: {
         Row: {
@@ -1290,6 +1253,105 @@ export type Database = {
         }
         Relationships: []
       }
+      seller_fees: {
+        Row: {
+          amount: number
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          confirmed_at: string | null
+          created_at: string
+          currency: string
+          formula_context_snapshot: Json
+          id: string
+          lead_id: string
+          paid_out_at: string | null
+          payment_id: string | null
+          payout_id: string | null
+          pending_payout_at: string | null
+          proposal_id: string
+          selected_at: string
+          seller_profile_id: string
+          state: Database["public"]["Enums"]["seller_fee_state"]
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          currency?: string
+          formula_context_snapshot?: Json
+          id?: string
+          lead_id: string
+          paid_out_at?: string | null
+          payment_id?: string | null
+          payout_id?: string | null
+          pending_payout_at?: string | null
+          proposal_id: string
+          selected_at?: string
+          seller_profile_id: string
+          state?: Database["public"]["Enums"]["seller_fee_state"]
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          currency?: string
+          formula_context_snapshot?: Json
+          id?: string
+          lead_id?: string
+          paid_out_at?: string | null
+          payment_id?: string | null
+          payout_id?: string | null
+          pending_payout_at?: string | null
+          proposal_id?: string
+          selected_at?: string
+          seller_profile_id?: string
+          state?: Database["public"]["Enums"]["seller_fee_state"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seller_fees_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seller_fees_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seller_fees_payout_id_fkey"
+            columns: ["payout_id"]
+            isOneToOne: false
+            referencedRelation: "payouts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seller_fees_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: true
+            referencedRelation: "lead_proposals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seller_fees_seller_profile_id_fkey"
+            columns: ["seller_profile_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stripe_customers: {
         Row: {
           created_at: string
@@ -1327,6 +1389,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stripe_webhook_events: {
+        Row: {
+          api_version: string | null
+          attempt_count: number
+          event_id: string
+          event_type: string
+          failed_at: string | null
+          last_error: string | null
+          livemode: boolean
+          processed_at: string | null
+          received_at: string
+          status: string
+        }
+        Insert: {
+          api_version?: string | null
+          attempt_count?: number
+          event_id: string
+          event_type: string
+          failed_at?: string | null
+          last_error?: string | null
+          livemode?: boolean
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+        }
+        Update: {
+          api_version?: string | null
+          attempt_count?: number
+          event_id?: string
+          event_type?: string
+          failed_at?: string | null
+          last_error?: string | null
+          livemode?: boolean
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+        }
+        Relationships: []
       }
       task_activities: {
         Row: {
@@ -1751,6 +1852,91 @@ export type Database = {
           },
         ]
       }
+      website_inbound_links: {
+        Row: {
+          created_at: string
+          current_status: string
+          external_payment_id: string | null
+          external_proposal_id: string
+          external_session_id: string
+          external_source: string
+          id: string
+          inbound_payload: Json
+          lead_id: string
+          payment_confirmed_at: string | null
+          payment_payload: Json
+          project_id: string | null
+          proposal_id: string
+          review_webhook_attempted_at: string | null
+          review_webhook_error: string | null
+          review_webhook_sent_at: string | null
+          review_webhook_status: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_status?: string
+          external_payment_id?: string | null
+          external_proposal_id: string
+          external_session_id: string
+          external_source?: string
+          id?: string
+          inbound_payload?: Json
+          lead_id: string
+          payment_confirmed_at?: string | null
+          payment_payload?: Json
+          project_id?: string | null
+          proposal_id: string
+          review_webhook_attempted_at?: string | null
+          review_webhook_error?: string | null
+          review_webhook_sent_at?: string | null
+          review_webhook_status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_status?: string
+          external_payment_id?: string | null
+          external_proposal_id?: string
+          external_session_id?: string
+          external_source?: string
+          id?: string
+          inbound_payload?: Json
+          lead_id?: string
+          payment_confirmed_at?: string | null
+          payment_payload?: Json
+          project_id?: string | null
+          proposal_id?: string
+          review_webhook_attempted_at?: string | null
+          review_webhook_error?: string | null
+          review_webhook_sent_at?: string | null
+          review_webhook_status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "website_inbound_links_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "website_inbound_links_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "website_inbound_links_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: true
+            referencedRelation: "lead_proposals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       withdrawal_requests: {
         Row: {
           actor_id: string
@@ -1815,12 +2001,12 @@ export type Database = {
     Functions: {
       activate_paid_proposal: {
         Args: {
-          p_actor_profile_id?: string | null
+          p_actor_profile_id?: string
           p_paid_at?: string
           p_payment_id: string
           p_payment_metadata?: Json
-          p_project_description?: string | null
-          p_provider_payment_intent_id?: string | null
+          p_project_description?: string
+          p_provider_payment_intent_id?: string
         }
         Returns: {
           activated_now: boolean
@@ -1855,6 +2041,16 @@ export type Database = {
           reference_type: string | null
           status: string
         }
+        SetofOptions: {
+          from: "*"
+          to: "wallet_ledger_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      attach_payout_transfer: {
+        Args: { p_external_reference: string; p_payout_id: string }
+        Returns: boolean
       }
       claim_released_lead: { Args: { target_lead_id: string }; Returns: string }
       collect_lead_update_fields: {
@@ -1868,12 +2064,8 @@ export type Database = {
         Args: { target_legacy_mock_ids: string[] }
         Returns: Json
       }
-      attach_payout_transfer: {
-        Args: { p_external_reference: string; p_payout_id: string }
-        Returns: boolean
-      }
       complete_wallet_payout: {
-        Args: { p_external_reference: string | null; p_payout_id?: string | null }
+        Args: { p_external_reference: string; p_payout_id?: string }
         Returns: boolean
       }
       consolidate_pending_earnings: {
@@ -1888,20 +2080,26 @@ export type Database = {
           profile_id: string
           updated_at: string
         }
+        SetofOptions: {
+          from: "*"
+          to: "wallet_accounts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       credit_wallet_bucket: {
         Args: {
-          p_actor_profile_id?: string | null
+          p_actor_profile_id?: string
           p_amount: number
           p_balance_bucket: string
           p_created_at?: string
           p_currency: string
           p_entry_type: Database["public"]["Enums"]["monetary_entry_type"]
-          p_idempotency_key?: string | null
+          p_idempotency_key?: string
           p_metadata?: Json
           p_profile_id: string
-          p_reference_id?: string | null
-          p_reference_type?: string | null
+          p_reference_id?: string
+          p_reference_type?: string
         }
         Returns: boolean
       }
@@ -1927,15 +2125,11 @@ export type Database = {
           profile_id: string
           updated_at: string
         }
-      }
-      ensure_user_wallet_for_profile: {
-        Args: { p_profile_id: string }
-        Returns: {
-          created_at: string
-          earned_credits_balance: number
-          free_credits_balance: number
-          profile_id: string
-          updated_at: string
+        SetofOptions: {
+          from: "*"
+          to: "user_wallets"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       ensure_monetary_wallet: {
@@ -1950,6 +2144,12 @@ export type Database = {
           profile_id: string
           updated_at: string
         }
+        SetofOptions: {
+          from: "*"
+          to: "wallet_accounts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       ensure_monetary_wallet_for_profile: {
         Args: { p_profile_id: string }
@@ -1963,14 +2163,32 @@ export type Database = {
           profile_id: string
           updated_at: string
         }
+        SetofOptions: {
+          from: "*"
+          to: "wallet_accounts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      ensure_user_wallet_for_profile: {
+        Args: { p_profile_id: string }
+        Returns: {
+          created_at: string
+          earned_credits_balance: number
+          free_credits_balance: number
+          profile_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "user_wallets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       find_profile_name_by_legacy_mock_id: {
         Args: { target_legacy_mock_id: string }
         Returns: string
-      }
-      maxwell_confirmed_sales_count: {
-        Args: { p_profile_id: string }
-        Returns: number
       }
       handoff_prototype_workspace_to_delivery: {
         Args: { target_workspace_id: string }
@@ -1989,6 +2207,12 @@ export type Database = {
           requested_by_profile_id: string
           status: Database["public"]["Enums"]["prototype_workspace_status"]
           updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "prototype_workspaces"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       link_lead_prototype_workspace_to_project: {
@@ -2031,6 +2255,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      maxwell_confirmed_sales_count: {
+        Args: { p_profile_id: string }
+        Returns: number
+      }
       normalize_legacy_user_ids: {
         Args: { input_ids: string[] }
         Returns: string[]
@@ -2063,27 +2291,13 @@ export type Database = {
         Args: { status_value: Database["public"]["Enums"]["task_status"] }
         Returns: string
       }
-      release_wallet_payout: {
-        Args: { p_payout_id: string; p_reason?: string | null }
-        Returns: boolean
-      }
       release_lead_as_no_response: {
         Args: { target_lead_id: string }
         Returns: string
       }
-      reserve_wallet_payout: {
-        Args: {
-          p_actor_profile_id: string
-          p_notes?: string | null
-          p_profile_id: string
-        }
-        Returns: {
-          amount: number
-          batch_id: string
-          currency: string
-          payout_id: string
-          profile_id: string
-        }[]
+      release_wallet_payout: {
+        Args: { p_payout_id: string; p_reason?: string }
+        Returns: boolean
       }
       request_lead_prototype: {
         Args: { target_lead_id: string }
@@ -2093,6 +2307,20 @@ export type Database = {
           earned_balance: number
           free_balance: number
           prototype_workspace_id: string
+        }[]
+      }
+      reserve_wallet_payout: {
+        Args: {
+          p_actor_profile_id: string
+          p_notes?: string
+          p_profile_id: string
+        }
+        Returns: {
+          amount: number
+          batch_id: string
+          currency: string
+          payout_id: string
+          profile_id: string
         }[]
       }
       resolve_client_token: {
@@ -2115,12 +2343,17 @@ export type Database = {
           token_id: string
         }[]
       }
+      reverse_wallet_payout_by_transfer: {
+        Args: { p_external_reference: string; p_payout_id?: string }
+        Returns: boolean
+      }
       review_proposal: {
         Args: { p_action: string; p_proposal_id: string }
         Returns: {
           accepted_at: string | null
           amount: number
           body: string
+          complexity: string | null
           created_at: string
           created_by: string
           currency: string
@@ -2132,6 +2365,7 @@ export type Database = {
           lead_id: string
           paid_at: string | null
           payment_status: Database["public"]["Enums"]["payment_status"] | null
+          project_type: string | null
           review_status: Database["public"]["Enums"]["proposal_review_status"]
           reviewed_at: string | null
           reviewer_id: string | null
@@ -2142,10 +2376,12 @@ export type Database = {
           updated_at: string
           version_number: number
         }
-      }
-      reverse_wallet_payout_by_transfer: {
-        Args: { p_external_reference: string | null; p_payout_id?: string | null }
-        Returns: boolean
+        SetofOptions: {
+          from: "*"
+          to: "lead_proposals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       touch_client_token: { Args: { p_token: string }; Returns: undefined }
     }
@@ -2164,6 +2400,11 @@ export type Database = {
         | "project_created"
         | "released_no_response"
         | "claimed"
+        | "seller_fee_selected"
+        | "seller_fee_confirmed"
+        | "seller_fee_pending_payout"
+        | "seller_fee_paid_out"
+        | "seller_fee_cancelled"
       lead_assignment_status:
         | "owned"
         | "proposal_locked"
@@ -2185,19 +2426,13 @@ export type Database = {
         | "negotiation"
         | "won"
         | "lost"
-      maxwell_feedback_rating:
-        | "good"
-        | "bad"
-        | "duplicate"
-        | "not_relevant"
+      maxwell_feedback_rating: "good" | "bad" | "duplicate" | "not_relevant"
       maxwell_publication_status:
         | "published"
         | "needs_review"
         | "rejected"
         | "refresh_needed"
-      maxwell_search_mode:
-        | "current_location"
-        | "manual_zone"
+      maxwell_search_mode: "current_location" | "manual_zone"
       maxwell_search_status:
         | "running"
         | "completed"
@@ -2243,9 +2478,9 @@ export type Database = {
         | "pending_review"
         | "approved"
         | "rejected"
-        | "changes_requested"
         | "expired"
         | "cancelled"
+        | "changes_requested"
       proposal_status:
         | "draft"
         | "sent"
@@ -2260,6 +2495,12 @@ export type Database = {
         | "archived"
       provider_event_status: "pending" | "processed" | "failed" | "ignored"
       provider_name: "stripe" | "binance"
+      seller_fee_state:
+        | "potential"
+        | "confirmed"
+        | "pending_payout"
+        | "paid_out"
+        | "cancelled"
       task_activity_type:
         | "note_added"
         | "status_changed"
@@ -2416,6 +2657,11 @@ export const Constants = {
         "project_created",
         "released_no_response",
         "claimed",
+        "seller_fee_selected",
+        "seller_fee_confirmed",
+        "seller_fee_pending_payout",
+        "seller_fee_paid_out",
+        "seller_fee_cancelled",
       ],
       lead_assignment_status: [
         "owned",
@@ -2441,12 +2687,7 @@ export const Constants = {
         "won",
         "lost",
       ],
-      maxwell_feedback_rating: [
-        "good",
-        "bad",
-        "duplicate",
-        "not_relevant",
-      ],
+      maxwell_feedback_rating: ["good", "bad", "duplicate", "not_relevant"],
       maxwell_publication_status: [
         "published",
         "needs_review",
@@ -2505,9 +2746,9 @@ export const Constants = {
         "pending_review",
         "approved",
         "rejected",
-        "changes_requested",
         "expired",
         "cancelled",
+        "changes_requested",
       ],
       proposal_status: [
         "draft",
@@ -2525,6 +2766,13 @@ export const Constants = {
       ],
       provider_event_status: ["pending", "processed", "failed", "ignored"],
       provider_name: ["stripe", "binance"],
+      seller_fee_state: [
+        "potential",
+        "confirmed",
+        "pending_payout",
+        "paid_out",
+        "cancelled",
+      ],
       task_activity_type: [
         "note_added",
         "status_changed",

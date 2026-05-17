@@ -43,7 +43,7 @@ async function creditWalletBucket(
     p_balance_bucket: input.balanceBucket,
     p_reference_type: input.referenceType,
     p_reference_id: input.referenceId,
-    p_actor_profile_id: input.actorProfileId ?? null,
+    p_actor_profile_id: input.actorProfileId ?? undefined,
     p_metadata: input.metadata ?? {},
     p_idempotency_key: input.idempotencyKey,
     p_created_at: input.createdAt,
