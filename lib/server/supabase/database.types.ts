@@ -1965,8 +1965,10 @@ export type Database = {
       handoff_prototype_workspace_to_delivery: {
         Args: { target_workspace_id: string }
         Returns: {
+          chat_url: string | null
           created_at: string
           current_stage: Database["public"]["Enums"]["prototype_stage"]
+          demo_url: string | null
           generated_at: string | null
           generated_content: string | null
           generation_prompt: string | null
