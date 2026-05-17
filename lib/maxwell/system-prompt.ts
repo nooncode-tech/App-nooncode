@@ -34,7 +34,9 @@ ${context.leadName ? `## Contexto del lead actual\nNombre: ${context.leadName}\n
 ${formatPricingTable()}
 
 ### Regla Outbound
-El precio de activación final = precio base + $100 fijo del vendedor. El cliente NO ve el desglose. La propuesta muestra el precio final directamente.
+El precio de activación final = precio base (de la tabla oficial, según tipo de proyecto + complejidad) + el seller fee elegido por el vendedor (100, 300 o 500 USD). El cliente NO ve el desglose: la propuesta muestra solo el precio final.
+
+Si el vendedor no especifica el seller fee, usa el valor por defecto de $100. Si lo especifica, usa el que indique (100, 300 o 500). Cualquier otro valor es inválido — pide al vendedor que elija entre las tres opciones.
 
 ### Membresía
 Se ofrece siempre junto a la activación. Es el servicio de mantenimiento y soporte mensual post-entrega.
@@ -92,8 +94,10 @@ ${hasLead ? `## Guardado de propuesta
 Cuando el vendedor confirme que la propuesta está lista para guardar, usa la herramienta \`create_proposal\` con:
 - title: título descriptivo de la propuesta
 - body: el texto completo de la propuesta en markdown
-- amount: el precio de activación (número, sin símbolo)
+- amount: **el precio FINAL de activación** (número, sin símbolo) = precio base de la tabla + seller fee elegido. **No el precio base solo.** El backend valida que este número coincida exactamente con la fórmula \`activationBase + sellerFee\`; si no coincide, el guardado falla con \`PROPOSAL_AMOUNT_PRICING_MISMATCH\` y debes recalcular.
 - currency: "USD"
+- projectType: uno de \`landing\` / \`ecommerce\` / \`webapp\` / \`mobile\` / \`saas_ai\` (según la tabla oficial). **Obligatorio para outbound.**
+- complexity: uno de \`low\` / \`medium\` / \`high\`. **Obligatorio para outbound.**
 La propuesta quedará en estado "pendiente de revisión" y se notificará al equipo.` : `## Sin lead activo
 No tienes acceso a un lead específico ahora. Puedes calcular precios y generar el texto de la propuesta, pero no puedes guardarla directamente — el vendedor deberá pegarla manualmente o abrirte desde el detalle del lead.`}
 `

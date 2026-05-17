@@ -78,6 +78,8 @@ interface DataContextType {
     currency?: string
     status?: ProposalStatus
     sellerFeeAmount?: 100 | 300 | 500
+    projectType?: 'landing' | 'ecommerce' | 'webapp' | 'mobile' | 'saas_ai'
+    complexity?: 'low' | 'medium' | 'high'
   }) => Promise<LeadProposal>
   updateLeadProposalStatus: (leadId: string, proposalId: string, status: ProposalStatus) => Promise<LeadProposal>
   createProjectFromProposal: (leadId: string, proposalId: string) => Promise<Project>
@@ -759,6 +761,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // leads, callers pass undefined and no seller_fees row is created.
       // The API defaults missing values to 100 per backwards compatibility.
       sellerFeeAmount?: 100 | 300 | 500
+      // Outbound proposals only (per ADR-013). The proposal API revalidates
+      // `amount === computePricing(projectType, complexity, 'outbound',
+      // sellerFeeAmount).activationFinal` and rejects mismatches with 422.
+      // Required for outbound; undefined for inbound.
+      projectType?: 'landing' | 'ecommerce' | 'webapp' | 'mobile' | 'saas_ai'
+      complexity?: 'low' | 'medium' | 'high'
     }
   ) => {
     if (authMode !== 'supabase') {
@@ -806,6 +814,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         // Only sent when defined (i.e., outbound proposal with a resolved
         // amount). JSON.stringify drops undefined values automatically.
         sellerFeeAmount: input.sellerFeeAmount,
+        projectType: input.projectType,
+        complexity: input.complexity,
       }),
     })
     const payload = await readApiResponse<LeadProposalWire>(response)

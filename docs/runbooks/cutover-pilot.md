@@ -430,6 +430,26 @@ Each entry is `Symptom → Likely cause → Mitigation`. Use it as a triage chea
 
 ---
 
+### §5.14 NEW — Pre-ADR-013 outbound proposals (legacy `project_type` / `complexity` null)
+
+**Surface area:** any outbound `lead_proposals` row created before 2026-05-17 (pre-ADR-013) has `project_type = null` and `complexity = null`. New outbound rows are created with both fields populated.
+
+**Operational consequence:**
+- Re-issuing a Checkout link against a legacy row continues to work because `app/api/payments/checkout/route.ts` reads `proposal.amount` directly, not the matrix.
+- Creating a **new** proposal on the same lead routes through `assertOutboundProposalAmountMatchesPricing` which requires both fields and rejects with `422 PROPOSAL_MISSING_PRICING_CONTEXT` if they are absent. The UI's two dropdowns force the seller to choose, so this rejection only triggers if a programmatic / scripted path bypasses the form.
+- Webhook split for legacy rows is unaffected: it still computes `base = activationAmount - sellerFeeAmount` correctly because `proposal.amount` was always intended to be `activationFinal` even pre-ADR-013 (Maxwell already persisted it that way; the gap was that the seller could hand-edit it).
+
+**Diagnosis:**
+- `select id, project_type, complexity, amount from public.lead_proposals where project_type is null and lead_id in (select id from public.leads where lead_origin = 'outbound');` — surfaces all legacy outbound rows.
+
+**Mitigation (immediate):**
+- Legacy rows are accepted as-is for re-payment. Do not retroactively backfill.
+
+**Mitigation (durable, follow-up):**
+- A separate iteration could backfill `project_type` + `complexity` from the activity log if Maxwell persisted them in the proposal body. Not in scope for the current pilot.
+
+---
+
 ## 6. Incident response checklist
 
 Use this when a real incident is in flight. Work top-to-bottom; skip steps that are clearly N/A.

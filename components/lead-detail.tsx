@@ -38,6 +38,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  COMPLEXITY_LABELS,
+  PROJECT_TYPE_LABELS,
+  computePricing,
+  type Complexity,
+  type ProjectType,
+  type SellerFeeAmount,
+} from '@/lib/maxwell/pricing'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
@@ -419,11 +427,20 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const [isSpeechPlaying, setIsSpeechPlaying] = useState(false)
   const [isSavingMaxwellFeedback, setIsSavingMaxwellFeedback] = useState(false)
   const [followUpInput, setFollowUpInput] = useState(toDateTimeLocalValue(lead.nextFollowUpAt))
-  const [proposalForm, setProposalForm] = useState({
+  const [proposalForm, setProposalForm] = useState<{
+    title: string
+    amount: string
+    body: string
+    sellerFeeAmount: string
+    projectType: ProjectType | ''
+    complexity: Complexity | ''
+  }>({
     title: buildDefaultProposalTitle(lead),
     amount: lead.value.toString(),
     body: '',
     sellerFeeAmount: '100',
+    projectType: '',
+    complexity: '',
   })
   const isSupabaseMode = authMode === 'supabase'
   const hasValidEmail = isValidLeadEmail(lead.email)
@@ -655,6 +672,8 @@ Total: 8 semanas
         amount: prev.amount || lead.value.toString(),
         body: prev.body,
         sellerFeeAmount: prev.sellerFeeAmount || '100',
+        projectType: prev.projectType,
+        complexity: prev.complexity,
       }))
     })
   }, [lead])
@@ -744,10 +763,40 @@ Total: 8 semanas
   const handleSaveProposal = async () => {
     const title = proposalForm.title.trim()
     const body = proposalForm.body.trim()
-    const amount = Number.parseFloat(proposalForm.amount)
 
     if (!title || !body) {
       return
+    }
+
+    const isOutbound = lead.leadOrigin === 'outbound'
+    const sellerFeeAmount = resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount)
+
+    // For outbound, the amount is derived from the canonical pricing
+    // matrix per ADR-013. The seller cannot hand-edit it — the server
+    // would reject any mismatch with PROPOSAL_AMOUNT_PRICING_MISMATCH.
+    // For inbound, fall back to the lead value (no matrix coordinates
+    // are collected for inbound flows).
+    let computedAmount: number
+    let projectType: ProjectType | undefined
+    let complexity: Complexity | undefined
+
+    if (isOutbound) {
+      if (!proposalForm.projectType || !proposalForm.complexity) {
+        toast.error('Selecciona el tipo de proyecto y la complejidad antes de guardar.')
+        return
+      }
+      projectType = proposalForm.projectType as ProjectType
+      complexity = proposalForm.complexity as Complexity
+      const pricing = computePricing(
+        projectType,
+        complexity,
+        'outbound',
+        (sellerFeeAmount ?? 100) as SellerFeeAmount,
+      )
+      computedAmount = pricing.activationFinal
+    } else {
+      const parsed = Number.parseFloat(proposalForm.amount)
+      computedAmount = Number.isFinite(parsed) ? parsed : lead.value
     }
 
     setIsSavingProposal(true)
@@ -756,10 +805,12 @@ Total: 8 semanas
       const proposal = await addLeadProposal(lead.id, {
         title,
         body,
-        amount: Number.isFinite(amount) ? amount : 0,
+        amount: computedAmount,
         currency: 'USD',
         status: 'draft',
-        sellerFeeAmount: resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount),
+        sellerFeeAmount,
+        projectType,
+        complexity,
       })
       setProposals((prev) => [proposal, ...prev])
       toast.success('Propuesta guardada')
@@ -768,6 +819,8 @@ Total: 8 semanas
         amount: lead.value.toString(),
         body: '',
         sellerFeeAmount: prev.sellerFeeAmount,
+        projectType: prev.projectType,
+        complexity: prev.complexity,
       }))
       void getLeadActivity(lead.id).then(setActivities).catch(() => {})
     } catch (error) {
@@ -782,16 +835,43 @@ Total: 8 semanas
       return
     }
 
+    const isOutbound = lead.leadOrigin === 'outbound'
+    const sellerFeeAmount = resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount)
+
+    let computedAmount: number
+    let projectType: ProjectType | undefined
+    let complexity: Complexity | undefined
+
+    if (isOutbound) {
+      if (!proposalForm.projectType || !proposalForm.complexity) {
+        toast.error('Selecciona el tipo de proyecto y la complejidad antes de guardar la propuesta generada.')
+        return
+      }
+      projectType = proposalForm.projectType as ProjectType
+      complexity = proposalForm.complexity as Complexity
+      const pricing = computePricing(
+        projectType,
+        complexity,
+        'outbound',
+        (sellerFeeAmount ?? 100) as SellerFeeAmount,
+      )
+      computedAmount = pricing.activationFinal
+    } else {
+      computedAmount = lead.value
+    }
+
     setIsSavingProposal(true)
 
     try {
       const proposal = await addLeadProposal(lead.id, {
         title: buildDefaultProposalTitle(lead),
         body: generatedContent,
-        amount: lead.value,
+        amount: computedAmount,
         currency: 'USD',
         status: 'draft',
-        sellerFeeAmount: resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount),
+        sellerFeeAmount,
+        projectType,
+        complexity,
       })
       setProposals((prev) => [proposal, ...prev])
       toast.success('Propuesta guardada desde IA')
@@ -1533,19 +1613,127 @@ Total: 8 semanas
               <CardTitle className="text-base">Registrar propuesta comercial</CardTitle>
             </CardHeader>
             <CardContent className="px-4 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="proposal-title">Titulo</Label>
-                  <Input
-                    id="proposal-title"
-                    value={proposalForm.title}
-                    onChange={(event) =>
-                      setProposalForm((prev) => ({ ...prev, title: event.target.value }))
-                    }
-                    disabled={isReleasedLeadPendingClaim}
-                    placeholder="Propuesta - Cliente"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="proposal-title">Titulo</Label>
+                <Input
+                  id="proposal-title"
+                  value={proposalForm.title}
+                  onChange={(event) =>
+                    setProposalForm((prev) => ({ ...prev, title: event.target.value }))
+                  }
+                  disabled={isReleasedLeadPendingClaim}
+                  placeholder="Propuesta - Cliente"
+                />
+              </div>
+
+              {lead.leadOrigin === 'outbound' ? (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="proposal-project-type">Tipo de proyecto</Label>
+                      <Select
+                        value={proposalForm.projectType}
+                        onValueChange={(value) =>
+                          setProposalForm((prev) => ({ ...prev, projectType: value as ProjectType }))
+                        }
+                        disabled={isReleasedLeadPendingClaim}
+                      >
+                        <SelectTrigger id="proposal-project-type">
+                          <SelectValue placeholder="Seleccionar tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(PROJECT_TYPE_LABELS) as ProjectType[]).map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {PROJECT_TYPE_LABELS[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="proposal-complexity">Complejidad</Label>
+                      <Select
+                        value={proposalForm.complexity}
+                        onValueChange={(value) =>
+                          setProposalForm((prev) => ({ ...prev, complexity: value as Complexity }))
+                        }
+                        disabled={isReleasedLeadPendingClaim}
+                      >
+                        <SelectTrigger id="proposal-complexity">
+                          <SelectValue placeholder="Seleccionar complejidad" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(COMPLEXITY_LABELS) as Complexity[]).map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {COMPLEXITY_LABELS[level]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="proposal-seller-fee">Tu comision (seller fee)</Label>
+                    <Select
+                      value={proposalForm.sellerFeeAmount}
+                      onValueChange={(value) =>
+                        setProposalForm((prev) => ({ ...prev, sellerFeeAmount: value }))
+                      }
+                      disabled={isReleasedLeadPendingClaim}
+                    >
+                      <SelectTrigger id="proposal-seller-fee">
+                        <SelectValue placeholder="Seleccionar fee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="100">$100 USD</SelectItem>
+                        <SelectItem value="300">$300 USD</SelectItem>
+                        <SelectItem value="500">$500 USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Se agrega al monto que paga el cliente y se acredita a tu wallet al confirmar el pago. El cliente no ve el desglose.
+                    </p>
+                  </div>
+
+                  {proposalForm.projectType && proposalForm.complexity ? (() => {
+                    const sellerFeeNum = Number.parseInt(proposalForm.sellerFeeAmount, 10)
+                    const sellerFeeForPricing = (sellerFeeNum === 100 || sellerFeeNum === 300 || sellerFeeNum === 500
+                      ? sellerFeeNum
+                      : 100) as SellerFeeAmount
+                    const pricing = computePricing(
+                      proposalForm.projectType as ProjectType,
+                      proposalForm.complexity as Complexity,
+                      'outbound',
+                      sellerFeeForPricing,
+                    )
+                    return (
+                      <div className="rounded-lg border bg-muted/40 p-3 text-sm space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Base de activacion</span>
+                          <span className="font-medium tabular-nums">${pricing.activationBase} USD</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Tu comision</span>
+                          <span className="font-medium tabular-nums">${pricing.sellerFee} USD</span>
+                        </div>
+                        <Separator />
+                        <div className="flex items-center justify-between text-foreground font-semibold">
+                          <span>Total al cliente</span>
+                          <span className="tabular-nums">${pricing.activationFinal} USD</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground pt-1">
+                          El monto se calcula automaticamente desde la tabla oficial. No editable.
+                        </p>
+                      </div>
+                    )
+                  })() : (
+                    <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                      Selecciona tipo de proyecto y complejidad para calcular el monto final.
+                    </div>
+                  )}
+                </>
+              ) : (
                 <div className="space-y-2">
                   <Label htmlFor="proposal-amount">Monto estimado</Label>
                   <Input
@@ -1559,30 +1747,8 @@ Total: 8 semanas
                     disabled={isReleasedLeadPendingClaim}
                     placeholder="0"
                   />
-                </div>
-              </div>
-
-              {lead.leadOrigin === 'outbound' && (
-                <div className="space-y-2">
-                  <Label htmlFor="proposal-seller-fee">Tu comision (seller fee)</Label>
-                  <Select
-                    value={proposalForm.sellerFeeAmount}
-                    onValueChange={(value) =>
-                      setProposalForm((prev) => ({ ...prev, sellerFeeAmount: value }))
-                    }
-                    disabled={isReleasedLeadPendingClaim}
-                  >
-                    <SelectTrigger id="proposal-seller-fee">
-                      <SelectValue placeholder="Seleccionar fee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="100">$100 USD</SelectItem>
-                      <SelectItem value="300">$300 USD</SelectItem>
-                      <SelectItem value="500">$500 USD</SelectItem>
-                    </SelectContent>
-                  </Select>
                   <p className="text-xs text-muted-foreground">
-                    Se agrega al monto que paga el cliente y se acredita a tu wallet al confirmar el pago. El cliente no ve el desglose.
+                    Para leads inbound el monto lo define el flujo del website. Este campo queda como referencia interna.
                   </p>
                 </div>
               )}
@@ -1626,7 +1792,9 @@ Total: 8 semanas
                   !proposalForm.title.trim() ||
                   !proposalForm.body.trim() ||
                   isSavingProposal ||
-                  isReleasedLeadPendingClaim
+                  isReleasedLeadPendingClaim ||
+                  (lead.leadOrigin === 'outbound' &&
+                    (!proposalForm.projectType || !proposalForm.complexity))
                 }
               >
                 {isSavingProposal ? (
