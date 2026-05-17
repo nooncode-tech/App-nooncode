@@ -2615,3 +2615,30 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - **COMPLETE-pending-operator-input**. The runbook is functionally usable for incident response today; the 2 ⏳ items are pilot-pre-flight checkboxes, not engineering gates.
   - **B1.5 pilot sign-off** remains blocked on: B1.3b inbound smoke (cross-repo), B1.3b withdraw smoke (Connect-onboarded seller), AND the 2 operator-input items in this runbook closure. None of those block continued work on Path D (refund endpoint) which proceeds in parallel.
 - Next: Path D — refund endpoint implementation. Will run as a separate iteration / PR.
+
+
+
+## Session note: B1.4 Path F final operator-input closure (B1.4 fully COMPLETE)
+- Date: 2026-05-17 (late evening, same calendar day as B1.4 DRAFT + closure pass + Path D rollout)
+- Iteration id: `fase-1-b1-stripe-live-cutover` sub-iteration B1.4 Path F.
+- Route used: system-docs (operator-provided PITR status + on-call list info → runbook + core.md updates).
+- Objective: resolve the 2 ⏳ items left open from the B1.4 closure pass (PR #54), thereby flipping B1.4 from COMPLETE-pending-operator-input to fully COMPLETE.
+- What operator provided:
+  - **PITR status**: NOT enabled. Supabase project `pdotsdahsrnnsoroxbfe` is on the Free plan; PITR is gated behind a Pro-plan-or-above upgrade. Operator decided NOT to upgrade for the internal pilot phase; documented as accepted-risk with explicit recommendation to upgrade before external exposure.
+  - **On-call list**: Pedro `noondevelop@gmail.com` confirmed as primary. Backup on-call, NoonWeb dev contact, and owner Stripe contact remain TBD — operator declined to gather/inline them in this session, opting to mark them as runtime gaps to resolve when scheduling B1.5 pilot window.
+- What changed in `docs/runbooks/cutover-pilot.md`:
+  - **Header status**: "DRAFT" → "CLOSED 2026-05-17" with the full evolution narrative (DRAFT PR #51 → closure pass PR #54 → Path F resolves remaining markers).
+  - **§3.1 PITR section**: removed the `[verify-on-first-real-transaction]` marker; replaced with explicit status note (NOT enabled, Free plan) + upgrade recommendation + the existing PITR procedure kept for future reference once upgraded.
+  - **§7 known limitations table**: PITR row rewritten with the verified state ("PITR not enabled (Free plan)" + accepted-risk rationale).
+  - **§8 on-call list**: removed the `[fill-in-before-pilot]` placeholder; filled Pedro row; left other rows TBD with explicit caveat that they must be resolved before B1.5 pilot start. Added a paragraph below the table stating the 3 TBDs represent real operational coverage gaps the operator owns.
+  - **§10 closure criteria**: all 6 items now ✅ (no remaining ⏳). Iteration declared **B1.4 COMPLETE**.
+- What changed in `docs/context/project.context.core.md`:
+  - The Closed-in-runtime entry for B1.4 was previously "COMPLETE-pending-operator-input"; rewritten to fully closed framing with description of the §3.1 PITR resolution + §8 on-call initial fill + §10 closure criteria all green.
+- What did NOT change:
+  - No code changes (pure docs).
+  - No tests (236/236 baseline holds).
+  - No migrations, env vars, dependencies, contracts.
+  - The 3 TBD on-call rows remain genuine gaps the operator owns — Path F does not pretend to resolve them, only formalizes them.
+- Operating rule updates: none.
+- Completion status: **B1.4 fully COMPLETE.** All sub-iterations of `fase-1-b1-stripe-live-cutover` are now closed (B1.0 spec, B1.1 keys, B1.2 webhook implicit via B1.3a S6, B1.3a S1-9, B1.4 runbook). Only **B1.3b** sub-iterations (inbound smoke cross-repo + withdraw smoke Connect-dependent) and **B1.5** (4-person pilot sign-off) remain open inside B1.
+- Next iteration candidates: see local roadmap §17 (rewritten in Path F closure with Path B / C / G / H / I / J detailed). Most-impact next single path is FASE 3 lifecycle (Path C) for FASE 2 close; most-time-sensitive is B1.3b inbound smoke for FASE 1 close (cross-repo coord with NoonWeb dev).
