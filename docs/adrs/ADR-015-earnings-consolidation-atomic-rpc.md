@@ -6,6 +6,20 @@
 **Supersedes:** None
 **Related:** ADR-007 (seller-fee state machine), `docs/contracts/seller-fee-state-machine.md`, `specs/fase-3-earnings-lifecycle.md`.
 
+## Amendment 2026-05-17 — Path G closes G14 (migration 0050)
+
+Same-day amendment to close the refund-after-consolidation gap captured in roadmap §16 G14. The `handleChargeRefunded` handler now invokes the new RPC `debit_wallet_for_refund(p_payment_id, p_actor_profile_id)` (migration 0050) as its step 5, after reversing `payments`, `projects`, `seller_fees`, and `earnings_ledger`. The RPC:
+
+- Detects whether the payment was consolidated (queries `wallet_ledger_entries` for `reference_type='consolidation'`) and selects the bucket to debit: `pending` if pre-consolidation, `available_to_withdraw` if post.
+- Is idempotent via a prior-refund guard on `wallet_ledger_entries` with `entry_type='service_debit', reference_type='refund'`. Stripe webhook retries become a no-op.
+- Defensive bucket-balance check: if the actor's bucket no longer has the funds (e.g., seller already moved them to `locked` via payout initiation, or already paid out via Stripe Connect transfer), the actor is skipped and surfaced in `actors_skipped_already_paid_out` for downstream alerting.
+- Writes paired audit ledger entries (`entry_type='service_debit'`, `reference_type='refund'`).
+- Atomic via implicit Postgres transaction.
+
+The wrapper at `lib/server/earnings/refund-service.ts` translates RPC errors and shape-converts the row. The webhook handler catches and logs wrapper errors without failing the webhook — the upstream reversals (payment, project, state machine, earnings ledger) already committed; the wallet debit failure surfaces for operator follow-up via `stripe.charge_refunded.wallet_debit_failed` error log.
+
+This Amendment closes ADR-015 §Consequences §Refund-after-consolidation gap. Caso C (post-payout refund) is **not** silently swallowed — it shows up as `actorsSkippedAlreadyPaidOut > 0` with a structured `stripe.charge_refunded.actors_already_paid_out` warn log, enabling operator-driven manual reconciliation (issuing a withdrawal-reversal payout, debit from the seller's next payment, or accounting write-off depending on the specific facts).
+
 ## Amendment 2026-05-17 — Idempotency guard 2 (migration 0049)
 
 During the closure of Path C the team identified that the legacy `POST /api/admin/earnings/consolidate` endpoint (preserved for backwards compatibility, not refactored in this iteration) moves the wallet bucket without transitioning the `seller_fees` state machine. If an admin invokes the legacy endpoint and the cron then processes the same payment 7+ days later, the state machine guard (`state must be confirmed`) passes — but the wallet would be double-consolidated because the original `pending` ledger entries remain in place.

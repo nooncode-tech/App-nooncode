@@ -2114,6 +2114,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      debit_wallet_for_refund: {
+        Args: { p_actor_profile_id?: string; p_payment_id: string }
+        Returns: {
+          actors_debited: number
+          actors_skipped_already_paid_out: number
+          amount_debited: number
+          bucket_used: string
+          payment_id: string
+        }[]
+      }
       enqueue_user_notification: {
         Args: {
           next_body: string
