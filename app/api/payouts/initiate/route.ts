@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const { data: reservedRows, error: reserveError } = await client.rpc('reserve_wallet_payout', {
       p_profile_id: profileId,
       p_actor_profile_id: principal.userId,
-      p_notes: notes ?? null,
+      p_notes: notes ?? undefined,
     })
 
     if (reserveError) {
