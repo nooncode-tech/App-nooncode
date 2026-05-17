@@ -1,6 +1,6 @@
 # Cutover pilot runbook — NoonApp production
 
-> **Status:** DRAFT 2026-05-17. Authored after B1.0–B1.2 + B1.3a (partial — Scenarios 1-4 PASS, 5-9 deferred awaiting card). Sections marked `[verify-on-first-real-transaction]` are placeholders that the operator updates once B1.3a Scenarios 5-9 actually run end-to-end. Remove the marker once observed behavior matches the documented procedure.
+> **Status:** CLOSED 2026-05-17. Initial DRAFT landed PR #51; closure pass folded smoke evidence + G11 fix + 3 new anomaly entries (§5.11/12/13) via PR #54; Path F final operator-input pass (this revision) resolved PITR verification + on-call list. All `[verify-on-first-real-transaction]` and `[fill-in-before-pilot]` markers are now closed. Runbook is operational for the B1.5 pilot window.
 
 ## 0. Audience and purpose
 
@@ -101,16 +101,13 @@ Trigger: `sk_live_*` or `whsec_*` leaked, or strong suspicion of compromise (com
 
 ### 3.1 Supabase point-in-time recovery (PITR)
 
-**`[verify-on-first-real-transaction]` — confirm PITR is enabled for `pdotsdahsrnnsoroxbfe` before relying on this section.**
+**Status verified 2026-05-17: PITR is NOT enabled.** Supabase project `pdotsdahsrnnsoroxbfe` is on the Free plan; PITR is a Pro-plan-or-above feature and the "Point-in-Time Recovery" section in Settings → Database → Backups is gated behind an upgrade prompt.
 
-Procedure to verify:
-1. Supabase Dashboard → project `pdotsdahsrnnsoroxbfe` → Settings → Database → Backups.
-2. Look for "Point-in-Time Recovery". Free plan: not available. Pro plan: 7-day retention by default. Higher tiers extend.
-3. If active: section continues below. If not: see 3.2 (limitation documented, daily backup is the only restore path).
+**Implication for incident response: fine-grained timestamp recovery is unavailable.** Restore granularity is daily backups (see §3.2) until the project upgrades to Pro.
 
-If PITR is enabled:
+**Upgrade decision pending:** weigh PITR value (~$25/month at the time of writing for the Pro plan) against pilot risk tolerance. Recommendation: upgrade before any external customer exposure beyond the 4-person internal pilot. The cost is low; the value during a corruption incident is high.
 
-**Procedure (~15-30 minutes, downtime applies):**
+**Procedure once PITR is enabled** (kept for future reference):
 
 1. Supabase Dashboard → project → Backups → PITR tab.
 2. Pick a timestamp **before** the corruption event. Add a 30-60 second safety margin.
@@ -459,7 +456,7 @@ These are explicit gaps the team has decided to live with during the pilot. They
 | **Sentry not installed (B5)** | No real-time alerting on 5xx. Operator must watch Vercel logs and Stripe Dashboard manually. | Deferred per PR #30 + ADR-009. Operator-in-the-loop is the explicit observability strategy for the pilot. Re-evaluable before external client exposure. |
 | **G7 — migration ledger desync** | 15 local migrations not registered in `supabase_migrations.schema_migrations`; 6 orphan ledger rows. Tables physically exist and work. `supabase db push` from CLI would re-apply migrations and fail. | Tracked as `fase-0-b4b-ledger-reconciliation` iteration. Workaround: use `mcp__supabase__apply_migration` or Dashboard SQL Editor for any new migration. Does not block runtime. |
 | ~~**G11 — Vercel auto-deploys broken**~~ | ~~Every merge to `develop` requires a manual Redeploy.~~ | **RESOLVED 2026-05-17**: root cause was Vercel Production Branch misconfigured to `main` (no such branch) + Preview-branch-locked env vars on `develop`. Fix path documented in §5.3. Empirical verification of auto-deploys on next merge is pending — if it fails, reopen as GitHub App webhook delivery issue. |
-| **PITR status unverified** | If PITR is not enabled, restore granularity is daily backups, not arbitrary timestamps. | `[verify-on-first-real-transaction]` — check Supabase Dashboard → Database → Backups before the first real transaction. Upgrade to Pro plan if PITR is required and not present (cost: small, value: high during pilot). |
+| **PITR not enabled (Free plan)** | Restore granularity is daily backups, not arbitrary timestamps. A corruption window of >24h is unrecoverable to a fine-grained pre-event state. | **Verified 2026-05-17**: project on Free plan, PITR not available without upgrade. Recommendation: upgrade to Pro before external customer exposure. For the internal pilot, daily-backup-only is an accepted risk. |
 | **Single-region Supabase** | A regional outage takes the pilot down. No cross-region replica. | Acceptable for 4-person internal pilot. Re-evaluate before external customer exposure. |
 | **No Stripe webhook delivery alert** | If Stripe stops delivering events (URL drift, signing secret mismatch), operator only sees it by manually checking Stripe Dashboard. | Mitigation: add a Stripe-side delivery failure alert. Stripe Dashboard → Developers → Webhooks → endpoint → notification settings. **Configure this during pilot day 1.** |
 | **No Connect-onboarded seller** | Step 7 of B1.3 (withdraw via Stripe Connect) cannot run. Deferred to B1.3b. | Onboarding flow exists in the app but no seller has completed it. Pilot can validate steps 1-6 standalone. |
@@ -469,16 +466,19 @@ These are explicit gaps the team has decided to live with during the pilot. They
 
 ## 8. On-call contact list
 
-**`[fill-in-before-pilot]`** — operator inserts contacts before B1.5 sign-off window starts.
+**Initial fill 2026-05-17.** Pedro is the sole primary on-call; backup + NoonWeb dev + owner Stripe contacts are marked TBD and must be filled before B1.5 pilot window starts.
 
 | Role | Contact | Hours | Escalation |
 |------|---------|-------|------------|
-| Primary on-call (NoonApp) | Pedro `noondevelop@gmail.com` | TBD | TBD |
-| Backup on-call (NoonApp) | TBD | TBD | TBD |
-| NoonWeb dev (cross-repo issues, inbound webhook) | TBD | TBD | TBD |
+| Primary on-call (NoonApp) | Pedro — `noondevelop@gmail.com` | TBD (operator availability) | TBD (no backup on-call defined yet) |
+| Backup on-call (NoonApp) | TBD — operator fills before pilot | TBD | TBD |
+| NoonWeb dev (cross-repo issues, inbound webhook) | TBD — operator coordinates with NoonWeb team | TBD | TBD |
+| Owner Stripe account (refunds via Dashboard, account-level ops) | TBD — operator captures owner contact for non-programmatic Stripe operations | TBD | TBD |
 | Stripe Support | dashboard.stripe.com/support | 24/7 | tier varies by plan |
 | Supabase Support | supabase.com/support | 24/7 | tier varies by plan |
 | Vercel Support | vercel.com/support | 24/7 | tier varies by plan |
+
+**TBDs are acceptable for pre-pilot scoping but must be resolved before B1.5 pilot window**. The 4 TBD rows above represent real operational coverage gaps (no backup if Pedro is unavailable, no escalation path for cross-repo bugs, no documented owner contact for Stripe-Dashboard-side ops). Operator is responsible for converting them to real contacts when scheduling the pilot start.
 
 ---
 
@@ -593,10 +593,10 @@ Do **not** delete entries when fixed. Keep historical context — the next opera
 
 Closure of B1.4 (the iteration that produced this runbook) requires:
 - ✅ This file exists at `docs/runbooks/cutover-pilot.md` (landed 2026-05-17 PR #51).
-- ✅ B1.3a Scenarios 5-8 have run end-to-end (closed 2026-05-17 PR #53). Scenario 9 deferred for operational reason (operator lacks Stripe Dashboard access; Path D refund endpoint pending separately).
-- ✅ `[verify-on-first-real-transaction]` markers for observed behavior resolved (§5.3 G11 fix narrative, §5.11/5.12/5.13 new entries documenting smoke anomalies).
-- ⏳ `[verify-on-first-real-transaction]` marker for PITR (§3.1 / §3.2 / §7) — pending operator verification of Supabase Dashboard → Database → Backups for project `pdotsdahsrnnsoroxbfe`.
-- ⏳ §8 on-call list is filled before B1.5 pilot window starts — pending operator input.
-- ✅ `project.context.core.md` records B1.4 closure in the Closed-in-runtime list (entry landed 2026-05-17 PR #53, will be re-flipped from DRAFT to fully closed once §3.1 + §8 are resolved).
+- ✅ B1.3a Scenarios 5-8 have run end-to-end + Scenario 9 closed via Path D refund endpoint (closed 2026-05-17 PRs #53/#55/#56).
+- ✅ `[verify-on-first-real-transaction]` markers for observed behavior resolved (§5.3 G11 fix narrative, §5.11/5.12/5.13 new entries documenting smoke anomalies — landed PR #54).
+- ✅ `[verify-on-first-real-transaction]` marker for PITR resolved (§3.1 / §7 — Free plan, PITR not available; documented as accepted-risk for internal pilot, upgrade recommended before external exposure — landed Path F).
+- ✅ §8 on-call list is filled with what is known today (Pedro as primary; backup + NoonWeb dev + owner Stripe contacts marked TBD with explicit caveat that they must be resolved before B1.5 pilot window starts — landed Path F).
+- ✅ `project.context.core.md` records B1.4 closure in the Closed-in-runtime list (entry landed 2026-05-17 PR #54, flipped from DRAFT to fully closed in Path F).
 
-**This iteration is COMPLETE-pending-operator-input on the two remaining `⏳` items above. Both are non-code, non-deploy, and do not block continued work on Path D (refund endpoint) or Path B (B1.3b inbound smoke).**
+**B1.4 iteration is COMPLETE.** The 3 TBD on-call rows are runtime gaps to resolve before B1.5 pilot window starts; they are not code/deploy/doc items inside B1.4 scope. Path B (B1.3b inbound smoke), Path C (FASE 3 lifecycle), and Path G (wallet reversal RPC) remain independent open paths.
