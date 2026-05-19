@@ -27,8 +27,10 @@ function normalizeSignature(signature: string) {
   return signature.trim().replace(/^sha256=/i, '')
 }
 
-function assertRecentTimestamp(timestamp: string | null) {
-  if (!timestamp) return
+function assertRecentTimestamp(timestamp: string | null): asserts timestamp is string {
+  if (!timestamp) {
+    throw new WebsiteWebhookError('Missing webhook timestamp.')
+  }
 
   const parsed = Number(timestamp)
   if (!Number.isFinite(parsed)) {
@@ -62,7 +64,7 @@ export function verifyWebsiteWebhookSignature(headers: Headers, bodyText: string
 
   assertRecentTimestamp(timestamp)
 
-  const signedPayload = timestamp ? `${timestamp}.${bodyText}` : bodyText
+  const signedPayload = `${timestamp}.${bodyText}`
   const expected = crypto.createHmac('sha256', readSharedSecret()).update(signedPayload).digest('hex')
 
   if (!timingSafeEquals(normalizeSignature(signature), expected)) {
