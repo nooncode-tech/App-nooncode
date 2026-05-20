@@ -357,11 +357,23 @@ When exceeded: `429 Too Many Requests`.
 | `payment-confirmed` | `(external_source, external_payment_id)` plus fallback to session/proposal id | Same table + unique constraint on `external_payment_id` |
 | `proposal-review-decision` (outbound) | App side: stable transition (PM decision is itself idempotent). Web side: see §5.4 | App stores decision in `lead_proposals.review_status` |
 
-### 8.2 What is NOT yet guaranteed (audit B15)
+### 8.2 Transport-level idempotency (B15 — implemented 2026-05-20)
 
-The current model assumes the website-side ids (`external_session_id`, `external_proposal_id`, `external_payment_id`) are stable and unique per logical entity. A replay attack with a forged but never-seen-before id pair would currently pass.
+**Status:** implemented in v1 internal. The wire contract is unchanged.
 
-**Planned mitigation (v2):** add a `website_webhook_events` ledger table on App side mirroring the existing `stripe_webhook_events` pattern. Each inbound request gets a unique event id (header `x-noon-event-id` proposed). Replay → return `409` with code `WEBHOOK_EVENT_ALREADY_PROCESSED`.
+App side now persists every signed inbound request in a `website_webhook_events` ledger as the **first** action after HMAC + timestamp verification. Identity key is the pair `(endpoint, signature_hash)` where `signature_hash = sha256(${timestamp}.${bodyText})` — byte-identical to the HMAC signing input. See ADR-016 for the full rationale.
+
+**Behavior NoonWeb observes:**
+
+- Fresh signed request → same response as before (200 or 201, business-logic shape).
+- **Bit-identical replay** (same `bodyText`, same `x-noon-timestamp`, same `x-noon-signature`) → wire shape is identical to the existing app-level idempotent response: `{ idempotent: true, linkId, leadId, proposalId, [projectId], status }` with HTTP 200. NoonWeb cannot tell ledger-replay from app-replay.
+- Adversarial traffic rejected by HMAC verify still gets 401 — those rejections are **not** persisted in the ledger (kept in Vercel runtime logs only).
+
+**The `x-noon-event-id` header proposal is dropped.** Identity is computed from the existing `(x-noon-timestamp, body)` pair, no new header is required. NoonWeb senders need no code changes.
+
+**Kill-switch:** the App-side env var `WEBSITE_WEBHOOK_LEDGER_ENABLED` is default-ON. If set to literal `'false'` (case-insensitive, post-trim), App reverts to pre-B15 behavior — app-level idempotency via `external_session_id` lookup only. NoonWeb still observes wire-identical responses.
+
+**Retention:** 180 days documented in ADR-016 D8. Cleanup cron deferred (B15-bis).
 
 ---
 
@@ -452,7 +464,7 @@ These files implement the v1 contract on the App side. The Go rewrite will reimp
 
 | Issue | Severity | Owner | Notes |
 |---|---|---|---|
-| No webhook event ledger / nonce store on App side (audit B15) | Medium | Go rewrite | Add `website_webhook_events` mirror of `stripe_webhook_events` pattern |
+| ~~No webhook event ledger / nonce store on App side (audit B15)~~ | ~~Medium~~ | — | **Resolved 2026-05-20 — ADR-016.** Transport-level idempotency ledger `website_webhook_events` implemented and live in production. See §8.2. |
 | No version header enforced yet (§9) | Low | Bilateral | Negotiate v2 cutover during Go rewrite |
 | Outbound `proposal-review-decision` lacks retry on failure (audit B9 Web) | Medium | Go rewrite | Exponential backoff retry queue |
 | In-memory rate limiter does not scale multi-instance (TDR-002) | Medium | Go rewrite | Distributed rate limiter |

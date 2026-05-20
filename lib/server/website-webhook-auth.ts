@@ -72,15 +72,26 @@ export function verifyWebsiteWebhookSignature(headers: Headers, bodyText: string
   }
 }
 
-export async function readSignedWebsiteJson<TSchema extends ZodTypeAny>(
+export interface SignedWebsiteJsonResult<T> {
+  payload: T
+  bodyText: string
+  signatureHeader: string
+  timestamp: string
+}
+
+export async function readSignedWebsiteJsonWithRawBody<TSchema extends ZodTypeAny>(
   request: Request,
   schema: TSchema
-): Promise<z.infer<TSchema>> {
+): Promise<SignedWebsiteJsonResult<z.infer<TSchema>>> {
   const bodyText = await request.text()
   verifyWebsiteWebhookSignature(request.headers, bodyText)
 
+  const signatureHeader = request.headers.get(SIGNATURE_HEADER) ?? ''
+  const timestamp = request.headers.get(TIMESTAMP_HEADER) ?? ''
+
   try {
-    return schema.parse(JSON.parse(bodyText))
+    const payload = schema.parse(JSON.parse(bodyText)) as z.infer<TSchema>
+    return { payload, bodyText, signatureHeader, timestamp }
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new WebsiteWebhookError('Invalid JSON payload.', 400)
@@ -90,6 +101,14 @@ export async function readSignedWebsiteJson<TSchema extends ZodTypeAny>(
     }
     throw error
   }
+}
+
+export async function readSignedWebsiteJson<TSchema extends ZodTypeAny>(
+  request: Request,
+  schema: TSchema
+): Promise<z.infer<TSchema>> {
+  const result = await readSignedWebsiteJsonWithRawBody(request, schema)
+  return result.payload
 }
 
 export function getProposalReviewDecisionWebhookUrl() {
