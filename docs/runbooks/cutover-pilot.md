@@ -1,6 +1,6 @@
 # Cutover pilot runbook — NoonApp production
 
-> **Status:** CLOSED 2026-05-17. Initial DRAFT landed PR #51; closure pass folded smoke evidence + G11 fix + 3 new anomaly entries (§5.11/12/13) via PR #54; Path F final operator-input pass (this revision) resolved PITR verification + on-call list. All `[verify-on-first-real-transaction]` and `[fill-in-before-pilot]` markers are now closed. Runbook is operational for the B1.5 pilot window.
+> **Status:** CLOSED 2026-05-17, on-call list finalized 2026-05-20. Initial DRAFT landed PR #51; closure pass folded smoke evidence + G11 fix + 3 new anomaly entries (§5.11/12/13) via PR #54; Path F final operator-input pass resolved PITR verification + on-call list scaffold; on-call list TBD rows resolved 2026-05-20 with Andres Velasco as single backup for primary/NoonWeb/Stripe coverage. All `[verify-on-first-real-transaction]` and `[fill-in-before-pilot]` markers are now closed. Runbook is operational for the B1.5 pilot window.
 
 ## 0. Audience and purpose
 
@@ -486,19 +486,19 @@ These are explicit gaps the team has decided to live with during the pilot. They
 
 ## 8. On-call contact list
 
-**Initial fill 2026-05-17.** Pedro is the sole primary on-call; backup + NoonWeb dev + owner Stripe contacts are marked TBD and must be filled before B1.5 pilot window starts.
+**Finalized 2026-05-20.** Pedro is primary on-call via shared inbox (`noondevelop@gmail.com`); Andres Velasco is the single backup covering NoonApp backup on-call, NoonWeb dev escalation, and Stripe account-owner operations. No remaining TBD rows.
 
 | Role | Contact | Hours | Escalation |
 |------|---------|-------|------------|
-| Primary on-call (NoonApp) | Pedro — `noondevelop@gmail.com` | TBD (operator availability) | TBD (no backup on-call defined yet) |
-| Backup on-call (NoonApp) | TBD — operator fills before pilot | TBD | TBD |
-| NoonWeb dev (cross-repo issues, inbound webhook) | TBD — operator coordinates with NoonWeb team | TBD | TBD |
-| Owner Stripe account (refunds via Dashboard, account-level ops) | TBD — operator captures owner contact for non-programmatic Stripe operations | TBD | TBD |
+| Primary on-call (NoonApp) | Pedro — `noondevelop@gmail.com` | 24/7 best-effort | Andres Velasco (Backup on-call) |
+| Backup on-call (NoonApp) | Andres Velasco — `noondevelop@gmail.com` / WhatsApp `+1 (407) 866-9673` | 24/7 | Stripe / Supabase / Vercel Support |
+| NoonWeb dev (cross-repo issues, inbound webhook) | Andres Velasco — `noondevelop@gmail.com` / WhatsApp `+1 (407) 866-9673` | 24/7 | Primary on-call (Pedro) |
+| Owner Stripe account (refunds via Dashboard, account-level ops) | Andres Velasco — `noondevelop@gmail.com` / WhatsApp `+1 (407) 866-9673` | 24/7 | Stripe Support |
 | Stripe Support | dashboard.stripe.com/support | 24/7 | tier varies by plan |
 | Supabase Support | supabase.com/support | 24/7 | tier varies by plan |
 | Vercel Support | vercel.com/support | 24/7 | tier varies by plan |
 
-**TBDs are acceptable for pre-pilot scoping but must be resolved before B1.5 pilot window**. The 4 TBD rows above represent real operational coverage gaps (no backup if Pedro is unavailable, no escalation path for cross-repo bugs, no documented owner contact for Stripe-Dashboard-side ops). Operator is responsible for converting them to real contacts when scheduling the pilot start.
+**Known coverage caveat:** Pedro and Andres Velasco share the same operational inbox (`noondevelop@gmail.com`). WhatsApp is the only true out-of-band channel that reaches Andres directly if the shared inbox is unreachable. This is an accepted concentration risk for the B1.5 internal pilot; if external customers are added in FASE 2, a second backup with a distinct inbox should be documented.
 
 ---
 
@@ -616,7 +616,7 @@ Closure of B1.4 (the iteration that produced this runbook) requires:
 - ✅ B1.3a Scenarios 5-8 have run end-to-end + Scenario 9 closed via Path D refund endpoint (closed 2026-05-17 PRs #53/#55/#56).
 - ✅ `[verify-on-first-real-transaction]` markers for observed behavior resolved (§5.3 G11 fix narrative, §5.11/5.12/5.13 new entries documenting smoke anomalies — landed PR #54).
 - ✅ `[verify-on-first-real-transaction]` marker for PITR resolved (§3.1 / §7 — Free plan, PITR not available; documented as accepted-risk for internal pilot, upgrade recommended before external exposure — landed Path F).
-- ✅ §8 on-call list is filled with what is known today (Pedro as primary; backup + NoonWeb dev + owner Stripe contacts marked TBD with explicit caveat that they must be resolved before B1.5 pilot window starts — landed Path F).
-- ✅ `project.context.core.md` records B1.4 closure in the Closed-in-runtime list (entry landed 2026-05-17 PR #54, flipped from DRAFT to fully closed in Path F).
+- ✅ §8 on-call list is fully filled (Pedro as primary on shared inbox; Andres Velasco as single backup covering NoonApp backup on-call + NoonWeb dev + Stripe owner roles via WhatsApp `+1 (407) 866-9673` — landed Path F scaffold 2026-05-17, finalized 2026-05-20).
+- ✅ `project.context.core.md` records B1.4 closure in the Closed-in-runtime list (entry landed 2026-05-17 PR #54, flipped from DRAFT to fully closed in Path F, on-call data finalized 2026-05-20).
 
-**B1.4 iteration is COMPLETE.** The 3 TBD on-call rows are runtime gaps to resolve before B1.5 pilot window starts; they are not code/deploy/doc items inside B1.4 scope. Path B (B1.3b inbound smoke), Path C (FASE 3 lifecycle), and Path G (wallet reversal RPC) remain independent open paths.
+**B1.4 iteration is COMPLETE.** All on-call rows are resolved with real contacts; the shared-inbox concentration risk is documented as accepted for the B1.5 internal pilot. Path B (B1.3b inbound smoke), Path C (FASE 3 lifecycle), and Path G (wallet reversal RPC) remain independent open paths.
