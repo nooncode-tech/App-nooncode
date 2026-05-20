@@ -1937,9 +1937,6 @@ export type Database = {
           },
         ]
       }
-      // MANUAL OVERRIDE #4 (B15 / ADR-016 D10) — added 2026-05-20.
-      // Reason: Supabase MCP types regen unavailable this session.
-      // Queue "clean regen + reconcile 4 override blocks" follow-up when MCP/CLI auth refreshes.
       website_webhook_events: {
         Row: {
           attempt_count: number
@@ -2302,6 +2299,13 @@ export type Database = {
           link_status: string
           linked_project_id: string
           prototype_workspace_id: string
+        }[]
+      }
+      list_schema_migrations: {
+        Args: never
+        Returns: {
+          name: string
+          version: string
         }[]
       }
       log_lead_activity: {
