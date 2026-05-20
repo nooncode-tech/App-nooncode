@@ -3,27 +3,14 @@ import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+// Single source of truth for the grandfathered prefix-collision set. Pinned
+// to ADR-006 §Option B2 and shared with the migrations-health endpoint per
+// ADR-017 §D1.
+import { KNOWN_COLLISION_FILES } from '../lib/server/migrations/known-exceptions.mjs';
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const MIGRATIONS_DIR = join(ROOT, 'supabase', 'migrations');
 const PREFIX_RE = /^(\d{4})_/;
-
-// Files involved in known historical prefix collisions (0024-0027).
-// Permanent grandfathered set per ADR-006 §Reconciliation required
-// (Option B2 — additive convention permanent — adopted 2026-05-11
-// after ledger verification confirmed 4 of 8 colliding filenames were
-// already registered in `supabase_migrations.schema_migrations`,
-// foreclosing the rename branch). Any *new* file colliding at any
-// prefix still fails.
-const KNOWN_COLLISION_FILES = new Set([
-  '0024_phase_3a_monetary_wallet_foundation.sql',
-  '0024_phase_5a_prototype_settings_admin_write.sql',
-  '0025_phase_3a_bridge_wallet_compatibility.sql',
-  '0025_phase_3a_leads_geo_location.sql',
-  '0026_phase_3b_earnings_backend.sql',
-  '0026_phase_9a_stripe_payments.sql',
-  '0027_phase_10a_commissions.sql',
-  '0027_phase_3_proposal_lifecycle.sql',
-]);
 
 const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql'));
 
