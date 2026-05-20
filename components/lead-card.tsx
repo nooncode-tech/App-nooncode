@@ -297,10 +297,6 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
               </DropdownMenuItem>
               {isSupabaseMode ? (
                 <>
-                  <DropdownMenuItem disabled>
-                    <Phone className="size-4 mr-2" />
-                    Llamar no disponible
-                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={(event) => handleOpenLeadDetail(event)}>
                     <FileText className="size-4 mr-2" />
                     Abrir detalle para propuesta
