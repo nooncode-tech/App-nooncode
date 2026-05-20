@@ -28,6 +28,12 @@ import type {
 import { mockLeads, mockProjects, mockTasks, mockRewards, mockUsers } from './mock-data'
 import { useAuth } from './auth-context'
 import { deserializeLead, type LeadWire } from '@/lib/leads/serialization'
+import type { OffsetMeta } from '@/lib/server/pagination/envelope'
+
+// Client default page size for /dashboard/leads. Server caps at 100
+// (lib/server/pagination/schema.ts); 50 gives faster navigation and makes
+// multi-page browsing visible on small tenants.
+export const LEADS_PAGE_SIZE = 50
 import {
   deserializeLeadActivity,
   type LeadActivityWire,
@@ -61,6 +67,8 @@ interface DataContextType {
   // Leads
   isLeadsLoading: boolean
   leads: Lead[]
+  leadsPagination: OffsetMeta | null
+  setLeadsPage: (page: number) => Promise<void>
   refreshLeads: () => Promise<void>
   addLead: (lead: LeadDraft) => Promise<Lead>
   updateLead: (id: string, updates: LeadUpdates) => Promise<Lead>
@@ -140,6 +148,20 @@ const DataContext = createContext<DataContextType | undefined>(undefined)
 
 interface ApiResponse<T> {
   data: T
+}
+
+interface PaginatedApiResponse<T> {
+  data: T
+  meta: OffsetMeta
+}
+
+function buildMockLeadsPagination(leadsCount: number): OffsetMeta {
+  return {
+    page: 1,
+    limit: Math.max(leadsCount, 1),
+    total: leadsCount,
+    pageCount: leadsCount === 0 ? 0 : 1,
+  }
 }
 
 function normalizeLeadSource(source: LeadDraft['source']): LeadSource {
@@ -343,6 +365,32 @@ async function readApiResponse<T>(response: Response): Promise<T> {
   return payload as T
 }
 
+// Reads the full `{ data, meta }` offset envelope. Distinct from
+// `readApiResponse<T>` which discards `meta` — that helper is used for
+// non-paginated routes and for endpoints whose meta is not consumed yet.
+async function readPaginatedApiResponse<T>(response: Response): Promise<PaginatedApiResponse<T>> {
+  const payload = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    const message =
+      payload && typeof payload.error === 'string'
+        ? payload.error
+        : 'The request could not be completed.'
+    throw new Error(message)
+  }
+
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    'meta' in payload
+  ) {
+    return payload as PaginatedApiResponse<T>
+  }
+
+  throw new Error('Unexpected response shape: missing pagination envelope.')
+}
+
 function normalizeTaskAssignment(taskData: Pick<TaskDraft, 'assignedTo' | 'assignedToName' | 'assigneeId' | 'assigneeName'>) {
   return {
     assignedTo: taskData.assignedTo ?? taskData.assigneeId,
@@ -426,7 +474,11 @@ function replaceLeadInCollection(collection: Lead[], nextLead: Lead): Lead[] {
 export function DataProvider({ children }: { children: ReactNode }) {
   const { authMode, user } = useAuth()
   const [leads, setLeads] = useState<Lead[]>(authMode === 'supabase' ? [] : mockLeads)
+  const [leadsPagination, setLeadsPagination] = useState<OffsetMeta | null>(
+    authMode === 'supabase' ? null : buildMockLeadsPagination(mockLeads.length)
+  )
   const [isLeadsLoading, setIsLeadsLoading] = useState(authMode === 'supabase')
+  const isLeadsLoadingRef = useRef(isLeadsLoading)
   const [leadActivityByLeadId, setLeadActivityByLeadId] = useState<Record<string, LeadActivity[]>>(
     () => (authMode === 'supabase' ? {} : buildInitialMockLeadActivity(mockLeads))
   )
@@ -476,22 +528,51 @@ export function DataProvider({ children }: { children: ReactNode }) {
     taskActivityByTaskIdRef.current = taskActivityByTaskId
   }, [taskActivityByTaskId])
 
-  const loadLeads = useCallback(async () => {
-    const response = await fetch('/api/leads', {
+  useEffect(() => {
+    isLeadsLoadingRef.current = isLeadsLoading
+  }, [isLeadsLoading])
+
+  const loadLeads = useCallback(async (page: number = 1, limit: number = LEADS_PAGE_SIZE) => {
+    const response = await fetch(`/api/leads?page=${page}&limit=${limit}`, {
       method: 'GET',
       cache: 'no-store',
     })
-    const payload = await readApiResponse<LeadWire[]>(response)
-    setLeads(payload.map(deserializeLead))
+    const envelope = await readPaginatedApiResponse<LeadWire[]>(response)
+    setLeads(envelope.data.map(deserializeLead))
+    setLeadsPagination(envelope.meta)
   }, [])
 
   const refreshLeads = useCallback(async () => {
     if (authMode !== 'supabase') {
       setLeads(mockLeads)
+      setLeadsPagination(buildMockLeadsPagination(mockLeads.length))
       return
     }
 
-    await loadLeads()
+    const currentPage = leadsPagination?.page ?? 1
+    await loadLeads(currentPage)
+  }, [authMode, leadsPagination, loadLeads])
+
+  const setLeadsPage = useCallback(async (page: number) => {
+    if (authMode !== 'supabase') {
+      // Mock mode is single-page; nothing to fetch.
+      return
+    }
+
+    // Guard against overlapping requests when the user double-clicks prev/next.
+    if (isLeadsLoadingRef.current) {
+      return
+    }
+
+    const targetPage = Math.max(1, Math.floor(page))
+    setIsLeadsLoading(true)
+    try {
+      await loadLeads(targetPage)
+    } catch {
+      // Loader-level error: leave state untouched so the UI can retry.
+    } finally {
+      setIsLeadsLoading(false)
+    }
   }, [authMode, loadLeads])
 
   const replaceLead = useCallback((nextLead: Lead) => {
@@ -562,6 +643,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (authMode !== 'supabase') {
       startTransition(() => {
         setLeads(mockLeads)
+        setLeadsPagination(buildMockLeadsPagination(mockLeads.length))
         setProjects(mockProjects)
         setPersistedProjects([])
         setTasks(mockTasks)
@@ -586,6 +668,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     startTransition(() => {
       setIsLeadsLoading(true)
+      setLeadsPagination(null)
       setProjects(mockProjects)
       setPersistedProjects([])
       setTasks(mockTasks)
@@ -600,10 +683,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
 
     Promise.resolve()
-      .then(loadLeads)
+      .then(() => loadLeads(1))
       .catch(() => {
         if (isActive) {
           setLeads([])
+          setLeadsPagination(null)
         }
       })
       .finally(() => {
@@ -1191,6 +1275,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         updatedAt: new Date(),
       }
       setLeads((prev) => [newLead, ...prev])
+      setLeadsPagination((prev) => {
+        // Mock-mode meta stays a single page covering every mock lead.
+        const nextTotal = (prev?.total ?? 0) + 1
+        return buildMockLeadsPagination(nextTotal)
+      })
       setLeadActivityByLeadId((prev) => ({
         ...prev,
         [newLead.id]: [
@@ -1213,6 +1302,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const payload = await readApiResponse<LeadWire>(response)
     const createdLead = deserializeLead(payload)
     setLeads((prev) => [createdLead, ...prev])
+    setLeadsPagination((prev) => {
+      if (!prev) return prev
+      const nextTotal = prev.total + 1
+      return {
+        ...prev,
+        total: nextTotal,
+        pageCount: nextTotal === 0 ? 0 : Math.ceil(nextTotal / prev.limit),
+      }
+    })
     return createdLead
   }, [authMode, user])
 
@@ -1312,6 +1410,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const deleteLead = useCallback(async (id: string) => {
     if (authMode !== 'supabase') {
       setLeads((prev) => prev.filter((lead) => lead.id !== id))
+      setLeadsPagination((prev) => {
+        const nextTotal = Math.max(0, (prev?.total ?? 0) - 1)
+        return buildMockLeadsPagination(nextTotal)
+      })
       setLeadActivityByLeadId((prev) => {
         const next = { ...prev }
         delete next[id]
@@ -1330,6 +1432,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
     await readApiResponse<{ ok: boolean }>(response)
     setLeads((prev) => prev.filter((lead) => lead.id !== id))
+    // Optimistic meta: decrement total and recompute pageCount. If the
+    // current page becomes empty (e.g., deleting the last lead on page N),
+    // navigate back one page on the next render.
+    let shouldStepBack: { targetPage: number } | null = null
+    setLeadsPagination((prev) => {
+      if (!prev) return prev
+      const nextTotal = Math.max(0, prev.total - 1)
+      const nextPageCount = nextTotal === 0 ? 0 : Math.ceil(nextTotal / prev.limit)
+      if (nextPageCount > 0 && prev.page > nextPageCount) {
+        shouldStepBack = { targetPage: Math.max(1, nextPageCount) }
+      }
+      return {
+        ...prev,
+        total: nextTotal,
+        pageCount: nextPageCount,
+      }
+    })
     setLeadActivityByLeadId((prev) => {
       const next = { ...prev }
       delete next[id]
@@ -1340,7 +1459,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
       delete next[id]
       return next
     })
-  }, [authMode])
+    if (shouldStepBack) {
+      // Refetch the previous page; ignore in-flight guard since the user-
+      // initiated mutation has already completed.
+      const targetPage = (shouldStepBack as { targetPage: number }).targetPage
+      setIsLeadsLoading(true)
+      try {
+        await loadLeads(targetPage)
+      } catch {
+        // Leave state; user can retry via next refresh.
+      } finally {
+        setIsLeadsLoading(false)
+      }
+    }
+  }, [authMode, loadLeads])
 
   const updateLeadStatus = useCallback(async (id: string, status: LeadStatus) => {
     if (authMode !== 'supabase') {
@@ -1829,6 +1961,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       value={{
         isLeadsLoading,
         leads,
+        leadsPagination,
+        setLeadsPage,
         refreshLeads,
         addLead,
         updateLead,

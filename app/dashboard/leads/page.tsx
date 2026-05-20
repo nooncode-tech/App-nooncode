@@ -88,7 +88,15 @@ interface MaxwellSearchResponse {
 
 export default function LeadsPage() {
   const { user } = useAuth()
-  const { leads, isLeadsLoading, refreshLeads, updateLeadStatus, deleteLead } = useData()
+  const {
+    leads,
+    isLeadsLoading,
+    leadsPagination,
+    setLeadsPage,
+    refreshLeads,
+    updateLeadStatus,
+    deleteLead,
+  } = useData()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -530,6 +538,40 @@ export default function LeadsPage() {
           })
         )}
       </div>
+
+      {/* Pagination controls — visible only when the server reports more than one page */}
+      {leadsPagination && leadsPagination.pageCount > 1 && (
+        <div
+          className="flex items-center justify-between gap-3 pt-2"
+          role="navigation"
+          aria-label="Paginación de leads"
+        >
+          <p className="text-sm text-muted-foreground">
+            Página {leadsPagination.page} de {leadsPagination.pageCount} · {leadsPagination.total} leads
+          </p>
+          <div className="flex items-center gap-2">
+            {isLeadsLoading && (
+              <Spinner className="size-4" aria-label="Cargando página" />
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void setLeadsPage(leadsPagination.page - 1)}
+              disabled={isLeadsLoading || leadsPagination.page <= 1}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void setLeadsPage(leadsPagination.page + 1)}
+              disabled={isLeadsLoading || leadsPagination.page >= leadsPagination.pageCount}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Lead Detail Dialog */}
       <Dialog open={!!selectedLead} onOpenChange={handleLeadDialogChange}>
