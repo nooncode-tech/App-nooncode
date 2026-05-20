@@ -243,8 +243,8 @@ export default function EarningsPage() {
       </div>
       <div className="space-y-8">
 
-      {/* Stripe Connect card */}
-      {!connectLoading && connectStatus && (
+      {/* Stripe Connect card — solo para roles que reciben earnings via Stripe Connect (sellers + admin). PM/developer no tienen Connect personal. */}
+      {!connectLoading && connectStatus && user?.role !== 'pm' && user?.role !== 'developer' && (
         <Card className={connectStatus.status === 'active' ? 'border-emerald-200/80 bg-emerald-50/20' : 'border-yellow-200/80 bg-yellow-50/20'}>
           <CardContent className="flex flex-col gap-3 pt-5 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-3">

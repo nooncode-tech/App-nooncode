@@ -109,6 +109,28 @@ export async function markUserNotificationRead(
   return data as UserNotificationRow
 }
 
+export async function markAllUserNotificationsRead(
+  client: DatabaseClient,
+  profileId: string,
+  readAt: string
+): Promise<number> {
+  const { data, error } = await client
+    .from('user_notifications')
+    .update({
+      is_read: true,
+      read_at: readAt,
+    })
+    .eq('profile_id', profileId)
+    .eq('is_read', false)
+    .select('id')
+
+  if (error) {
+    throw new Error(`Failed to mark all notifications as read: ${error.message}`)
+  }
+
+  return (data ?? []).length
+}
+
 export async function listLeadActivityTargetsByIds(
   client: DatabaseClient,
   eventIds: string[]

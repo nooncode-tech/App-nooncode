@@ -17,6 +17,7 @@ import {
   listProjectActivityTargetsByIds,
   listTaskActivityTargetsByIds,
   listUserNotifications,
+  markAllUserNotificationsRead,
   markUserNotificationRead,
 } from '@/lib/server/notifications/repository'
 
@@ -99,6 +100,21 @@ export async function listVisibleNotifications(
     ),
     unreadCount,
   }
+}
+
+export async function markAllVisibleNotificationsAsRead(
+  client: DatabaseClient,
+  principal: AuthenticatedPrincipal
+): Promise<{ markedCount: number; unreadCount: number }> {
+  const markedCount = await markAllUserNotificationsRead(
+    client,
+    principal.profile.id,
+    new Date().toISOString()
+  )
+
+  const unreadCount = await countUnreadUserNotifications(client, principal.profile.id)
+
+  return { markedCount, unreadCount }
 }
 
 export async function markVisibleNotificationAsRead(
