@@ -42,6 +42,18 @@ const nextConfig = {
     // allowlist instead of opting back into the optimizer blindly.
     unoptimized: true,
   },
+  // Force inclusion of supabase/migrations/*.sql in the serverless function
+  // bundle for the migrations-health endpoint. Without this, Vercel's
+  // automatic file-tracing infers code dependencies only and would exclude
+  // the `supabase/` directory entirely, causing the endpoint to false-
+  // positive every disk file as drift. The defensive
+  // `MigrationsBundleConfigError` in lib/server/migrations/ledger-adapter.ts
+  // is the safety net that turns a missed config entry into a loud
+  // 500 + MIGRATIONS_BUNDLE_MISSING instead of a silent false alarm.
+  // See ADR-017 §D5.
+  outputFileTracingIncludes: {
+    '/api/admin/migrations-health': ['./supabase/migrations/**/*.sql'],
+  },
   async headers() {
     return [
       {
