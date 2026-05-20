@@ -196,6 +196,8 @@ export function AppSidebar() {
       return { ...item, title: shouldShowTeam ? 'Tareas del equipo' : item.title }
     })
 
+  const financeItems = financeNavItems.filter((item) => canAccessDashboardPath(user.role, item.href))
+
   const handleLogout = async () => {
     await logout()
     router.push('/')
@@ -246,7 +248,9 @@ export function AppSidebar() {
           <NavGroup label="Delivery" color="oklch(0.50 0.26 264)" items={deliveryItems} pathname={pathname} />
         )}
 
-        <NavGroup label="Finanzas" color="#22c55e" items={financeNavItems} pathname={pathname} />
+        {financeItems.length > 0 && (
+          <NavGroup label="Finanzas" color="#22c55e" items={financeItems} pathname={pathname} />
+        )}
 
         {canAccessAdmin(user.role) && (
           <NavGroup
