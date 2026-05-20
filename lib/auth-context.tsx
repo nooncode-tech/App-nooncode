@@ -32,7 +32,7 @@ export interface LoginResult {
 const AuthContext = createContext<AuthContextType | null>(null)
 const MOCK_AUTH_STORAGE_KEY = 'noon.mockUserEmail'
 
-type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'pm' | 'admin'
+type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'pm' | 'admin' | 'finance'
 
 interface DashboardRouteAccessRule {
   prefix: string
@@ -48,6 +48,7 @@ const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
   { prefix: '/dashboard/pm-queue', access: 'pm' },
   { prefix: '/dashboard/projects', access: 'projects' },
   { prefix: '/dashboard/tasks', access: 'delivery' },
+  { prefix: '/dashboard/earnings', access: 'finance' },
 ]
 
 function normalizeDashboardPath(pathname: string): string {
@@ -235,6 +236,10 @@ export function canAccessAdmin(role: UserRole): boolean {
   return role === 'admin'
 }
 
+export function canReceiveEarnings(role: UserRole): boolean {
+  return ['admin', 'sales_manager', 'sales'].includes(role)
+}
+
 export function canManageTeam(role: UserRole): boolean {
   return ['admin', 'sales_manager', 'pm'].includes(role)
 }
@@ -260,6 +265,7 @@ export function canAccessDashboardPath(role: UserRole, pathname: string): boolea
   if (accessLevel === 'delivery') return canAccessDelivery(role)
   if (accessLevel === 'pm') return canAccessPmQueue(role)
   if (accessLevel === 'admin') return canAccessAdmin(role)
+  if (accessLevel === 'finance') return canReceiveEarnings(role)
 
   return true
 }
