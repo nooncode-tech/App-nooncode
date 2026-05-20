@@ -19,12 +19,13 @@
  * over a 5th manual override block).
  *
  * @see docs/adrs/ADR-017-schema-migrations-drift-gating-endpoint.md
+ * @see docs/adrs/ADR-018-r5-resolution-list-schema-migrations-rpc.md
  */
 
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 
 import { ApiError } from '@/lib/server/api/errors'
 import { diffMigrations, type MigrationsDiffResult } from '@/lib/server/migrations/health'
@@ -34,13 +35,15 @@ import {
 } from '@/lib/server/migrations/known-exceptions.mjs'
 
 /**
- * Row shape of `supabase_migrations.schema_migrations`. Pinned to the
- * ADR-014 verification snapshot. If Supabase ever evolves this row shape,
- * the cast in `readMigrationsHealth` silently lies until the diff function
- * dereferences a missing field — caught at the next `@supabase/supabase-js`
- * upgrade.
+ * Row shape returned by `public.list_schema_migrations()` (ADR-018). Pinned
+ * to the ADR-014 verification snapshot. If Supabase ever evolves this row
+ * shape, the cast in `readMigrationsHealth` silently lies until the diff
+ * function dereferences a missing field — caught at the next
+ * `@supabase/supabase-js` upgrade.
  *
+ * @see docs/adrs/ADR-018-r5-resolution-list-schema-migrations-rpc.md
  * @see docs/adrs/ADR-017-schema-migrations-drift-gating-endpoint.md §D4
+ * @see docs/adrs/ADR-014-migration-ledger-reconciliation.md
  */
 export interface SchemaMigrationsRow {
   /** 4-digit prefix (e.g. '0023') or 14-digit timestamp (e.g. '20260420063335'). */
@@ -77,12 +80,10 @@ export class MigrationsBundleConfigError extends ApiError {
 }
 
 /**
- * Thrown when the cross-schema SELECT against
- * `supabase_migrations.schema_migrations` fails. The most likely causes are
- * (a) the service-role key lost its default SELECT grant on the
- * `supabase_migrations` schema (escalates this iteration to FULL per R5),
- * or (b) a transient Supabase outage. Mapped to 500 +
- * `MIGRATIONS_READ_FAILED`.
+ * Thrown when the `public.list_schema_migrations()` RPC call fails. The
+ * most likely causes are (a) the service-role lost its EXECUTE grant on
+ * `list_schema_migrations` (escalates to a re-grant migration), or (b) a
+ * transient Supabase outage. Mapped to 500 + `MIGRATIONS_READ_FAILED`.
  */
 export class MigrationsLedgerReadError extends ApiError {
   constructor(cause: string) {
@@ -132,14 +133,17 @@ async function readMigrationFiles(): Promise<string[]> {
  * Supabase-managed schema whose row format is pinned to ADR-014.
  */
 async function readLedgerRows(client: SupabaseClient): Promise<SchemaMigrationsRow[]> {
-  // Cross-schema accessor. The generic `Database` type only covers the
-  // `public` schema; we cast to a permissive client to access
-  // `supabase_migrations`. The result type is locally asserted to
-  // `SchemaMigrationsRow[]`.
-  const { data, error } = await (client as unknown as SupabaseClient)
-    .schema('supabase_migrations' as never)
-    .from('schema_migrations')
-    .select('version, name')
+  // Path B (ADR-018): `public.list_schema_migrations()` SECURITY DEFINER RPC
+  // returns `setof (version text, name text)` from
+  // `supabase_migrations.schema_migrations`. The cross-schema accessor was
+  // replaced because PostgREST does not expose `supabase_migrations` via
+  // `db-schemas` and rejected the prior `.schema('supabase_migrations')`
+  // accessor with `Invalid schema: supabase_migrations`. EXECUTE is granted
+  // only to `service_role` (ADR-018 §D2).
+  const { data, error } = (await client.rpc('list_schema_migrations' as never)) as {
+    data: SchemaMigrationsRow[] | null
+    error: PostgrestError | null
+  }
 
   if (error) {
     throw new MigrationsLedgerReadError(error.message)
