@@ -2817,3 +2817,42 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - **F-1 testing finding 51→55 fixture drift**: el spec/ADR-017 §D2 example response usaba 51 (model number) pero on-disk reality es 55 — corregido en este closure (ADR-017 §D2 actualizado).
   - **Clean regen `database.types.ts`** queue follow-up sigue vivo desde B15 (4 manual override blocks pendientes; B26 NO agregó un 5to per D9).
 - Next iteration candidates: (a) **F-V12** leads pagination wire (~4-6h, cierra FASE 2 Bloque C al 100%); (b) Path B Cross-repo NoonWeb F-1 mirror fix (carry-over); (c) Path C B1.5 pilot sign-off operativo (carry-over); (d) Clean regen `database.types.ts` cuando MCP/CLI Supabase auth refresque (opportunistic); (e) Outbound prototype gate iteration (carry-over de Path A 2026-05-20).
+
+
+
+## Session note: B26 R5 follow-up — list_schema_migrations RPC (Path B resolution)
+- Date: 2026-05-20
+- Iteration id: `fase-2-c-b26-r5-followup-rpc-migration`
+- Route used: Hybrid LITE, chain analysis → architecture → backend → testing → security → infra → docs → validator (8 skills, all executed in single session same day as B26 closure).
+- Objective: resolver R5 que materializó empíricamente en producción inmediatamente post-merge de B26. El smoke quick contra `https://nooncode-app-pi.vercel.app/api/admin/migrations-health` retornó `500 {"error":"Could not read the schema migrations ledger: Invalid schema: supabase_migrations","code":"MIGRATIONS_READ_FAILED"}` — el supabase-js client rechaza `client.schema('supabase_migrations')` porque PostgREST default `db-schemas` solo expone `public, graphql_public, storage`. La defensive `MigrationsLedgerReadError` funcionó perfecto (loud 500 + structured code, no silent false-positive drift). Usuario eligió **Path B** (RPC SECURITY DEFINER) sobre Path A (operational schema exposure via Dashboard), respetando el binding pre-autorización B26-SEC-F3 (standalone security review).
+- Spec: `specs/fase-2-c-b26-r5-followup-rpc-migration.md`.
+- ADR: `docs/adrs/ADR-018-r5-resolution-list-schema-migrations-rpc.md` (standalone, no amendment). Architecture firmó Q1 (SECURITY DEFINER + STABLE + LANGUAGE sql + search_path pinned a `pg_catalog, supabase_migrations` sin `public`), Q2 (REVOKE PUBLIC + anon + authenticated, GRANT EXECUTE a service_role only, rollback verbatim en migration header), Q3 (inline cast consistente con ADR-017 §D4 — NO 5to override block en `database.types.ts`). ADR-017 §R5 flipped a `Closed — see ADR-018` (Status header + Amended by ref + R5 row + trailing paragraph).
+- Surface of change (durable):
+  - **NEW** `supabase/migrations/0052_phase_20b_list_schema_migrations_rpc.sql` — 54 líneas byte-for-byte from ADR-018 §D4. SECURITY DEFINER function `public.list_schema_migrations()` returning `setof (version text, name text)`. Idempotent (DROP IF EXISTS + CREATE en `begin;/commit;`). REVOKE explicit + GRANT EXECUTE to service_role. Header comment con rollback companion verbatim.
+  - **MODIFIED** `lib/server/migrations/ledger-adapter.ts` — 5 mechanical edits per ADR-018 §D5: (1) `PostgrestError` agregado al type import desde `@supabase/supabase-js`; (2) file-level JSDoc agrega `@see` para ADR-018; (3) `SchemaMigrationsRow` JSDoc lead phrase actualizada para mencionar RPC; (4) `MigrationsLedgerReadError` JSDoc cause (a) reworded (lost service-role EXECUTE grant); (5) `readLedgerRows()` body flipped de `client.schema('supabase_migrations').from('schema_migrations').select('version, name')` a `client.rpc('list_schema_migrations' as never)` con explicit `{ data: SchemaMigrationsRow[] | null, error: PostgrestError | null }` cast.
+  - **UNTOUCHED** `tests/server/migrations/health.test.ts` — analysis empirical finding confirmed: no adapter-boundary mock existed; los 14 pure-function tests carry over verbatim porque `diffMigrations` es invariant al upstream row source. Re-run gates verified 345/345 still pass.
+  - **UNTOUCHED** `database.types.ts` — Q3=(a) inline cast preserva el deferral pattern de ADR-017 §D4. Override block surface stays at 4.
+- Surface of test (methodology: **integration-first para LITE preserved**):
+  - Unit tests stay the same (14 carried from B26).
+  - Production smoke post-deploy es la integration validation (operator-driven, owned por infra/validator chain).
+  - Defensive `MigrationsLedgerReadError` chain (Supabase error → ApiError → toErrorResponse) preserved verbatim.
+- Gates re-validated: `npm test` 345/345; typecheck/lint/build clean.
+- Security review verdict: **GATE-OPEN**. Zero CRITICAL/HIGH/MEDIUM. 12 threat surfaces auditadas S1-S12. 2 LOW carry-forward findings (B26-R5-SEC-F1 raw Supabase error en 500 body + B26-R5-SEC-F2 no per-route rate-limit, ambos admin-gate-acceptable). 2 P-positive findings (P1 REVOKE-PUBLIC pattern nuevo es defense-in-depth improvement sobre precedent 0050 — recomendado como canonical shape forward; P2 two-layer defense database GRANT + App admin gate documentado explícitamente). **B26-SEC-F3 MEDIUM-conditional binding RESUELTO**, no carry-forward — todos los 4 requirements satisfied (1) standalone spec + (2) standalone migration + (3) standalone security review + (4) reversible REVOKE+DROP companion. Privilege boundary se NARROWED vs B26 baseline (improvement, no regression). Evidencia en `docs/validations/B26-R5 security review 2026-05-20.md`.
+- Infra apply verdict: **READY-TO-MERGE WITH WARNINGS**. Supabase MCP no disponible esta sesión → Dashboard SQL Editor fallback per ADR-014 (operator pegó el SQL block + manual ledger row INSERT). Verifications post-apply: (a) `proacl = {postgres=X/postgres,service_role=X/postgres}` ✓ (sin anon/authenticated/PUBLIC); (b) `proconfig = [search_path=pg_catalog, supabase_migrations]` ✓ (sin `public`); (c) ledger row `('0052', 'phase_20b_list_schema_migrations_rpc')` ✓ presente; (d) total ledger count: 58 (consistente con prod reality — la architecture math pre-B26 asumía 53 pero los counts reales en prod son distintos; 58 ledger = 52 disk-tracked + 6 expected_orphans, math holds con current reality). 2 LOW operator-action warnings registradas en infra review. Evidencia en `docs/validations/B26-R5 infra apply 2026-05-20.md`.
+- What changed (durable list):
+  - 1 nueva migration (0052) aplicada a remote via Dashboard fallback + ledger row reconciliada per ADR-014
+  - 1 nueva function `public.list_schema_migrations()` SECURITY DEFINER en prod
+  - 1 archivo modified (`ledger-adapter.ts`, 5 mechanical edits)
+  - 1 ADR nuevo (ADR-018) + ADR-017 §R5 flipped
+  - 3 review docs nuevos (testing + security + infra apply)
+  - `core.md`: operating rule existente para `/api/admin/migrations-health` amended (mechanism flip mencionado + ADR-018 referenced)
+  - `history.md`: esta entry
+  - Roadmap §17: latest snapshot updated reflejando R5 closure + B26-SEC-F3 binding closed
+- Wire contract changes: **NINGUNO**. Endpoint behavior externally identical (same status codes, same JSON shape, same admin gate). Only underlying read mechanism flipped.
+- Operating rule updates: **1 amended** (no nuevo). El operating rule canonical drift-gating endpoint existente actualizado para mencionar el RPC indirection per ADR-018.
+- Cross-repo impact: **CERO**. Endpoint App-internal.
+- Completion status: COMPLETE-WITH-FOLLOW-UPS (Validator pending). FASE 2 Bloque C status sin cambio (3/4 — B14 + B15 + B26 cerrados con R5 follow-up; F-V12 sigue pending). G7-style drift gating ahora **funcionalmente operativo en prod** (era nominalmente shipped en B26 pero estaba broken por el "Invalid schema" bug — R5 follow-up cierra el gap).
+- Follow-ups queued (no bloqueantes):
+  - **Production smoke post-merge + deploy**: admin GET a `/api/admin/migrations-health` debe retornar 200 con `synced=true`, `summary.ledger_count=58`, `summary.filesystem_count=56` (or actual count). Operator-driven.
+  - **Carry-overs vivos** desde B26: clean regen `database.types.ts` (4 override blocks), B27+ internal-token pre-authorized per ADR-017 §D3 si CI consumer materializa, G11 correct fix (re-grant Vercel GitHub App al repo PRIVATE), Path A operativos B carry-overs.
+- Next iteration candidates: (a) **F-V12** leads pagination wire (~4-6h, cierra FASE 2 Bloque C al 100%); (b) carry-overs above.

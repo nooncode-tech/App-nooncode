@@ -1,10 +1,11 @@
 # ADR-017: schema_migrations drift gating endpoint — auth posture, response shape, allowlist source of truth, and bundling strategy
 
-**Status:** Accepted
+**Status:** Accepted (§R5 closed 2026-05-20 by ADR-018)
 **Date:** 2026-05-20
 **Deciders:** Engineering team
 **Supersedes:** None
-**Related:** ADR-006 (migration prefix convention — §Option B2 grandfathered set), ADR-014 (migration ledger reconciliation — §Orphans expected set), spec `specs/fase-2-c-b26-schema-migrations-gating-endpoint-health.md`.
+**Amended by:** ADR-018 (closes §R5 — `list_schema_migrations` RPC replaces cross-schema SELECT).
+**Related:** ADR-006 (migration prefix convention — §Option B2 grandfathered set), ADR-014 (migration ledger reconciliation — §Orphans expected set), ADR-018 (R5 resolution), spec `specs/fase-2-c-b26-schema-migrations-gating-endpoint-health.md`, spec `specs/fase-2-c-b26-r5-followup-rpc-migration.md`.
 
 ---
 
@@ -315,11 +316,11 @@ When (not if) a CI / cron / external-probe consumer needs this endpoint, the imp
 | R2 (response shape lock-in) | Locked in D2 with named fields + status mapping | Closed |
 | R3 (auth posture mismatch) | Admin-only now; internal-token pre-authorized for follow-up (D3) | Closed for B26 scope |
 | R4 (type safety hole) | Inline `SchemaMigrationsRow` interface (D4) | Closed |
-| R5 (cross-schema SELECT requires policy surgery) | Service-role has unrestricted schema access by Supabase default; no policy change expected. Backend verifies on the first preview hit | Open until backend smoke confirms |
+| R5 (cross-schema SELECT requires policy surgery) | Materialized as PostgREST `Invalid schema: supabase_migrations` (not `42501`). Resolved via Path B — `public.list_schema_migrations()` SECURITY DEFINER RPC with EXECUTE granted only to `service_role`. See ADR-018. | **Closed — see ADR-018** (2026-05-20) |
 | R6 (Vercel bundle exclusion) | `outputFileTracingIncludes` + defensive `MigrationsBundleConfigError` (D5) | Closed |
 | R7 (filename/version join key) | Join on `(slug, name)` not `(prefix, version)` (D8) | Closed |
 
-R5 is the only risk that backend must confirm empirically. If the SELECT fails with `42501` or similar permission error on the first preview hit, this iteration escalates to FULL and adds a GRANT step (likely a migration, certainly an Infra co-sign).
+R5 closed on 2026-05-20 via ADR-018. The production failure mode was a PostgREST `db-schemas` exposure restriction (`Invalid schema: supabase_migrations`), not the anticipated `42501` permission denied. The user elected Path B (SECURITY DEFINER RPC in `public`) over Path A (operational schema exposure). ADR-018 records the decision, the SECURITY DEFINER hardening posture, the GRANT scope, and the REVOKE+DROP rollback companion. The B26-SEC-F3 binding from `docs/validations/B26 security review 2026-05-20.md` §S12 is satisfied by the ADR-018 iteration.
 
 ---
 
