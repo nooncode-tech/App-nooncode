@@ -1,5 +1,10 @@
 # G11 reopen — empirical evidence trail (2026-05-20)
 
+> **Post-iteration verification log appended 2026-05-20 ~22:50 UTC**:
+> - Org-level fix attempt (Settings → Installations → Vercel → Save with "All repositories" already selected): NO effect. `vercel[bot]` GitHub Deployments still stuck at 2026-05-05T14:11:34Z after PR #75 merge.
+> - Project-level fix attempt (Vercel Dashboard → nooncode-app → Settings → Git → Disconnect + Reconnect): performed. Verification trigger is this PR's merge.
+
+
 Source spec: `specs/g11-reopen-vercel-autodeploy-diagnosis.md`
 Iteration: `g11-reopen-vercel-autodeploy-diagnosis`
 Executor: system-infra
