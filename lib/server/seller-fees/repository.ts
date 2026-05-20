@@ -4,13 +4,9 @@
 // All callers should pass an admin-privileged client (service_role). RLS
 // policies on seller_fees deny INSERT/UPDATE/DELETE to authenticated users
 // per ADR-007 §Hard rule 2; service_role bypasses RLS.
-//
-// The 'seller_fees' as never cast follows the same pattern as
-// lib/server/wallet/repository.ts §listMonetaryLedgerEntries — kept until
-// database.types.ts is regenerated to include the new table.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/lib/server/supabase/database.types'
+import type { Database, Json } from '@/lib/server/supabase/database.types'
 import type {
   SellerFeeInsert,
   SellerFeeRow,
@@ -18,18 +14,6 @@ import type {
 } from '@/lib/server/seller-fees/types'
 
 type DatabaseClient = SupabaseClient<Database>
-
-// Helper: seller_fees is not yet in the generated database.types.ts (waiting
-// on the next regeneration cycle after migrations 0043/0044 landed). Casting
-// the .from() call locally keeps the cast scoped and lets all chained calls
-// type-check normally. Pattern mirrors lib/server/wallet/repository.ts §
-// listMonetaryLedgerEntries (which uses the same workaround for the
-// monetary wallet tables until their types were regenerated).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sellerFeesTable(client: DatabaseClient): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (client as any).from('seller_fees')
-}
 
 const sellerFeeSelect = `
   id,
@@ -56,14 +40,15 @@ export async function insertSellerFee(
   client: DatabaseClient,
   payload: SellerFeeInsert
 ): Promise<SellerFeeRow> {
-  const { data, error } = await sellerFeesTable(client)
+  const { data, error } = await client
+    .from('seller_fees')
     .insert({
       proposal_id: payload.proposal_id,
       lead_id: payload.lead_id,
       seller_profile_id: payload.seller_profile_id,
       amount: payload.amount,
       currency: payload.currency ?? 'USD',
-      formula_context_snapshot: payload.formula_context_snapshot ?? {},
+      formula_context_snapshot: (payload.formula_context_snapshot ?? {}) as Json,
     })
     .select(sellerFeeSelect)
     .single()
@@ -74,14 +59,15 @@ export async function insertSellerFee(
     )
   }
 
-  return data as unknown as SellerFeeRow
+  return data
 }
 
 export async function getSellerFeeById(
   client: DatabaseClient,
   sellerFeeId: string
 ): Promise<SellerFeeRow | null> {
-  const { data, error } = await sellerFeesTable(client)
+  const { data, error } = await client
+    .from('seller_fees')
     .select(sellerFeeSelect)
     .eq('id', sellerFeeId)
     .maybeSingle()
@@ -90,14 +76,15 @@ export async function getSellerFeeById(
     throw new Error(`Failed to load seller_fees row: ${error.message}`)
   }
 
-  return (data ?? null) as unknown as SellerFeeRow | null
+  return data ?? null
 }
 
 export async function getSellerFeeByProposalId(
   client: DatabaseClient,
   proposalId: string
 ): Promise<SellerFeeRow | null> {
-  const { data, error } = await sellerFeesTable(client)
+  const { data, error } = await client
+    .from('seller_fees')
     .select(sellerFeeSelect)
     .eq('proposal_id', proposalId)
     .maybeSingle()
@@ -108,7 +95,7 @@ export async function getSellerFeeByProposalId(
     )
   }
 
-  return (data ?? null) as unknown as SellerFeeRow | null
+  return data ?? null
 }
 
 // Used by the Stripe webhook handler in Chunk 3 to look up the seller fee
@@ -118,7 +105,8 @@ export async function getSellerFeeByPaymentId(
   client: DatabaseClient,
   paymentId: string
 ): Promise<SellerFeeRow | null> {
-  const { data, error } = await sellerFeesTable(client)
+  const { data, error } = await client
+    .from('seller_fees')
     .select(sellerFeeSelect)
     .eq('payment_id', paymentId)
     .maybeSingle()
@@ -129,7 +117,7 @@ export async function getSellerFeeByPaymentId(
     )
   }
 
-  return (data ?? null) as unknown as SellerFeeRow | null
+  return data ?? null
 }
 
 // Low-level state transition write. Service layer is responsible for:
@@ -155,7 +143,8 @@ export async function updateSellerFeeState(
   sellerFeeId: string,
   patch: UpdateSellerFeeStatePatch
 ): Promise<SellerFeeRow> {
-  const { data, error } = await sellerFeesTable(client)
+  const { data, error } = await client
+    .from('seller_fees')
     .update(patch)
     .eq('id', sellerFeeId)
     .select(sellerFeeSelect)
@@ -167,5 +156,5 @@ export async function updateSellerFeeState(
     )
   }
 
-  return data as unknown as SellerFeeRow
+  return data
 }
