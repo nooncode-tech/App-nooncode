@@ -1937,6 +1937,66 @@ export type Database = {
           },
         ]
       }
+      // MANUAL OVERRIDE #4 (B15 / ADR-016 D10) — added 2026-05-20.
+      // Reason: Supabase MCP types regen unavailable this session.
+      // Queue "clean regen + reconcile 4 override blocks" follow-up when MCP/CLI auth refreshes.
+      website_webhook_events: {
+        Row: {
+          attempt_count: number
+          endpoint: string
+          external_payment_id: string | null
+          external_proposal_id: string | null
+          external_session_id: string | null
+          failed_at: string | null
+          id: string
+          last_error: string | null
+          link_id: string | null
+          payload_hash: string
+          processed_at: string | null
+          received_at: string
+          request_id: string
+          signature_hash: string
+          signature_header: string
+          status: string
+        }
+        Insert: {
+          attempt_count?: number
+          endpoint: string
+          external_payment_id?: string | null
+          external_proposal_id?: string | null
+          external_session_id?: string | null
+          failed_at?: string | null
+          id?: string
+          last_error?: string | null
+          link_id?: string | null
+          payload_hash: string
+          processed_at?: string | null
+          received_at?: string
+          request_id: string
+          signature_hash: string
+          signature_header: string
+          status?: string
+        }
+        Update: {
+          attempt_count?: number
+          endpoint?: string
+          external_payment_id?: string | null
+          external_proposal_id?: string | null
+          external_session_id?: string | null
+          failed_at?: string | null
+          id?: string
+          last_error?: string | null
+          link_id?: string | null
+          payload_hash?: string
+          processed_at?: string | null
+          received_at?: string
+          request_id?: string
+          signature_hash?: string
+          signature_header?: string
+          status?: string
+        }
+        Relationships: []
+      }
       withdrawal_requests: {
         Row: {
           actor_id: string

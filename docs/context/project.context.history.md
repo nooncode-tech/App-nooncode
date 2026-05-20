@@ -2716,3 +2716,58 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 - Operating rule updates: none. The existing operating rule about HMAC verification is now factually correct (it always was, the code was the deviation).
 - Completion status: COMPLETE-WITH-FOLLOW-UPS (Testing + Security + Docs done; Validator pending in chain). F-1 closed App-side. B1.5 unblocked from F-1; remaining B1.5 blockers (PITR upgrade decision + on-call list + repo re-flip) are operational, not technical.
 - Next iteration candidates: (a) repo re-flip to PRIVATE (operational, immediate, blocks F-3 closure); (b) cross-repo NoonWeb-side mirror patch (medium priority, coord with NoonWeb dev); (c) B1.5 pilot sign-off operational ronda once (a) + PITR + on-call are settled.
+
+
+
+## Session note: B15 — transport-level webhook event ledger para website inbound (FASE 2 Bloque C)
+- Date: 2026-05-20
+- Iteration id: `fase-2-c-b15-website-webhook-ledger`
+- Route used: Hybrid New Build + Refactor FULL. Chain: router → system-analysis → system-architecture → system-infra → system-backend → system-refactor → system-testing → system-security → system-docs (this entry) → system-validator (pending).
+- Objective: cerrar B15 (audit "no webhook event ledger / nonce store on App side" — Medium severity in `docs/integrations/cross-repo-webhook-v1.md` §13) introduciendo un transport-level idempotency ledger `website_webhook_events` que mirrorea el pattern probado de `stripe_webhook_events` (migration 0041 + `lib/server/stripe/webhook-events.ts`). El ledger se consulta DESPUÉS de HMAC + timestamp window verify y ANTES de cualquier business logic. Replay short-circuits con wire-identical response (`{ idempotent: true, linkId, leadId, proposalId, [projectId], status }`) re-query-ing `website_inbound_links` por `link_id` — NoonWeb-side no observa cambio en el wire contract. Bloque C de FASE 2 parcialmente cerrado (B15 done; B26 + F-V12 siguen pending).
+- Spec: `specs/fase-2-c-b15-website-webhook-ledger.md` (analysis output con 10 OPEN questions Q1-Q10 + 10 risks R1-R10 + 4 no-objetivos explícitos).
+- ADR: `docs/adrs/ADR-016-transport-level-webhook-ledger-pattern.md` (10 decisions D1-D10 firmadas por architecture: D1 hash strategy = `sha256(${timestamp}.${bodyText})` byte-identical al HMAC input; D2 identity key = `(endpoint, signature_hash)` UNIQUE — drop el `x-noon-event-id` header proposal; D3 single tabla con `endpoint` column en vez de 2 tablas; D4 race resolution = `INSERT ... ON CONFLICT DO NOTHING RETURNING` con SELECT fallback en supabase-js; D5 retention = 180 días documentada, cleanup cron deferido; D6 replay response = wire-identical via `composeReplayResponseFromLedger`; D7 adversarial-traffic NOT logged — auth pre-empts ledger insert; D8 migration safe-to-ship hot (additive); D9 kill-switch env var `WEBSITE_WEBHOOK_LEDGER_ENABLED` default ON; D10 `database.types.ts` 4to manual override block como Q9 fallback porque MCP/CLI Supabase auth stale en esta sesión, follow-up "clean regen + reconcile 4 blocks" queued).
+- Surface de cambio (durable):
+  - **Migration `0051_phase_20a_website_webhook_event_ledger.sql`** aplicada al remote `pdotsdahsrnnsoroxbfe` 2026-05-20 via Supabase Dashboard SQL Editor (MCP unauthorized esta sesión) + ledger row reconciliada en `supabase_migrations.schema_migrations` per ADR-014. Tabla `public.website_webhook_events` con 16 columns: identity (`id uuid pk`, `endpoint text`, `signature_hash text`, `payload_hash text`, `signature_header text`), state machine (`status text check 'processing|processed|failed|replay_detected'`, `attempt_count int`), business identity opcional (`request_id text`, `external_session_id text`, `external_proposal_id text`, `external_payment_id text`, `link_id uuid`), timestamps (`received_at`, `processed_at`, `failed_at`, `last_error`). 5 named indexes (`received_at desc` operator queries; `endpoint`; `(endpoint, signature_hash) UNIQUE` race resolution; `(endpoint, payload_hash)` forensic; `link_id` replay-recovery join). RLS enabled con admin-only read policy (copia verbatim del policy de migration 0041, solo nombre de tabla swapped).
+  - **Nuevo módulo `lib/server/website/webhook-events.ts`** con 5 exports: `recordWebsiteWebhookEvent(client, inputs)` returns `{ shouldProcess: boolean, status, eventId, linkId? }` (SELECT-then-INSERT-or-UPDATE con UPSERT semantics); `markWebsiteWebhookEventProcessed(client, eventId, linkId)` update terminal con FK al link; `markWebsiteWebhookEventFailed(client, eventId, error)` update terminal con error text; `composeReplayResponseFromLedger(client, eventId)` re-query del link y producción del wire shape idempotent; `websiteWebhookLedgerEnabled()` kill-switch checker con `console.warn` once por valor non-canonical.
+  - **Auth surface extendido en `lib/server/website-webhook-auth.ts`**: nuevo `readSignedWebsiteJsonWithRawBody(request)` returns `{ payload, bodyText, signatureHeader, timestamp }` — los routes ahora reciben los 3 inputs necesarios para computar `signature_hash` y persistir contexto. El `readSignedWebsiteJson` existente queda como thin wrapper drop-eando los extras (sin breaking change para callers no-ledger).
+  - **Routes wrapped con ledger lifecycle**:
+    - `app/api/integrations/website/inbound-proposal/route.ts` — POST HMAC verify → `recordWebsiteWebhookEvent` con endpoint `'inbound-proposal'`. Si `shouldProcess === false && linkId != null`, return `composeReplayResponseFromLedger` (200 + idempotent shape). Si `shouldProcess === true`, invocar `receiveWebsiteInboundProposal` → on success `markWebsiteWebhookEventProcessed(linkId)`, on error `markWebsiteWebhookEventFailed`.
+    - `app/api/integrations/website/payment-confirmed/route.ts` — mismo shape adaptado, endpoint `'payment-confirmed'`. Replay response compose extra `projectId` (no relevante en inbound-proposal).
+  - **`lib/server/supabase/database.types.ts`** — manual override block #4 agregado para `website_webhook_events` Row/Insert/Update (Q9 fallback per ADR-016 D10). Total override blocks ahora 4 (seller_fees + prototype_workspaces + lead_proposals + website_webhook_events) — queue follow-up "clean regen + reconcile 4 blocks" cuando MCP/CLI Supabase auth refresque.
+  - **`.env.example`** — agrega `WEBSITE_WEBHOOK_LEDGER_ENABLED` con comentario explicando default ON + kill-switch `'false'` case-insensitive.
+- Surface de test:
+  - 12 nuevos unit tests en `tests/server/website/webhook-events.test.ts`: (1) fresh claim returns `shouldProcess=true status='processing'`; (2) replay processed → `shouldProcess=false status='processed' linkId` returned; (3) retry-after-failed → `shouldProcess=true attempt_count++`; (4) retry-while-processing → `shouldProcess=true attempt_count++`; (5) two endpoints same hash → both claim (UNIQUE key includes endpoint); (6) `markProcessed` no-op cuando eventId desconocido; (7) `markFailed` swallows DB errors sin throw (defensive); (8) `composeReplay` con projectId no-null; (9) `composeReplay` con projectId null (inbound-proposal endpoint); (10) `composeReplay` con linkId null returns minimal idempotent shape; (11) `composeReplay` missing link (FK orphan) returns minimal idempotent shape; (12) kill-switch off → `recordWebsiteWebhookEvent` early-returns `shouldProcess=true` sin DB write.
+  - Total tests: **331/331 verde** (319 baseline post-B1.3c + 12 nuevos B15). `npm run typecheck` clean. `npm run lint` clean. `npm run build` clean.
+- Security review verdict: **GATE-OPEN** — zero CRITICAL/HIGH. Evidencia en `docs/validations/B15 security review 2026-05-20.md`. 12 threat surfaces auditadas S1-S12 todas LOW:
+  - S1 replay defense (4-layer defense-in-depth, ledger es la nueva 3ra capa)
+  - S2 SHA-256 collision (2^128 work, infeasible)
+  - S3 timing oracle (HMAC verify pre-empts ledger lookup; attackers no llegan al code path)
+  - S4 plaintext `signature_header` storage (no es secreto; secreto real es HMAC key + bodyText)
+  - S5 PII / GDPR (16 columns auditadas; payload_hash es one-way derivado; PII real vive en `website_inbound_links.inbound_payload` JSONB sin cambio)
+  - S6-S12 cubren rate-limit interaction, kill-switch abuse, FK-orphan recovery, race-condition under load, ledger growth unbounded (mitigado por retención documentada 180d), service-role bypass (intencional + documentado), y wire-contract preservation.
+- What changed (durable list):
+  - 1 migration aplicada (0051) + ledger row reconciliada
+  - 1 nueva tabla + 5 indexes + RLS policy
+  - 1 nuevo módulo helper (`lib/server/website/webhook-events.ts`)
+  - 1 ADR creado (ADR-016)
+  - 1 spec creado (`specs/fase-2-c-b15-website-webhook-ledger.md`)
+  - 2 routes refactoradas (inbound-proposal + payment-confirmed)
+  - 1 auth helper extendido (`readSignedWebsiteJsonWithRawBody`)
+  - 1 manual override block agregado en `database.types.ts`
+  - 1 env var nuevo (`WEBSITE_WEBHOOK_LEDGER_ENABLED`)
+  - 12 unit tests
+  - 1 security review doc
+  - `docs/integrations/cross-repo-webhook-v1.md` §8.2 reescrito + §13 row marcada Resolved
+  - `core.md` Closed-in-runtime entry + nueva operating rule (ledger-as-outer-layer)
+  - `history.md` esta entry
+  - Roadmap §6 Bloque C + §19.3 + §17 snapshot updated
+- Wire contract changes: **NINGUNO**. NoonWeb no requiere modificaciones. No nuevo header (`x-noon-event-id` proposal dropped per D2). Response shape de replay = response shape de app-level idempotency pre-B15 (wire-identical).
+- Operating rule updates: **1 nuevo** en core.md describiendo `public.website_webhook_events` como canonical transport-level idempotency ledger per ADR-016 (identity key, kill-switch behavior, service_role write + admin-only SELECT, retención 180d, follow-up queue para clean regen del override block).
+- Cross-repo impact: **CERO**. Wire contract unchanged → NoonWeb-side observa el mismo comportamiento; el ledger es defense-in-depth interna. B15 estaba listado en `cross-repo-webhook-v1.md` §13 como "open issue Medium severity, Go rewrite owner" → ahora Resolved con nota apuntando a ADR-016.
+- Completion status: COMPLETE-WITH-FOLLOW-UPS (Validator pending in chain). FASE 2 Bloque C avanza de 0/3 a 1/3 (B15 done; B26 schema_migrations gating endpoint y F-V12 leads pagination wire siguen pending). Audit B15 row downgraded a Resolved en contrato cross-repo.
+- Follow-ups queued (no bloqueantes):
+  - **Clean regen `database.types.ts`** cuando MCP/CLI Supabase auth refresque — reconciliar 4 manual override blocks (seller_fees, prototype_workspaces, lead_proposals, website_webhook_events) en un PR único.
+  - **B15-bis observability** (replay rate dashboard, rejection rate metrics) — explícitamente out-of-scope de B15 per spec §Excluded; tracked como follow-up.
+  - **Cleanup cron** para retención 180d — deferido (no implementado en este iteration, política documentada solamente).
+  - **NoonWeb-side mirror** del pattern si decide implementar ledger transporte-level del lado outbound — opcional, NoonWeb decide.
+- Next iteration candidates: (a) B26 schema_migrations gating endpoint health (~4h); (b) F-V12 leads pagination wire (~4-6h); (c) Cross-repo NoonWeb-side F-1 mirror fix (cross-repo follow-up MEDIUM); (d) Path C — B1.5 pilot sign-off operativo (PITR + on-call + ronda 4-personas).
