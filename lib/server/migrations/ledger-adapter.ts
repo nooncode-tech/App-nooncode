@@ -14,9 +14,10 @@
  *    exception sets imported from `known-exceptions.mjs`.
  *  - Assemble the response envelope `{ data: { ...result, checked_at } }`.
  *
- * The type for ledger rows (`SchemaMigrationsRow`) is co-located here, not
- * in `lib/server/supabase/database.types.ts`, per ADR-017 §D4 (inline cast
- * over a 5th manual override block).
+ * The type for ledger rows (`SchemaMigrationsRow`) is co-located here as a
+ * documentation alias; it is structurally equivalent to the generated
+ * `Database['public']['Functions']['list_schema_migrations']['Returns'][number]`
+ * since the 2026-05-20 type regen retired the ADR-017 §D4 inline-cast pattern.
  *
  * @see docs/adrs/ADR-017-schema-migrations-drift-gating-endpoint.md
  * @see docs/adrs/ADR-018-r5-resolution-list-schema-migrations-rpc.md
@@ -25,7 +26,7 @@
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { ApiError } from '@/lib/server/api/errors'
 import { diffMigrations, type MigrationsDiffResult } from '@/lib/server/migrations/health'
@@ -33,16 +34,17 @@ import {
   EXPECTED_ORPHAN_LEDGER_NAMES,
   KNOWN_COLLISION_FILES,
 } from '@/lib/server/migrations/known-exceptions.mjs'
+import type { Database } from '@/lib/server/supabase/database.types'
 
 /**
  * Row shape returned by `public.list_schema_migrations()` (ADR-018). Pinned
- * to the ADR-014 verification snapshot. If Supabase ever evolves this row
- * shape, the cast in `readMigrationsHealth` silently lies until the diff
- * function dereferences a missing field — caught at the next
- * `@supabase/supabase-js` upgrade.
+ * to the ADR-014 verification snapshot. Kept as a local interface for
+ * documentation alignment; structurally equivalent to the generated
+ * `Database['public']['Functions']['list_schema_migrations']['Returns'][number]`
+ * since the 2026-05-20 type regen retired the ADR-017 §D4 inline-cast
+ * deferral pattern.
  *
  * @see docs/adrs/ADR-018-r5-resolution-list-schema-migrations-rpc.md
- * @see docs/adrs/ADR-017-schema-migrations-drift-gating-endpoint.md §D4
  * @see docs/adrs/ADR-014-migration-ledger-reconciliation.md
  */
 export interface SchemaMigrationsRow {
@@ -127,29 +129,23 @@ async function readMigrationFiles(): Promise<string[]> {
  * Read all rows from `supabase_migrations.schema_migrations`. Throws
  * `MigrationsLedgerReadError` if the SELECT fails.
  *
- * The cast through `as unknown as SupabaseClient<any>` is the inline
- * typed-cast strategy from ADR-017 §D4. We do not add a 5th manual override
- * block to `database.types.ts` for a 2-column read against a
- * Supabase-managed schema whose row format is pinned to ADR-014.
+ * The client is typed against the generated `Database` schema so the RPC
+ * call resolves through the standard supabase-js type catalog — no inline
+ * casts required since the 2026-05-20 type regen retired ADR-017 §D4's
+ * `as never` deferral pattern.
  */
-async function readLedgerRows(client: SupabaseClient): Promise<SchemaMigrationsRow[]> {
+async function readLedgerRows(client: SupabaseClient<Database>): Promise<SchemaMigrationsRow[]> {
   // Path B (ADR-018): `public.list_schema_migrations()` SECURITY DEFINER RPC
   // returns `setof (version text, name text)` from
-  // `supabase_migrations.schema_migrations`. The cross-schema accessor was
-  // replaced because PostgREST does not expose `supabase_migrations` via
-  // `db-schemas` and rejected the prior `.schema('supabase_migrations')`
-  // accessor with `Invalid schema: supabase_migrations`. EXECUTE is granted
-  // only to `service_role` (ADR-018 §D2).
-  const { data, error } = (await client.rpc('list_schema_migrations' as never)) as {
-    data: SchemaMigrationsRow[] | null
-    error: PostgrestError | null
-  }
+  // `supabase_migrations.schema_migrations`. EXECUTE is granted only to
+  // `service_role` (ADR-018 §D2).
+  const { data, error } = await client.rpc('list_schema_migrations')
 
   if (error) {
     throw new MigrationsLedgerReadError(error.message)
   }
 
-  return (data ?? []) as SchemaMigrationsRow[]
+  return data ?? []
 }
 
 /**
@@ -160,7 +156,7 @@ async function readLedgerRows(client: SupabaseClient): Promise<SchemaMigrationsR
  * This function does NOT cache (intentional per spec §Excluded).
  */
 export async function readMigrationsHealth(
-  client: SupabaseClient,
+  client: SupabaseClient<Database>,
 ): Promise<MigrationsHealthResponse> {
   const [files, rows] = await Promise.all([readMigrationFiles(), readLedgerRows(client)])
 
