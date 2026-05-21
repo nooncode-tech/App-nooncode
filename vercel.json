@@ -7,6 +7,18 @@
     {
       "path": "/api/cron/consolidate-earnings",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-revoked-tokens",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/project-sla-breach-alert",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/webhook-failure-alert",
+      "schedule": "0 14 * * *"
     }
   ]
 }
