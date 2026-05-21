@@ -162,14 +162,15 @@ test('consolidateEarningsForPayment: surfaces generic RPC errors as Error (not A
   }
 })
 
-test('consolidateEarningsForPayment: idempotent on prior consolidation via legacy path (state flipped, no wallet move)', async () => {
-  // Per migration 0049: if a `wallet_ledger_entries` row with
-  // reference_type='consolidation' already exists for the payment
-  // (e.g., the legacy admin endpoint moved the wallet bucket without
-  // transitioning the state machine), the RPC transitions the state to
-  // pending_payout for consistency but skips the wallet move. The
-  // shape distinguishes from the state-not-confirmed no-op by reporting
-  // prior_state='confirmed' but actors_consolidated=0.
+test('consolidateEarningsForPayment: idempotent when a prior consolidation ledger entry already exists (state flipped, no wallet move)', async () => {
+  // Per migration 0049 guard #2: if a `wallet_ledger_entries` row with
+  // reference_type='consolidation' AND reference_id=payment_id already
+  // exists, the RPC transitions the state to pending_payout for
+  // consistency but skips the wallet move. The shape distinguishes from
+  // the state-not-confirmed no-op by reporting prior_state='confirmed'
+  // but actors_consolidated=0. The guard is defense-in-depth against any
+  // future writer that lands a consolidation entry before the cron picks
+  // up the same payment.
   const client = makeMockClient({
     rpcResponse: {
       data: [{
