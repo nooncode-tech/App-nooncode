@@ -72,8 +72,16 @@ create index if not exists idx_client_access_tokens_revoked_at
   where revoked_at is not null;
 
 -- ── resolve_client_token: gate revoked tokens out of the read path ──
+-- DROP IF EXISTS first because Postgres rejects CREATE OR REPLACE
+-- when the return-type row shape diverges from the in-place function,
+-- even when the textual definition is identical (e.g. numeric scale or
+-- column-type drift between this migration's source and the live row
+-- shape). Drop is safe because the function body is fully rewritten
+-- below and the ACL is re-applied immediately after the CREATE
+-- (preserving the migration 0039 service-role-only posture).
+drop function if exists public.resolve_client_token(text);
 
-create or replace function public.resolve_client_token(p_token text)
+create function public.resolve_client_token(p_token text)
 returns table (
   token_id         uuid,
   project_id       uuid,
@@ -113,6 +121,12 @@ as $$
     and t.revoked_at is null
     and (t.expires_at is null or t.expires_at > now());
 $$;
+
+-- Restore the 0039 ACL (service_role only) on the just-recreated
+-- function. Default ACL on a fresh CREATE allows PUBLIC execute, which
+-- would re-open the surface the 0039 hardening closed.
+revoke all on function public.resolve_client_token(text) from public, anon, authenticated;
+grant execute on function public.resolve_client_token(text) to service_role;
 
 -- ── revoke_client_token: soft revoke ──────────────────────────────
 
