@@ -50,3 +50,6 @@ openspec/
 # IDE
 .idea/
 .env*.local
+
+# GDPR erasure audit log (operator-local, per ADR-019 §Audit trail)
+/.gdpr-erasure-audit.log
