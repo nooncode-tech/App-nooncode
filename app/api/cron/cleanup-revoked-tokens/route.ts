@@ -89,8 +89,8 @@ async function handleCronRequest(request: Request) {
     const { data: deleted, error: deleteError } = await client
       .from('client_access_tokens')
       .delete()
-      .not('revoked_at' as never, 'is', null)
-      .lt('revoked_at' as never, cutoff)
+      .not('revoked_at', 'is', null)
+      .lt('revoked_at', cutoff)
       .select('id')
 
     if (deleteError) {
