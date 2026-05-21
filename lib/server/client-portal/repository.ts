@@ -54,17 +54,11 @@ export async function listClientTokensForProject(
   return data ?? []
 }
 
-// The `as never` casts on the rpc names below are the inline-cast
-// deferral pattern from ADR-017 §D4 + ADR-018 §D5: the new RPCs
-// (revoke_client_token, rotate_client_token) only become canonical in
-// `database.types.ts` after the next regen post-migration-apply. Until
-// then the cast keeps the call typeable without introducing a new
-// override block.
 export async function revokeClientToken(
   client: SupabaseClient,
   tokenId: string,
 ): Promise<{ tokenId: string; revokedAt: string }> {
-  const { data, error } = await client.rpc('revoke_client_token' as never, { p_token_id: tokenId } as never)
+  const { data, error } = await client.rpc('revoke_client_token', { p_token_id: tokenId })
 
   if (error) {
     throw new ClientTokenRevokeError((error as { code?: string }).code ?? 'REVOKE_FAILED', (error as Error).message)
@@ -88,10 +82,10 @@ export async function rotateClientToken(
   oldTokenId: string
   oldRevokedAt: string
 }> {
-  const { data, error } = await client.rpc('rotate_client_token' as never, {
+  const { data, error } = await client.rpc('rotate_client_token', {
     p_token_id: tokenId,
     p_new_expires_at: newExpiresAt,
-  } as never)
+  })
 
   if (error) {
     throw new ClientTokenRotateError((error as { code?: string }).code ?? 'ROTATE_FAILED', (error as Error).message)

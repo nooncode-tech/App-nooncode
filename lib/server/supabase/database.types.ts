@@ -28,6 +28,8 @@ export type Database = {
           latest_update_text: string | null
           lead_id: string | null
           project_id: string
+          revoked_at: string | null
+          rotated_to_token_id: string | null
           token: string
         }
         Insert: {
@@ -43,6 +45,8 @@ export type Database = {
           latest_update_text?: string | null
           lead_id?: string | null
           project_id: string
+          revoked_at?: string | null
+          rotated_to_token_id?: string | null
           token?: string
         }
         Update: {
@@ -58,6 +62,8 @@ export type Database = {
           latest_update_text?: string | null
           lead_id?: string | null
           project_id?: string
+          revoked_at?: string | null
+          rotated_to_token_id?: string | null
           token?: string
         }
         Relationships: [
@@ -80,6 +86,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_access_tokens_rotated_to_token_id_fkey"
+            columns: ["rotated_to_token_id"]
+            isOneToOne: false
+            referencedRelation: "client_access_tokens"
             referencedColumns: ["id"]
           },
         ]
@@ -2413,9 +2426,6 @@ export type Database = {
         Returns: {
           client_email: string
           client_name: string
-          latest_update_date: string
-          latest_update_next_step: string
-          latest_update_text: string
           lead_id: string
           payment_activated: boolean
           payment_status: string
@@ -2467,6 +2477,22 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      revoke_client_token: {
+        Args: { p_token_id: string }
+        Returns: {
+          revoked_at: string
+          token_id: string
+        }[]
+      }
+      rotate_client_token: {
+        Args: { p_new_expires_at?: string; p_token_id: string }
+        Returns: {
+          new_token: string
+          new_token_id: string
+          old_revoked_at: string
+          old_token_id: string
+        }[]
       }
       touch_client_token: { Args: { p_token: string }; Returns: undefined }
     }
