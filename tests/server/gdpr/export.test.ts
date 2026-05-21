@@ -163,7 +163,7 @@ function makeExportHarness(config: ExportHarnessConfig) {
 
   function chainForTable(table: string) {
     return {
-      select: (_cols: string) => {
+      select: () => {
         const selectChain: Record<string, unknown> = {}
 
         // .eq().maybeSingle() — used by readProfileSnapshot

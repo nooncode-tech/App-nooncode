@@ -140,7 +140,10 @@ function makeHarness(config: HarnessConfig) {
           }
           // Make .eq itself thenable so `await chain.select(...).eq(...)` works,
           // matching the actual supabase-js shape used in `countRowsExactColumn`.
-          return Object.assign(eqResult(), { then: (fn: any, rej: any) => eqResult().then(fn, rej) })
+          type ThenArgs = Parameters<Promise<{ count: number; error: null }>['then']>
+          return Object.assign(eqResult(), {
+            then: (fn: ThenArgs[0], rej: ThenArgs[1]) => eqResult().then(fn, rej),
+          })
         }
         // Non-count select-eq used by readProfileSnapshot/role lookups.
         log.operations.push({ kind: 'select-eq', table, cols, col, value })
@@ -166,7 +169,7 @@ function makeHarness(config: HarnessConfig) {
     // ----- UPDATE path -----
     chain.update = (payload: Record<string, unknown>) => ({
       eq: (col: string, value: string) => ({
-        select: async (_cols: string) => {
+        select: async () => {
           if (config.failOnUpdate?.has(table)) {
             return { data: null, error: { message: `simulated update failure on ${table}` } }
           }
@@ -184,7 +187,7 @@ function makeHarness(config: HarnessConfig) {
     // ----- DELETE path -----
     chain.delete = () => ({
       eq: (col: string, value: string) => ({
-        select: async (_cols: string) => {
+        select: async () => {
           log.operations.push({ kind: 'delete', table, col, value })
           return { data: [], error: null }
         },
