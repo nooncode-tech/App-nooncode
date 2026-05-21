@@ -11,16 +11,22 @@
 -- not emit notifications; it only deletes rows and therefore does not
 -- need a new source_kind.
 --
--- The pre-existing kinds `lead_activity`, `task_activity`,
--- `project_activity` remain unchanged. The trigger-backed inserts
--- in migration 0018 continue to use those.
+-- The pre-existing kinds remain unchanged:
+--   - 'lead_activity', 'task_activity', 'project_activity' from
+--     migration 0018 (trigger-backed inserts)
+--   - 'proposal_review' from migration 0027 (review_proposal RPC).
+--     ⚠️ Initially omitted from this migration's DROP+ADD set; the
+--     remote apply 2026-05-20 failed with check_violation on existing
+--     47 rows. Re-added to preserve the 0027 extension.
 --
 -- ROLLBACK companion (DO NOT RUN unless reverting):
 --   alter table public.user_notifications
 --     drop constraint user_notifications_source_kind_check;
 --   alter table public.user_notifications
 --     add constraint user_notifications_source_kind_check
---     check (source_kind in ('lead_activity', 'task_activity', 'project_activity'));
+--     check (source_kind in (
+--       'lead_activity', 'task_activity', 'project_activity', 'proposal_review'
+--     ));
 -- (Note: if any 'project_sla_breach' or 'webhook_failure' rows exist
 --  at rollback time they must be deleted or the CHECK will fail.)
 --
@@ -39,6 +45,7 @@ alter table public.user_notifications
     'lead_activity',
     'task_activity',
     'project_activity',
+    'proposal_review',
     'project_sla_breach',
     'webhook_failure'
   ));
