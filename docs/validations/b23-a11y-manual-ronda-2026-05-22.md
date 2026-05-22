@@ -230,21 +230,108 @@ The static audit produces structural findings only. The categories below require
 - **Steps**: Tab through each HIGH priority surface in dark mode. Verify a visible focus ring appears around the focused element. Check the focus ring against the surrounding background — if the ring blends into the background, that's a finding.
 - **Record**: per-surface findings.
 
-## Iteration closure
+## Smoke pass findings (2026-05-22, operator+Claude pair session)
 
-Initial closure (static code audit + code-side fixes only — operator-side V1-V7 queue pending):
+The operator (Pedro) ran the V queue interactively during the same session as the static audit. Findings below are NEW issues surfaced during execution, plus updates to previously-deferred findings.
 
-- CRITICAL fixed: **1 / 1** (Finding 1 — clickable card keyboard a11y in `lead-card.tsx` + `pipeline/page.tsx`).
-- HIGH fixed: **6 / 6** (Findings 2, 3, 4, 5, 6, 12).
-- MEDIUM fixed: 1 / 4 (Finding 7 — the easy single-line one). Findings 9, 10, 11 deferred per Q2 default + token-system scope.
-- LOW deferred: 1 (Finding 13 — systemic codemod).
-- Verdict (this pass): **PARTIAL** — code-side audit complete; static-verifiable findings fixed; operator-side browser verification queue (V1-V7) pending before iteration can be marked COMPLETE per spec §"Success Criterion".
-- Roadmap §7 row updated: **yes** (post-merge of this PR).
-- core.md Closed-in-runtime entry: **yes** (post-merge of this PR).
-- Next session: operator runs V1-V7 in browser, files findings if any, and either marks the iteration COMPLETE or escalates to follow-up iterations for unresolved categories.
+### Finding 14 — Mobile dashboard navigation completely broken at 375 × 667, **CRITICAL**
+- **Surface**: every dashboard route at iPhone SE viewport (375 × 667).
+- **Category**: A. Mobile viewport.
+- **Severity**: CRITICAL.
+- **Repro**: DevTools → Device toolbar (Ctrl+Shift+M) → iPhone SE → navigate to `/dashboard`. The operator reports the sidebar nav is not usable as a mobile drawer pattern, so it is impossible to change between pages on mobile.
+- **Impact**: the app is **completely unusable on mobile**. Operator cannot navigate. This is a structural responsive-design gap, not a single-component fix.
+- **Recommended fix**: out of B23 scope. Requires a dedicated mobile-responsive iteration that introduces a proper mobile drawer pattern (offcanvas sidebar with overlay + close button, or a bottom tab bar, or both depending on chosen design language). The existing `<Sidebar collapsible="icon">` shadcn primitive supports an `offcanvas` mode that may be the right path; needs design + implementation work.
+- **Status**: **DEFERRED to dedicated mobile-responsive iteration**. The frontend redesign playbook documented at `docs/runbooks/frontend-redesign-playbook.md` is the natural home for this work.
+
+### Finding 15 — `/dashboard/leads` cards overlap + horizontal scroll on mobile, **HIGH**
+- **Surface**: `/dashboard/leads` at 375 × 667.
+- **Category**: A. Mobile viewport.
+- **Severity**: HIGH.
+- **Repro**: DevTools → iPhone SE → `/dashboard/leads`. The operator reports lead card content is visually overlapping, AND the page has horizontal scroll (overflow).
+- **Impact**: leads list is unusable on mobile because content overlap makes it impossible to read individual lead cards reliably; horizontal scroll is a strong indicator that an inner element has fixed width or improper `flex-wrap` / `min-width` settings that force the viewport to overflow.
+- **Recommended fix**: out of B23 scope. The `components/lead-card.tsx` layout is a multi-column flex layout that was designed for desktop (~1024+ px wide). On 375 px it cannot reflow gracefully. Needs targeted rework: stack columns vertically at narrow widths, ellipsis-truncate long values, hide non-critical badges, etc. Same iteration as Finding 14.
+- **Status**: **DEFERRED to dedicated mobile-responsive iteration**.
+
+### Finding 16 — `<Card>` primitive `box-shadow: none !important` blocks Tailwind `ring-*` utility, **MEDIUM (systemic)**
+- **Surface**: any consumer of `components/ui/card.tsx` that tries to use `focus-visible:ring-*` for accessible focus indication.
+- **Category**: C. A11y smoke (focus indicator).
+- **Severity**: MEDIUM (systemic — affects any future component built on Card).
+- **Repro**: `app/globals.css:196` applies `[data-slot="card"] { box-shadow: none !important }` globally. Tailwind v4 `ring-*` utility implements ring via `box-shadow` under the hood. The `!important` override silently eats every `ring-*` class on Card, producing no visible focus indicator even though the className IS applied.
+- **Impact**: discovered during V4 smoke. Initial fix (commit `3b4cc52` ring-2 ring-primary ring-offset) appeared not to render on LeadCard. After multiple debug iterations and a yellow-background test confirming `focus-visible` itself was firing, the root cause was identified.
+- **Fix shipped**: switched `components/lead-card.tsx` to use native CSS `outline-2 outline-primary outline-offset-2` (commit `d239c75`). Native `outline` is not affected by the box-shadow override.
+- **Status**: **FIXED on LeadCard**. Systemic guidance: any future component built on Card that needs a focus ring MUST use `outline-*`, not `ring-*`. Documented in commit message for `d239c75`. Future operator-decision: should `[data-slot="card"]` override be relaxed (e.g., to only suppress non-focus box-shadows)? Out of B23 scope.
+
+### Finding 17 — Card-level `onKeyDown` open-handler fires when keydown is on a descendant button, **HIGH**
+- **Surface**: `components/lead-card.tsx` LeadCard + `app/dashboard/pipeline/page.tsx` PipelineCard.
+- **Category**: C. A11y smoke (keyboard behavior).
+- **Severity**: HIGH (broke keyboard interaction with inner action buttons).
+- **Repro**: in `/dashboard/leads`, Tab to the status-change button inside a lead card → Enter. Expected: status changes. Actual: dialog opens AND status does NOT change. Same with the MoreVertical dropdown trigger: Tab + Enter opens BOTH the dropdown AND the dialog.
+- **Impact**: keyboard users cannot interact with inner buttons on lead cards without triggering the wrong action. Mouse users were not affected because the inner buttons' `onClick` already had `e.stopPropagation()`.
+- **Root cause**: when Enter is pressed on an inner `<Button>`, the browser dispatches a synthetic click which triggers the button's `onClick`. The `stopPropagation` there suppresses click bubbling. BUT the original `keydown` event continues bubbling up to the outer Card's `onKeyDown` handler, which checks `e.key === 'Enter'` and calls `onClick()` (open dialog).
+- **Fix shipped**: added `if (e.target !== e.currentTarget) return` guard to the Card-level `onKeyDown` in both LeadCard and PipelineCard (commit `429b984`). Only fires the open-handler when keydown happened on the Card itself, not on a descendant.
+- **Status**: **FIXED**.
+
+### Finding 9 (V1 verification) — Sidebar text-white low-opacity contrast measurement: **CONFIRMED FAIL**
+- **Status update**: was deferred MEDIUM-MANUAL in initial static audit. **V1 smoke promoted to HIGH and fixed in this iteration.**
+- **Method**: analytical computation against confirmed sidebar bg `#000000` (per `app/globals.css:33 --sidebar`).
+- **Measurement results**:
+  - `text-white/20` → blended grey 51 → **1.66:1** → FAIL (used: SidebarTrigger icon, balance Zap icon, ChevronDown).
+  - `text-white/25` → blended grey 64 → **2.07:1** → FAIL HARD (used: "balance" label text at 10px).
+  - `text-white/30` → blended grey 77 → **2.56:1** → FAIL (used: group labels Ventas/Delivery/Finanzas/Admin, balance value, user role, "platform" tag).
+  - `text-white/35` → 3.12:1 → borderline PASS as UI (kept).
+  - `text-white/45` → 4.59:1 → borderline PASS as text (kept).
+- **Fix shipped** (commit `0a40185`): replace_all in `components/app-sidebar.tsx`:
+  - All `text-white/20` → `text-white/50` (1.66:1 → 5.6:1).
+  - All `text-white/25` → `text-white/50` (2.07:1 → 5.6:1).
+  - All `text-white/30` → `text-white/55` (2.56:1 → 6.2:1).
+- **Hover state preservation**: replace_all collapsed two hover progressions; manually restored:
+  - SidebarTrigger expanded: was `text-white/20 hover:text-white/50` → after replace_all became `/50 hover:/50` (no progression) → fixed to `/50 hover:/80`.
+  - ChevronDown: was `text-white/20 group-hover:text-white/40` → after replace_all became `/50 group-hover:/40` (reversed!) → fixed to `/50 group-hover:/80`.
+- **Visual trade-off accepted by operator**: the "muted nav" look is now slightly less muted but still subtle. All resting states now pass WCAG AA.
+
+## Smoke pass V queue results
+
+| V | Status | Notes |
+|---|---|---|
+| V1 sidebar contrast | ✅ CLOSED 2026-05-22 | Analytical measurement against `--sidebar: #000000`. Finding 9 promoted MEDIUM-MANUAL → HIGH → fixed in commit `0a40185`. |
+| V2 palette contrast | ⏳ SKIPPED | F10 (deferred token migration to `--success/--warning/--info`) already covers; no value re-measuring. |
+| V3 mobile viewport sweep | ⚠️ **CRITICAL findings surfaced** | At 375 × 667: dashboard navigation broken (Finding 14 CRITICAL), `/dashboard/leads` cards overlap + horizontal scroll (Finding 15 HIGH). Deferred to dedicated mobile-responsive iteration / frontend-redesign-playbook. Other viewports (390/414/768) not tested — likely same class of issues at narrow widths. |
+| V4 keyboard nav | ✅ CLOSED (leads + pipeline desktop) | Focus ring visible via outline (Finding 16), Tab + Enter on inner buttons isolated (Finding 17). `/dashboard/projects` + `/dashboard/tasks` + `components/lead-detail.tsx` NOT executed — operator follow-up. |
+| V5 screen reader | ⏳ DEFERRED operator follow-up | Requires Narrator setup (Win+Ctrl+Enter) — non-trivial to invoke mid-session. |
+| V6 prefers-reduced-motion | ⏳ DEFERRED operator follow-up | OS setting toggle + reload + observation. |
+| V7 focus indicator visibility | ✅ implicit via V4 | Outline visible on dark mode bg-card surface; sidebar contrast fixes also improve focus visibility there. |
+
+## Closed-in-iteration findings (final)
+
+- **CRITICAL fixed**: 1 / 2 (Finding 1 closed; Finding 14 deferred to mobile redesign iteration).
+- **HIGH fixed**: 8 / 9 (Findings 2, 3, 4, 5, 6, 12, 17, 9-promoted; Finding 15 deferred to mobile redesign iteration).
+- **MEDIUM fixed**: 2 / 5 (Findings 7, 16). F10 + F11 deferred per Q2 default + scope; F13 deferred LOW systemic.
+- **LOW deferred**: 1 (Finding 13).
+- **Total commits shipped on PR #91**:
+  - `515401d` — initial fixes (Findings 1-6, 7, 12)
+  - `3b4cc52` — focus ring visibility + pipeline focus restore
+  - `0f782a4`, `8ca4975` — outline experiment (reverted)
+  - `cf3f356` — ring-4 attempt before discovering box-shadow override
+  - `ebda392`, `794c24d` — Vercel diagnostic + revert (Vercel issue platform-side, unrelated)
+  - `d239c75` — Finding 16 fix: LeadCard outline instead of ring
+  - `429b984` — Finding 17 fix: keydown target guard
+  - `0a40185` — Finding 9 V1 fix: sidebar contrast bumps
+
+## Iteration closure (final)
+
+- Verdict (this pass): **PARTIAL** — significant code-side improvements shipped; mobile responsive gap surfaced as CRITICAL and deferred to dedicated iteration; remaining V queue items (V3 mobile partial, V4 secondary surfaces, V5, V6) deferred to operator follow-up.
+- **Mobile responsive iteration** newly identified as the natural follow-up. Aligns with the frontend redesign playbook at `docs/runbooks/frontend-redesign-playbook.md` (referenced in operator's persistent memory). Findings 14 + 15 are inputs to that work.
+- **Operator decision queue carried forward**:
+  - F11 — shadcn h-9 vs Apple HIG h-11. WCAG AA 2.5.8 currently passes at h-9.
+  - F10 — semantic color token migration (`--success/--warning/--info` for `text-yellow/green/blue-*` consumers).
+  - F13 — codemod to add `aria-hidden="true"` to decorative lucide icons.
+- **New gap surfaced**: **G20 — desktop scroll-to-top on dashboard interaction** (root cause unconfirmed, possibly Radix Dialog body-scroll-lock behavior; investigation pending). Recorded in roadmap §16 for follow-up.
+- Roadmap §7 row updated: **yes** (post-merge).
+- core.md Closed-in-runtime entry updated: **yes** (post-merge).
+- Next session natural step: open mobile-responsive iteration spec using the frontend-redesign-playbook as guide; or, if operator prefers, continue B23 operator-side V4 (projects/tasks/lead-detail keyboard nav) + V5 (screen reader) + V6 (reduced motion) checks against the desktop surface before scoping the mobile rework.
 
 ### Notes on what this audit did NOT cover
 
 - `/dashboard/projects` (1407 lines), `/dashboard/tasks` (675 lines), `components/lead-detail.tsx` (2271 lines) were not read line-by-line. Pattern-grep across these surfaces did not surface aria-label-missing-on-icon-button hits beyond the ones already listed. Operator-side V4 covers the keyboard nav check for these.
 - MEDIUM priority surfaces (`/dashboard/updates`, `/dashboard/settings`, `/dashboard/pm-queue`, `/dashboard/reports`, `components/maxwell-chat.tsx`, `components/project-detail.tsx`, `components/task-detail.tsx`) were not audited beyond the targeted grep for `<Button size="icon">`. Browser pass should sample-check these.
-- Color contrast measurement requires browser pixel-level inspection; this pass relied on heuristic class-name pattern detection (low-opacity, hardcoded palette).
+- Color contrast measurement was DONE for the sidebar (V1, computed analytically). The earnings/palette badges (F10) were NOT measured because the fix is deferred regardless to the token migration iteration.
