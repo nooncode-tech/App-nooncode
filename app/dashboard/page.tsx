@@ -138,6 +138,7 @@ export default function DashboardPage() {
                 ref={searchRef}
                 type="text"
                 placeholder="Buscar..."
+                aria-label="Buscar"
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -146,7 +147,7 @@ export default function DashboardPage() {
                   }
                 }}
               />
-              <button onClick={() => setSearchOpen(false)} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setSearchOpen(false)} aria-label="Cerrar busqueda" className="text-muted-foreground hover:text-foreground">
                 <X className="size-4" />
               </button>
             </div>

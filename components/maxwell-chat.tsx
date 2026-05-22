@@ -95,12 +95,12 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand, le
         </div>
         <div className="flex items-center gap-1">
           {onToggleExpand && (
-            <Button variant="ghost" size="icon" onClick={onToggleExpand}>
+            <Button variant="ghost" size="icon" onClick={onToggleExpand} aria-label={isExpanded ? 'Colapsar chat' : 'Expandir chat'}>
               {isExpanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
             </Button>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose}>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar chat">
               <X className="size-4" />
             </Button>
           )}
@@ -217,7 +217,7 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand, le
             disabled={isLoading}
             className="flex-1"
           />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim()}>
+          <Button type="submit" size="icon" disabled={isLoading || !input.trim()} aria-label="Enviar mensaje">
             {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
           </Button>
         </div>

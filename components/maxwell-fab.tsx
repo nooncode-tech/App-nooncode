@@ -43,6 +43,7 @@ export function MaxwellFab() {
           isOpen && 'bg-muted text-muted-foreground hover:bg-muted'
         )}
         size="icon"
+        aria-label={isOpen ? 'Cerrar Maxwell' : 'Abrir Maxwell'}
       >
         {isOpen ? (
           <X className="size-6" />

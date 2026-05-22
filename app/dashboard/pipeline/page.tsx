@@ -142,9 +142,19 @@ function PipelineCard({ lead, isDragging, onClick }: PipelineCardProps) {
   return (
     <div
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Abrir detalle del lead ${lead.name}`}
       className={cn(
         "group bg-background rounded-lg border border-transparent px-2.5 py-2 cursor-pointer",
         "transition-colors duration-100 hover:bg-muted/20",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isDragging && "ring-2 ring-primary/40 opacity-95"
       )}
     >
