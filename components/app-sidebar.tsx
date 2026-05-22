@@ -115,6 +115,7 @@ function NavGroup({
               key={item.href}
               href={item.href}
               title={item.title}
+              scroll={false}
               className={[
                 'group/link flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative',
                 'group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:justify-center',
@@ -152,12 +153,6 @@ export function AppSidebar() {
   const walletState = useWalletContext()
   const router = useRouter()
   const [unreadNotifications, setUnreadNotifications] = useState(0)
-
-  // Reset sidebar scroll to top on every route change so top items are always visible
-  useEffect(() => {
-    const el = document.querySelector('[data-sidebar="content"]') as HTMLElement | null
-    if (el) el.scrollTop = 0
-  }, [pathname])
 
   useEffect(() => {
     let isActive = true
@@ -216,7 +211,7 @@ export function AppSidebar() {
       <SidebarHeader className="px-4 pt-4 pb-3 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:items-center">
         {/* Expanded: logo left + trigger right */}
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
-          <Link href="/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
+          <Link href="/dashboard" scroll={false} className="flex items-center gap-3 flex-1 min-w-0">
             <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
               <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
             </div>
@@ -229,7 +224,7 @@ export function AppSidebar() {
         </div>
         {/* Collapsed: logo + trigger stacked */}
         <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-2">
-          <Link href="/dashboard" className="size-8 rounded-lg bg-primary flex items-center justify-center">
+          <Link href="/dashboard" scroll={false} className="size-8 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
           </Link>
           <SidebarTrigger className="text-white/50 hover:text-white/60 hover:bg-white/[0.07] size-7 [&>svg]:size-3.5" />
@@ -297,13 +292,13 @@ export function AppSidebar() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/dashboard/earnings">
+              <Link href="/dashboard/earnings" scroll={false}>
                 <DollarSign className="size-4 mr-2" />
                 {personalStats.sidebarBalanceLabel}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/dashboard/rewards">
+              <Link href="/dashboard/rewards" scroll={false}>
                 <Gift className="size-4 mr-2" />
                 {personalStats.sidebarPointsLabel}
               </Link>
