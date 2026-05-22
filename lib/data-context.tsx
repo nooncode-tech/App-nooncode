@@ -62,6 +62,19 @@ import {
   deserializeAdminDirectoryUser,
   type AdminDirectoryUserWire,
 } from '@/lib/users/admin-directory-serialization'
+import type { DashboardSummaryResponse } from '@/lib/server/dashboard/serialization'
+import {
+  createDashboardSummaryDebouncer,
+  isDashboardSummaryFresh,
+  type DashboardSummaryDebouncer,
+} from '@/lib/dashboard/summary-cache'
+
+interface UseDashboardSummaryResult {
+  data: DashboardSummaryResponse | null
+  isLoading: boolean
+  error: Error | null
+  refresh: () => Promise<void>
+}
 
 interface DataContextType {
   // Leads
@@ -96,6 +109,7 @@ interface DataContextType {
   projects: Project[]
   persistedProjects: Project[]
   projectBoardProjects: Project[]
+  isProjectsLoading: boolean
   addProject: (project: ProjectDraft) => Project
   updateProject: (id: string, updates: ProjectUpdates) => Promise<Project> | void
   deleteProject: (id: string) => void
@@ -106,10 +120,12 @@ interface DataContextType {
   tasks: Task[]
   persistedTasks: Task[]
   taskBoardTasks: Task[]
+  isTasksLoading: boolean
   addTask: (task: TaskDraft) => Promise<Task> | Task
   updateTask: (id: string, updates: TaskUpdates) => Promise<Task> | void
   deleteTask: (id: string) => void
   updateTaskStatus: (id: string, status: TaskStatus) => Promise<Task> | void
+  refreshTasks: () => Promise<void>
   getTasksByProject: (projectId: string) => Task[]
   getTaskActivity: (taskId: string) => Promise<TaskActivity[]>
   getProjectActivity: (projectId: string) => Promise<ProjectTaskActivity[]>
@@ -133,6 +149,13 @@ interface DataContextType {
   addPoints: (userId: string, points: number, reason: string) => void
   deductPoints: (userId: string, points: number, reason: string) => boolean
   getPointsHistory: (userId: string) => PointsTransaction[]
+
+  // Dashboard summary (server-aggregated KPI payload — supabase mode only)
+  // See ADR-020 §D7 (hook location) and §D5 (60s SWR TTL).
+  dashboardSummary: DashboardSummaryResponse | null
+  isDashboardSummaryLoading: boolean
+  dashboardSummaryError: Error | null
+  refreshDashboardSummary: (options?: { force?: boolean }) => Promise<void>
 }
 
 interface PointsTransaction {
@@ -516,6 +539,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
   })
   const [pointsHistory, setPointsHistory] = useState<PointsTransaction[]>([])
 
+  // Per-slice loading flags for the lazy-load surfaces. Pre-refactor the
+  // provider eager-loaded projects/tasks at mount, so consumers had no
+  // visibility into a "still loading" state. Post-refactor (ADR-020 §D8)
+  // each list page triggers its own load; the consuming page reads these
+  // flags so the first paint can render a spinner instead of an empty
+  // state.
+  const [isProjectsLoading, setIsProjectsLoading] = useState(false)
+  const [isTasksLoading, setIsTasksLoading] = useState(false)
+
+  // Dashboard summary client cache (supabase mode only). The hook
+  // `useDashboardSummary` reads `dashboardSummary` + `isDashboardSummaryLoading`
+  // + `dashboardSummaryError`, and calls `refreshDashboardSummary` to
+  // force a refetch when the consumer initiates one. Mutation
+  // invalidation (D6) schedules a debounced refetch via
+  // `scheduleDashboardSummaryRefetch`. Mock mode never populates these
+  // fields; `selectDashboardSummary` continues to derive KPIs locally.
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummaryResponse | null>(null)
+  const [isDashboardSummaryLoading, setIsDashboardSummaryLoading] = useState(false)
+  const [dashboardSummaryError, setDashboardSummaryError] = useState<Error | null>(null)
+  // Timestamp (Date.now()) of the most recent successful fetch. Used to
+  // honor the 60s SWR window (ADR-020 §D5) on `{ force: false }` calls.
+  const dashboardSummaryFetchedAtRef = useRef<number | null>(null)
+  // Tracks a pending fetch promise so back-to-back force-refetches do
+  // not stack multiple network calls. Also used by the debounce helper
+  // to wait for the in-flight call before scheduling a follow-up.
+  const dashboardSummaryInFlightRef = useRef<Promise<void> | null>(null)
+  // Debouncer for mutation-triggered refetches. ADR-020 §D6: the
+  // kanban drag-drop in /dashboard/pipeline fires a sequence of
+  // updateLeadStatus calls; without a 250ms debounce, each fires an
+  // independent summary refetch. The debouncer is lazily created on
+  // the first invalidation so it captures the live
+  // `refreshDashboardSummary` closure via the helper ref below.
+  const dashboardSummaryDebouncerRef = useRef<DashboardSummaryDebouncer | null>(null)
+  // Tracks whether the current provider is operating in supabase mode.
+  // Mock mode never fetches the summary endpoint; mutation invalidations
+  // become no-ops there. Captured via ref so the debounced refetch sees
+  // the latest mode without re-creating the callback.
+  const authModeRef = useRef(authMode)
+  useEffect(() => {
+    authModeRef.current = authMode
+  }, [authMode])
+
   useEffect(() => {
     leadActivityByLeadIdRef.current = leadActivityByLeadId
   }, [leadActivityByLeadId])
@@ -637,6 +702,108 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [loadSettingsUsers])
 
+  // Fetches the dashboard summary from `GET /api/dashboard/summary` and
+  // populates `dashboardSummary` / `dashboardSummaryError`. Honors the
+  // 60s SWR TTL unless `{ force: true }` is passed (ADR-020 §D5, §D6).
+  //
+  // - Mock mode is a no-op: the consumer derives KPIs via
+  //   `selectDashboardSummary` over in-memory mock data, per spec §4.
+  // - Coalesces overlapping calls: if a fetch is already in flight, the
+  //   same promise is returned so callers never trigger two simultaneous
+  //   network reads.
+  // - Errors are surfaced via `dashboardSummaryError`; the cached payload
+  //   (if any) is preserved so the UI continues to show the last good
+  //   read while the consumer retries.
+  const refreshDashboardSummary = useCallback(async (options?: { force?: boolean }) => {
+    if (authModeRef.current !== 'supabase') {
+      return
+    }
+
+    const force = options?.force === true
+    const fetchedAt = dashboardSummaryFetchedAtRef.current
+
+    // SWR TTL: skip if cached payload is fresh AND not forced. The
+    // freshness decision lives in a pure helper so it can be unit-
+    // tested without spinning up a React tree.
+    if (
+      isDashboardSummaryFresh({
+        fetchedAtMs: fetchedAt,
+        nowMs: Date.now(),
+        force,
+      })
+    ) {
+      return
+    }
+
+    // Coalesce overlapping fetches. The in-flight promise resolves once
+    // state has been written, so the caller observes consistent timing
+    // regardless of whether it triggered the fetch or piggy-backed on
+    // someone else's.
+    if (dashboardSummaryInFlightRef.current) {
+      return dashboardSummaryInFlightRef.current
+    }
+
+    setIsDashboardSummaryLoading(true)
+    setDashboardSummaryError(null)
+
+    const fetchPromise = (async () => {
+      try {
+        const response = await fetch('/api/dashboard/summary', {
+          method: 'GET',
+          cache: 'no-store',
+        })
+        const payload = await readApiResponse<DashboardSummaryResponse>(response)
+        setDashboardSummary(payload)
+        dashboardSummaryFetchedAtRef.current = Date.now()
+      } catch (error) {
+        const wrapped = error instanceof Error
+          ? error
+          : new Error('No se pudo cargar el resumen del dashboard.')
+        setDashboardSummaryError(wrapped)
+        // Keep the previously cached payload (if any) so the UI does not
+        // lose its last-good read. The error surface lets the consumer
+        // decide whether to show a banner / retry.
+      } finally {
+        setIsDashboardSummaryLoading(false)
+        dashboardSummaryInFlightRef.current = null
+      }
+    })()
+
+    dashboardSummaryInFlightRef.current = fetchPromise
+    return fetchPromise
+  }, [])
+
+  // Schedules a debounced summary refetch after a successful mutation.
+  // Calls within `DASHBOARD_SUMMARY_REFRESH_DEBOUNCE_MS` collapse to a
+  // single fetch. ADR-020 §D6: mandatory wire for the 15 mutation
+  // surfaces. Mock mode is a no-op (no endpoint to invalidate).
+  //
+  // The debouncer is lazily instantiated on first call so we can hand
+  // it the live `refreshDashboardSummary` closure. The shared instance
+  // lives for the life of the provider so multiple mutations across
+  // the 15 surfaces collapse into one timer.
+  const scheduleDashboardSummaryRefetch = useCallback(() => {
+    if (authModeRef.current !== 'supabase') {
+      return
+    }
+
+    if (dashboardSummaryDebouncerRef.current === null) {
+      dashboardSummaryDebouncerRef.current = createDashboardSummaryDebouncer({
+        onTrigger: () => {
+          void refreshDashboardSummary({ force: true })
+        },
+      })
+    }
+
+    dashboardSummaryDebouncerRef.current.schedule()
+  }, [refreshDashboardSummary])
+
+  // Clear any pending debounce timer on unmount so a late mutation echo
+  // does not fire a fetch against a torn-down provider.
+  useEffect(() => () => {
+    dashboardSummaryDebouncerRef.current?.cancel()
+  }, [])
+
   useEffect(() => {
     let isActive = true
 
@@ -660,19 +827,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setLeadProposalsByLeadId({})
         setTaskActivityByTaskId({})
         setIsLeadsLoading(false)
+        setIsProjectsLoading(false)
+        setIsTasksLoading(false)
+        setDashboardSummary(null)
+        setIsDashboardSummaryLoading(false)
+        setDashboardSummaryError(null)
+        dashboardSummaryFetchedAtRef.current = null
       })
       return () => {
         isActive = false
       }
     }
 
+    // Supabase mode (post-R3 chunk 2): the provider no longer eager-loads
+    // leads/projects/tasks. Each list page lazy-loads its own slice via
+    // `setLeadsPage(1)` / `refreshProjects()` / `refreshTasks()` on
+    // mount. The dashboard home consumes `useDashboardSummary()` which
+    // fetches the server-aggregated KPI payload below. See ADR-020 §D8.
     startTransition(() => {
-      setIsLeadsLoading(true)
+      setLeads([])
       setLeadsPagination(null)
+      setIsLeadsLoading(false)
       setProjects(mockProjects)
       setPersistedProjects([])
+      setIsProjectsLoading(false)
       setTasks(mockTasks)
       setPersistedTasks([])
+      setIsTasksLoading(false)
       setSettingsUsers([])
       setIsSettingsUsersLoading(false)
       setSettingsUsersError(null)
@@ -680,40 +861,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setLeadActivityByLeadId({})
       setLeadProposalsByLeadId({})
       setTaskActivityByTaskId({})
+      setDashboardSummary(null)
+      setIsDashboardSummaryLoading(false)
+      setDashboardSummaryError(null)
+      dashboardSummaryFetchedAtRef.current = null
     })
 
-    Promise.resolve()
-      .then(() => loadLeads(1))
-      .catch(() => {
-        if (isActive) {
-          setLeads([])
-          setLeadsPagination(null)
-        }
-      })
-      .finally(() => {
-        if (isActive) {
-          setIsLeadsLoading(false)
-        }
-      })
+    // The summary endpoint is the only request fired at provider mount
+    // in supabase mode. It returns role-scoped, server-aggregated KPIs
+    // that the dashboard home renders without needing the full lists.
+    void refreshDashboardSummary({ force: true })
 
-    Promise.resolve()
-      .then(loadProjects)
-      .catch(() => {
-        if (isActive) {
-          setPersistedProjects([])
-          setProjects(mockProjects)
-        }
-      })
-
-    Promise.resolve()
-      .then(loadTasks)
-      .catch(() => {
-        if (isActive) {
-          setPersistedTasks([])
-          setTasks(mockTasks)
-        }
-      })
-
+    // `loadDeliveryUsers` stays eager because it powers lead /
+    // project / task assignment dropdowns across multiple consumers
+    // (lead-detail, project-form-dialog, task-form-dialog). It is
+    // bounded reference data and explicitly out of R3 scope.
     if (user && ['admin', 'sales_manager', 'pm', 'developer'].includes(user.role)) {
       Promise.resolve()
         .then(loadDeliveryUsers)
@@ -724,6 +886,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         })
     }
 
+    // `loadSettingsUsers` stays eager for the admin role because the
+    // sidebar and settings page both consume it. Also bounded reference
+    // data and explicitly out of R3 scope.
     if (user?.role === 'admin') {
       startTransition(() => {
         setIsSettingsUsersLoading(true)
@@ -757,7 +922,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => {
       isActive = false
     }
-  }, [authMode, loadDeliveryUsers, loadLeads, loadProjects, loadSettingsUsers, loadTasks, user])
+  }, [authMode, loadDeliveryUsers, loadSettingsUsers, refreshDashboardSummary, user])
 
   const getLeadActivity = useCallback(async (leadId: string) => {
     if (authMode !== 'supabase') {
@@ -911,8 +1076,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (leadActivityByLeadIdRef.current[leadId]) {
       void getLeadActivity(leadId)
     }
+    scheduleDashboardSummaryRefetch()
     return proposal
-  }, [authMode, getLeadActivity, user])
+  }, [authMode, getLeadActivity, scheduleDashboardSummaryRefetch, user])
 
   const updateLeadProposalStatus = useCallback(async (
     leadId: string,
@@ -1005,12 +1171,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
         proposal.id === proposalId ? updatedProposal : proposal
       ),
     }))
+    // Proposal status changes can demote/promote the parent lead via the
+    // proposal_locked flow (see addLeadProposal docstring). The server
+    // applies the lead-side change; the provider refreshes the current
+    // leads page so any visible lead row reflects the new state.
     await loadLeads()
     if (leadActivityByLeadIdRef.current[leadId]) {
       void getLeadActivity(leadId)
     }
+    scheduleDashboardSummaryRefetch()
     return updatedProposal
-  }, [authMode, getLeadActivity, loadLeads, user])
+  }, [authMode, getLeadActivity, loadLeads, scheduleDashboardSummaryRefetch, user])
 
   const createProjectFromProposal = useCallback(async (leadId: string, proposalId: string) => {
     if (authMode !== 'supabase') {
@@ -1144,8 +1315,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       ),
     }))
 
+    // Sets lead -> won AND creates a project; both inputs to the
+    // sales-section and delivery-section KPIs need to be refreshed.
+    scheduleDashboardSummaryRefetch()
     return project
-  }, [authMode, getLeadActivity, leads, projects, user])
+  }, [authMode, getLeadActivity, leads, projects, scheduleDashboardSummaryRefetch, user])
 
   const releaseLeadAsNoResponse = useCallback(async (leadId: string) => {
     if (authMode !== 'supabase') {
@@ -1202,8 +1376,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (leadActivityByLeadIdRef.current[leadId]) {
       void getLeadActivity(leadId)
     }
+    scheduleDashboardSummaryRefetch()
     return updatedLead
-  }, [authMode, getLeadActivity, leads, replaceLead, user])
+  }, [authMode, getLeadActivity, leads, replaceLead, scheduleDashboardSummaryRefetch, user])
 
   const claimLead = useCallback(async (leadId: string) => {
     if (authMode !== 'supabase') {
@@ -1260,8 +1435,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (leadActivityByLeadIdRef.current[leadId]) {
       void getLeadActivity(leadId)
     }
+    scheduleDashboardSummaryRefetch()
     return updatedLead
-  }, [authMode, getLeadActivity, leads, replaceLead, user])
+  }, [authMode, getLeadActivity, leads, replaceLead, scheduleDashboardSummaryRefetch, user])
 
   // Lead operations
   const addLead = useCallback(async (leadData: LeadDraft) => {
@@ -1311,8 +1487,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         pageCount: nextTotal === 0 ? 0 : Math.ceil(nextTotal / prev.limit),
       }
     })
+    scheduleDashboardSummaryRefetch()
     return createdLead
-  }, [authMode, user])
+  }, [authMode, scheduleDashboardSummaryRefetch, user])
 
   const updateLead = useCallback(async (id: string, updates: LeadUpdates) => {
     if (authMode !== 'supabase') {
@@ -1404,8 +1581,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (leadActivityByLeadIdRef.current[id]) {
       void getLeadActivity(id)
     }
+    // ADR-020 §D6 extension: invalidate on every successful update
+    // regardless of which fields changed. status/value/nextFollowUpAt all
+    // feed the summary, and the operator brief explicitly chose "simple
+    // > clever" — refetch unconditionally rather than diffing here.
+    scheduleDashboardSummaryRefetch()
     return updatedLead
-  }, [authMode, getLeadActivity, leads, user])
+  }, [authMode, getLeadActivity, leads, scheduleDashboardSummaryRefetch, user])
 
   const deleteLead = useCallback(async (id: string) => {
     if (authMode !== 'supabase') {
@@ -1472,7 +1654,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsLeadsLoading(false)
       }
     }
-  }, [authMode, loadLeads])
+    scheduleDashboardSummaryRefetch()
+  }, [authMode, loadLeads, scheduleDashboardSummaryRefetch])
 
   const updateLeadStatus = useCallback(async (id: string, status: LeadStatus) => {
     if (authMode !== 'supabase') {
@@ -1531,8 +1714,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (leadActivityByLeadIdRef.current[id]) {
       void getLeadActivity(id)
     }
+    scheduleDashboardSummaryRefetch()
     return updatedLead
-  }, [authMode, getLeadActivity, leads, user])
+  }, [authMode, getLeadActivity, leads, scheduleDashboardSummaryRefetch, user])
 
   // Project operations
   const addProject = useCallback((projectData: ProjectDraft) => {
@@ -1565,6 +1749,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         prev.map((project) => (project.id === id ? updatedProject : project))
       )
 
+      // Project status changes feed delivery counters (activeProjects /
+      // projectsInReview / completedProjects) via deriveProjectDisplayStatus.
+      scheduleDashboardSummaryRefetch()
       return updatedProject
     }
 
@@ -1605,7 +1792,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     return updatedProject
-  }, [authMode])
+  }, [authMode, scheduleDashboardSummaryRefetch])
 
   const deleteProject = useCallback((id: string) => {
     setPersistedProjects((prev) => prev.filter((project) => project.id !== id))
@@ -1622,8 +1809,32 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    await loadProjects()
+    setIsProjectsLoading(true)
+    try {
+      await loadProjects()
+    } catch {
+      // Loader-level error: leave existing state untouched. The page can
+      // observe the empty list and retry on next mount / explicit action.
+    } finally {
+      setIsProjectsLoading(false)
+    }
   }, [authMode, loadProjects])
+
+  const refreshTasks = useCallback(async () => {
+    if (authMode !== 'supabase') {
+      return
+    }
+
+    setIsTasksLoading(true)
+    try {
+      await loadTasks()
+    } catch {
+      // Loader-level error: leave existing state untouched (see
+      // `refreshProjects` reasoning).
+    } finally {
+      setIsTasksLoading(false)
+    }
+  }, [authMode, loadTasks])
 
   // Task operations
   const addTask = useCallback(async (taskData: TaskDraft) => {
@@ -1651,6 +1862,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const createdTask = deserializeTask(payload)
       setPersistedTasks((prev) => mergeTasks(prev, [createdTask]))
       setTasks((prev) => mergeTasks(prev, [createdTask]))
+      // Adding a task feeds delivery counters: pendingTasks +
+      // actionableTasks bump by 1. Also feeds project display status
+      // (deriveProjectDisplayStatus depends on the task fanout).
+      scheduleDashboardSummaryRefetch()
       return createdTask
     }
 
@@ -1670,7 +1885,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     setTasks((prev) => [newTask, ...prev])
     return newTask
-  }, [authMode])
+  }, [authMode, scheduleDashboardSummaryRefetch])
 
   const updateTask = useCallback(async (id: string, updates: TaskUpdates) => {
     const normalizedAssignment = normalizeTaskAssignment(updates)
@@ -1708,6 +1923,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         prev.map((task) => (task.id === id ? updatedTask : task))
       )
 
+      // Task updates may flip status (pendingTasks / inProgressTasks /
+      // reviewTasks all rebalance) and indirectly change project display
+      // status. Refetch unconditionally; the debounce coalesces rapid
+      // edits from the same form save.
+      scheduleDashboardSummaryRefetch()
       return updatedTask
     }
 
@@ -1738,7 +1958,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     return updatedTask
-  }, [authMode])
+  }, [authMode, scheduleDashboardSummaryRefetch])
 
   const deleteTask = useCallback((id: string) => {
     setPersistedTasks((prev) => prev.filter((task) => task.id !== id))
@@ -1764,6 +1984,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         prev.map((task) => (task.id === id ? updatedTask : task))
       )
 
+      scheduleDashboardSummaryRefetch()
       return updatedTask
     }
 
@@ -1781,7 +2002,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     return updatedTask
-  }, [authMode])
+  }, [authMode, scheduleDashboardSummaryRefetch])
 
   const getTasksByProject = useCallback(
     (projectId: string) => {
@@ -1979,6 +2200,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         projects,
         persistedProjects,
         projectBoardProjects,
+        isProjectsLoading,
         addProject,
         updateProject,
         deleteProject,
@@ -1987,10 +2209,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         tasks,
         persistedTasks,
         taskBoardTasks,
+        isTasksLoading,
         addTask,
         updateTask,
         deleteTask,
         updateTaskStatus,
+        refreshTasks,
         getTasksByProject,
         getTaskActivity,
         getProjectActivity,
@@ -2008,6 +2232,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addPoints,
         deductPoints,
         getPointsHistory,
+        dashboardSummary,
+        isDashboardSummaryLoading,
+        dashboardSummaryError,
+        refreshDashboardSummary,
       }}
     >
       {children}
@@ -2021,4 +2249,42 @@ export function useData() {
     throw new Error('useData must be used within a DataProvider')
   }
   return context
+}
+
+/**
+ * Consumer hook for the dashboard summary KPI payload (supabase mode).
+ *
+ * Returns:
+ * - `data`: the wire-shape `DashboardSummaryResponse` once loaded; `null`
+ *   while the initial fetch is in flight or in mock mode.
+ * - `isLoading`: `true` between fetch start and resolution. Stays `false`
+ *   during SWR-cached reads (the consumer keeps showing the previous
+ *   payload while a background refetch runs).
+ * - `error`: the most recent fetch error; the cached payload is
+ *   preserved so the UI can show a soft error affordance without losing
+ *   its last-good read.
+ * - `refresh`: forces a refetch bypassing the 60s TTL. Consumers call
+ *   this on user-initiated retry; mutation invalidation is wired by the
+ *   provider itself via `scheduleDashboardSummaryRefetch`.
+ *
+ * See ADR-020 §D5 (TTL), §D6 (invalidation), §D7 (hook location).
+ */
+export function useDashboardSummary(): UseDashboardSummaryResult {
+  const {
+    dashboardSummary,
+    isDashboardSummaryLoading,
+    dashboardSummaryError,
+    refreshDashboardSummary,
+  } = useData()
+
+  const refresh = useCallback(async () => {
+    await refreshDashboardSummary({ force: true })
+  }, [refreshDashboardSummary])
+
+  return {
+    data: dashboardSummary,
+    isLoading: isDashboardSummaryLoading,
+    error: dashboardSummaryError,
+    refresh,
+  }
 }

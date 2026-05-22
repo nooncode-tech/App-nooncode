@@ -1,6 +1,7 @@
 ﻿'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useAuth } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
 import type { Lead, LeadStatus } from '@/lib/types'
 import { KanbanBoard, type KanbanColumn } from '@/components/kanban-board'
@@ -26,9 +27,34 @@ import { LeadFormDialog } from '@/components/lead-form-dialog'
 import { toast } from 'sonner'
 
 export default function PipelinePage() {
-  const { leads, isLeadsLoading, updateLeadStatus } = useData()
+  const { authMode } = useAuth()
+  const { leads, isLeadsLoading, leadsPagination, setLeadsPage, updateLeadStatus } = useData()
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [showNewLeadDialog, setShowNewLeadDialog] = useState(false)
+
+  // Post R3 chunk 2: pipeline shares the same lazy lead surface as
+  // /dashboard/leads. If the user navigates leads -> pipeline the leads
+  // are already loaded; otherwise pipeline triggers the first page on
+  // its own mount. The legacy partial-pipeline-view caveat (F-V12 R1)
+  // is unchanged by this iteration.
+  const hasTriggeredInitialLoadRef = useRef(false)
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredInitialLoadRef.current) {
+      return
+    }
+    if (leadsPagination !== null) {
+      hasTriggeredInitialLoadRef.current = true
+      return
+    }
+    if (isLeadsLoading) {
+      return
+    }
+    hasTriggeredInitialLoadRef.current = true
+    void setLeadsPage(1)
+  }, [authMode, isLeadsLoading, leadsPagination, setLeadsPage])
 
   const { columns, totalPipelineValue } = selectPipelineBoardSummary(leads)
 

@@ -4,7 +4,7 @@ import { startTransition, useMemo, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { useAuth, canAccessSales, canAccessDelivery, getRoleLabel } from '@/lib/auth-context'
-import { useData } from '@/lib/data-context'
+import { useDashboardSummary, useData } from '@/lib/data-context'
 import {
   selectDashboardKpiCopy,
   selectDashboardSummary,
@@ -25,17 +25,44 @@ import {
   Plus,
 } from 'lucide-react'
 
+// Render helper for task counters that may be `null` on the wire when
+// the principal's RLS denies tasks SELECT (sales / sales_manager roles).
+// We surface an em-dash rather than `0` so the UI never lies that the
+// queue is empty when in fact the user just cannot see it. See ADR-020
+// §D1 consequence 1 and contract §Role visibility.
+function formatNullableTaskCount(value: number | null): string {
+  return value === null ? '—' : value.toLocaleString()
+}
+
+// Loading-state placeholder used while the summary endpoint is in
+// flight on the first paint. Prefer "…" over "0" because numeric zero
+// is a meaningful KPI value, while ellipsis communicates "not yet."
+const SUMMARY_LOADING_PLACEHOLDER = '…'
+
 export default function DashboardPage() {
   const { authMode, user } = useAuth()
   const { leads, projectBoardProjects, taskBoardTasks } = useData()
+  const { data: summaryData } = useDashboardSummary()
   const walletState = useWalletContext()
 
-  const summary = useMemo(
+  // Mock mode keeps the legacy JS-derived summary path so the demo
+  // workspace continues to work without an endpoint. Spec §4 explicitly
+  // preserves mock-mode behavior unchanged.
+  const mockSummary = useMemo(
     () => selectDashboardSummary(leads, projectBoardProjects, taskBoardTasks),
     [leads, projectBoardProjects, taskBoardTasks]
   )
 
-  const { sales, delivery } = summary
+  const isSupabaseMode = authMode === 'supabase'
+  const supabaseSales = summaryData?.sales ?? null
+  const supabaseDelivery = summaryData?.delivery ?? null
+  const isSupabaseSummaryPending = isSupabaseMode && supabaseSales === null
+
+  // Local view-model. In mock mode we keep the existing reduced-from-
+  // collections summary. In supabase mode we read from the wire payload
+  // and render `…` placeholders if the first fetch has not landed yet.
+  const sales = isSupabaseMode ? supabaseSales : mockSummary.sales
+  const delivery = isSupabaseMode ? supabaseDelivery : mockSummary.delivery
   const dashboardKpiCopy = selectDashboardKpiCopy(authMode)
 
   const [mounted, setMounted] = useState(false)
@@ -60,14 +87,32 @@ export default function DashboardPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [])
 
+  // Conversion rate is derived client-side from raw integers per
+  // ADR-020 §D3: the wire carries `closedLeads` and `wonLeads` so the
+  // consumer can apply its own null/round semantics without forcing a
+  // null encoding across the wire.
   const conversionRate = useMemo(() => {
+    if (isSupabaseMode) {
+      if (!supabaseSales) return null
+      const closed = supabaseSales.closedLeads
+      if (closed === 0) return null
+      return Math.round((supabaseSales.wonLeads / closed) * 100)
+    }
+
     const closed = leads.filter((l) => l.status === 'won' || l.status === 'lost').length
     if (closed === 0) return null
     return Math.round((leads.filter((l) => l.status === 'won').length / closed) * 100)
-  }, [leads])
+  }, [isSupabaseMode, leads, supabaseSales])
 
-  const overdueFollowUps = useMemo(() => {
-    if (!mounted) return []
+  // In supabase mode the count comes from the wire (`sales.overdueFollowUps`).
+  // In mock mode we keep the legacy in-memory derivation gated on
+  // `mounted` to avoid SSR/CSR mismatch on the current-time comparison.
+  const overdueFollowUpsCount = useMemo(() => {
+    if (isSupabaseMode) {
+      return supabaseSales?.overdueFollowUps ?? 0
+    }
+
+    if (!mounted) return 0
     const now = new Date()
     return leads.filter(
       (l) =>
@@ -75,14 +120,13 @@ export default function DashboardPage() {
         new Date(l.nextFollowUpAt) < now &&
         l.status !== 'won' &&
         l.status !== 'lost'
-    )
-  }, [leads, mounted])
+    ).length
+  }, [isSupabaseMode, leads, mounted, supabaseSales])
 
+  // In supabase mode the histogram comes from the wire (`sales.leadsByStatus`,
+  // an object keyed by lead status enum). In mock mode we derive it
+  // locally over the eager-loaded mock leads.
   const leadsByStatus = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const l of leads) {
-      counts[l.status] = (counts[l.status] ?? 0) + 1
-    }
     const labels: Record<string, string> = {
       new: 'Nuevo',
       contacted: 'Contactado',
@@ -101,12 +145,20 @@ export default function DashboardPage() {
       won: '#4ade80',
       lost: '#f87171',
     }
+
+    const counts: Record<string, number> = isSupabaseMode
+      ? supabaseSales?.leadsByStatus ?? {}
+      : leads.reduce<Record<string, number>>((acc, lead) => {
+          acc[lead.status] = (acc[lead.status] ?? 0) + 1
+          return acc
+        }, {})
+
     return Object.entries(counts).map(([status, value]) => ({
       name: labels[status] ?? status,
       value,
       color: colors[status] ?? '#94a3b8',
     }))
-  }, [leads])
+  }, [isSupabaseMode, leads, supabaseSales])
 
   const dateStr = mounted
     ? new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -189,7 +241,9 @@ export default function DashboardPage() {
           <div className="metric-grid">
             <Link href="/dashboard/leads" className="metric-card-primary block cursor-pointer">
               <p className="metric-label-inverse">Leads abiertos</p>
-              <p className="metric-value-inverse">{sales.openLeads}</p>
+              <p className="metric-value-inverse">
+                {sales ? sales.openLeads.toLocaleString() : SUMMARY_LOADING_PLACEHOLDER}
+              </p>
               <p className="metric-note-inverse flex items-center gap-1">
                 {authMode === 'mock' && <ArrowUpRight className="size-3 text-primary-foreground/70" />}
                 <span>{dashboardKpiCopy.salesOpenLeadsNote}</span>
@@ -197,17 +251,23 @@ export default function DashboardPage() {
             </Link>
             <Link href="/dashboard/pipeline" className="metric-card block cursor-pointer">
               <p className="metric-label">Valor del pipeline</p>
-              <p className="metric-value">${sales.pipelineValue.toLocaleString()}</p>
+              <p className="metric-value">
+                {sales ? `$${sales.pipelineValue.toLocaleString()}` : SUMMARY_LOADING_PLACEHOLDER}
+              </p>
               <p className="metric-note">Oportunidades abiertas</p>
             </Link>
             <Link href="/dashboard/leads" className="metric-card block cursor-pointer">
               <p className="metric-label">Deals cerrados</p>
-              <p className="metric-value">{sales.wonLeads}</p>
+              <p className="metric-value">
+                {sales ? sales.wonLeads.toLocaleString() : SUMMARY_LOADING_PLACEHOLDER}
+              </p>
               <p className="metric-note">{dashboardKpiCopy.salesWonLeadsNote}</p>
             </Link>
             <Link href="/dashboard/earnings" className="metric-card block cursor-pointer">
               <p className="metric-label">{dashboardKpiCopy.salesRevenueTitle}</p>
-              <p className="metric-value">${sales.totalRevenue.toLocaleString()}</p>
+              <p className="metric-value">
+                {sales ? `$${sales.totalRevenue.toLocaleString()}` : SUMMARY_LOADING_PLACEHOLDER}
+              </p>
               <p className="metric-note flex items-center gap-1">
                 {authMode === 'mock' && <ArrowUpRight className="size-3 text-emerald-500" />}
                 <span className={authMode === 'mock' ? 'text-emerald-600' : undefined}>{dashboardKpiCopy.salesRevenueNote}</span>
@@ -217,34 +277,38 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {canAccessSales(user.role) && leads.length > 0 && (
+      {canAccessSales(user.role) && !isSupabaseSummaryPending && (isSupabaseMode ? (supabaseSales?.openLeads ?? 0) + (supabaseSales?.wonLeads ?? 0) + (supabaseSales?.closedLeads ?? 0) > 0 : leads.length > 0) && (
         <section className="grid gap-4 md:grid-cols-3">
           <Link href="/dashboard/leads" className="metric-card block cursor-pointer">
             <p className="metric-label">Tasa de conversion</p>
             <p className="metric-value">{conversionRate !== null ? `${conversionRate}%` : '-'}</p>
             <p className="metric-note">
-              {conversionRate !== null
-                ? `${sales.wonLeads} ganados de ${leads.filter((l) => l.status === 'won' || l.status === 'lost').length} cerrados`
+              {conversionRate !== null && sales
+                ? `${sales.wonLeads} ganados de ${
+                    isSupabaseMode
+                      ? supabaseSales?.closedLeads ?? 0
+                      : leads.filter((l) => l.status === 'won' || l.status === 'lost').length
+                  } cerrados`
                 : 'Sin deals cerrados aun'}
             </p>
           </Link>
 
           <Link href="/dashboard/leads" className="metric-card block cursor-pointer">
             <p className="metric-label">Seguimientos vencidos</p>
-            <p className={`metric-value ${overdueFollowUps.length > 0 ? 'text-destructive' : ''}`}>
-              {overdueFollowUps.length}
+            <p className={`metric-value ${overdueFollowUpsCount > 0 ? 'text-destructive' : ''}`}>
+              {overdueFollowUpsCount}
             </p>
             <p className="metric-note">
-              {overdueFollowUps.length === 0
+              {overdueFollowUpsCount === 0
                 ? 'Todo al dia'
-                : `${overdueFollowUps.length} lead${overdueFollowUps.length > 1 ? 's' : ''} sin seguimiento`}
+                : `${overdueFollowUpsCount} lead${overdueFollowUpsCount > 1 ? 's' : ''} sin seguimiento`}
             </p>
           </Link>
 
           <Link href="/dashboard/pipeline" className="metric-card block cursor-pointer">
             <p className="metric-label mb-3">Pipeline por estado</p>
             <div className="flex items-center gap-4">
-              {mounted && (
+              {mounted && leadsByStatus.length > 0 && (
                 <ResponsiveContainer width={72} height={72}>
                   <PieChart>
                     <Pie data={leadsByStatus} dataKey="value" cx="50%" cy="50%" outerRadius={34} innerRadius={16} strokeWidth={0}>
@@ -279,22 +343,36 @@ export default function DashboardPage() {
           <div className="metric-grid">
             <Link href="/dashboard/projects" className="metric-card-primary block cursor-pointer bg-accent hover:bg-accent/90">
               <p className="metric-label-inverse">Proyectos activos</p>
-              <p className="metric-value-inverse">{delivery.activeProjects}</p>
-              <p className="metric-note-inverse">{delivery.projectsInReview} en revision</p>
+              <p className="metric-value-inverse">
+                {delivery ? delivery.activeProjects.toLocaleString() : SUMMARY_LOADING_PLACEHOLDER}
+              </p>
+              <p className="metric-note-inverse">
+                {delivery ? `${delivery.projectsInReview} en revision` : 'Cargando...'}
+              </p>
             </Link>
             <Link href="/dashboard/tasks" className="metric-card block cursor-pointer">
               <p className="metric-label">Tareas pendientes</p>
-              <p className="metric-value">{delivery.pendingTasks}</p>
-              <p className="metric-note">{delivery.inProgressTasks} en progreso</p>
+              <p className="metric-value">
+                {delivery ? formatNullableTaskCount(delivery.pendingTasks) : SUMMARY_LOADING_PLACEHOLDER}
+              </p>
+              <p className="metric-note">
+                {delivery
+                  ? `${formatNullableTaskCount(delivery.inProgressTasks)} en progreso`
+                  : 'Cargando...'}
+              </p>
             </Link>
             <Link href="/dashboard/tasks" className="metric-card block cursor-pointer">
               <p className="metric-label">En revision</p>
-              <p className="metric-value">{delivery.reviewTasks}</p>
+              <p className="metric-value">
+                {delivery ? formatNullableTaskCount(delivery.reviewTasks) : SUMMARY_LOADING_PLACEHOLDER}
+              </p>
               <p className="metric-note">Esperando aprobacion</p>
             </Link>
             <Link href="/dashboard/projects" className="metric-card block cursor-pointer">
               <p className="metric-label">Completados</p>
-              <p className="metric-value">{delivery.completedProjects}</p>
+              <p className="metric-value">
+                {delivery ? delivery.completedProjects.toLocaleString() : SUMMARY_LOADING_PLACEHOLDER}
+              </p>
               <p className="metric-note">{dashboardKpiCopy.deliveryCompletedProjectsNote}</p>
             </Link>
           </div>
@@ -312,7 +390,9 @@ export default function DashboardPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">Ver leads</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{sales.openLeads} leads activos</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {sales ? `${sales.openLeads} leads activos` : 'Cargando leads...'}
+                  </p>
                 </div>
                 <ArrowUpRight className="size-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
               </Link>
@@ -336,7 +416,9 @@ export default function DashboardPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">Proyectos</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{delivery.activeProjects} activos</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {delivery ? `${delivery.activeProjects} activos` : 'Cargando proyectos...'}
+                  </p>
                 </div>
                 <ArrowUpRight className="size-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
               </Link>
@@ -350,7 +432,11 @@ export default function DashboardPage() {
                       ? 'Tareas del equipo'
                       : 'Mis tareas'}
                   </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{delivery.actionableTasks} pendientes</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {delivery
+                      ? `${formatNullableTaskCount(delivery.actionableTasks)} pendientes`
+                      : 'Cargando tareas...'}
+                  </p>
                 </div>
                 <ArrowUpRight className="size-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground" />
               </Link>

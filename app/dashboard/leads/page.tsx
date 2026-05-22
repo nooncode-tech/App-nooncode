@@ -87,7 +87,7 @@ interface MaxwellSearchResponse {
 }
 
 export default function LeadsPage() {
-  const { user } = useAuth()
+  const { authMode, user } = useAuth()
   const {
     leads,
     isLeadsLoading,
@@ -97,6 +97,30 @@ export default function LeadsPage() {
     updateLeadStatus,
     deleteLead,
   } = useData()
+  // Post R3 chunk 2 (ADR-020 §D8): the provider no longer eager-loads
+  // leads on mount in supabase mode. The page triggers its own first
+  // page on mount via setLeadsPage(1). The ref guard ensures the call
+  // fires exactly once per mount even though leads/isLeadsLoading
+  // change during the load.
+  const hasTriggeredInitialLoadRef = useRef(false)
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredInitialLoadRef.current) {
+      return
+    }
+    if (leadsPagination !== null) {
+      // Already loaded by a previous navigation; nothing to do.
+      hasTriggeredInitialLoadRef.current = true
+      return
+    }
+    if (isLeadsLoading) {
+      return
+    }
+    hasTriggeredInitialLoadRef.current = true
+    void setLeadsPage(1)
+  }, [authMode, isLeadsLoading, leadsPagination, setLeadsPage])
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
