@@ -137,7 +137,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
   return (
     <Card
       data-lead-trigger={lead.id}
-      className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/70"
+      className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
