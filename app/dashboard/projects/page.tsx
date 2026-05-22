@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
 import {
@@ -290,6 +290,8 @@ export default function ProjectsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban')
   const requestedProjectId = searchParams.get('projectId')
+  // G18 mirror fix: blocks reopen race while router.replace propagates the cleared param.
+  const justClosedProjectIdRef = useRef<string | null>(null)
 
   const userRole = user?.role
   const canManageProjects = userRole ? ['admin', 'pm'].includes(userRole) : false
@@ -344,6 +346,15 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     if (!requestedProjectId) {
+      justClosedProjectIdRef.current = null
+      return
+    }
+
+    if (justClosedProjectIdRef.current && justClosedProjectIdRef.current !== requestedProjectId) {
+      justClosedProjectIdRef.current = null
+    }
+
+    if (justClosedProjectIdRef.current === requestedProjectId) {
       return
     }
 
@@ -407,6 +418,11 @@ export default function ProjectsPage() {
   const handleProjectDialogChange = (open: boolean) => {
     if (open) {
       return
+    }
+
+    const closedId = selectedProjectId ?? requestedProjectId
+    if (closedId) {
+      justClosedProjectIdRef.current = closedId
     }
 
     setSelectedProjectId(null)

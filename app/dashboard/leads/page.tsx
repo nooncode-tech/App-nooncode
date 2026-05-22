@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { startTransition, useCallback, useEffect, useState } from 'react'
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { buildLeadDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
@@ -115,6 +115,11 @@ export default function LeadsPage() {
   const [manualZoneText, setManualZoneText] = useState('')
   const [lastMaxwellResult, setLastMaxwellResult] = useState<MaxwellSearchResponse['data'] | null>(null)
   const requestedLeadId = searchParams.get('leadId')
+  // Tracks a leadId we just closed so the open-from-URL effect does not
+  // race-reopen the dialog while router.replace propagates the cleared
+  // searchParam (G18). Cleared once requestedLeadId becomes null or moves
+  // to a different id.
+  const justClosedLeadIdRef = useRef<string | null>(null)
 
   const replaceLeadHref = useCallback((leadId: string | null) => {
     const nextHref = leadId
@@ -151,7 +156,20 @@ export default function LeadsPage() {
   }, [leads, replaceLeadHref, requestedLeadId, selectedLead])
 
   useEffect(() => {
-    if (!requestedLeadId || isLeadsLoading) {
+    if (!requestedLeadId) {
+      justClosedLeadIdRef.current = null
+      return
+    }
+
+    if (justClosedLeadIdRef.current && justClosedLeadIdRef.current !== requestedLeadId) {
+      justClosedLeadIdRef.current = null
+    }
+
+    if (isLeadsLoading) {
+      return
+    }
+
+    if (justClosedLeadIdRef.current === requestedLeadId) {
       return
     }
 
@@ -351,6 +369,12 @@ export default function LeadsPage() {
   const handleLeadDialogChange = (open: boolean) => {
     if (open) {
       return
+    }
+
+    if (selectedLead) {
+      justClosedLeadIdRef.current = selectedLead.id
+    } else if (requestedLeadId) {
+      justClosedLeadIdRef.current = requestedLeadId
     }
 
     setSelectedLead(null)

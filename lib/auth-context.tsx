@@ -111,12 +111,20 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
         setUser(null)
       }
 
-      if (event !== 'INITIAL_SESSION') {
+      // Skip router.refresh() for benign events. TOKEN_REFRESHED fires on
+      // tab focus regain (autoRefresh) and would otherwise cascade into a
+      // full server-component refetch — losing local UI state on every
+      // visibility flip (G19). INITIAL_SESSION is the first emit and is
+      // already covered by the initialUser prop wiring.
+      if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
         setIsLoading(false)
-        startTransition(() => {
-          router.refresh()
-        })
+        return
       }
+
+      setIsLoading(false)
+      startTransition(() => {
+        router.refresh()
+      })
     })
 
     return () => {
