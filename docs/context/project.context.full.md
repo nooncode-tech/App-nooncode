@@ -956,11 +956,74 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - role-aware visibility must remain enforced at the database layer (RLS), not at the application layer alone
   - the developer role must never gain `SELECT` access to `seller_fees`, by design
 
+## Confirmed dashboard summary aggregates slice
+- Anchors:
+  - `docs/adrs/ADR-020-dashboard-summary-aggregates-and-invalidation.md` (10 decisions D1-D10 covering RLS posture, SQL parity, CTE composition, wire shape, cache TTL, invalidation, hook location, module boundaries, HTTP semantics, contract location)
+  - `docs/contracts/dashboard-summary.md` (entity skeleton; SQL bodies live in the ADR §D2 + §D3)
+  - `specs/fase-3-r3-lazy-load-with-aggregates.md` (Analysis output 2026-05-22; supersedes R3 deferral from F-V12 closure)
+- Problem solved:
+  - prior to this iteration, `DataProvider` in `lib/data-context.tsx:640-760` eager-loaded `leads` page 1 plus **all** projects (capped at 100 server-side) plus **all** tasks (capped at 100) on every authenticated mount, and the dashboard home computed 12 KPIs + 3 derived counters entirely client-side via `selectDashboardSummary(leads, projects, tasks)` in `lib/dashboard-selectors.ts:484-523` — KPIs silently lied past 100 projects / 100 tasks
+- Surface change:
+  - new `GET /api/dashboard/summary` route at `app/api/dashboard/summary/route.ts` (Next runtime `nodejs`, `dynamic = 'force-dynamic'`, auth via `requireRole(['admin','sales_manager','sales','pm','developer'])`)
+  - new Postgres function `public.get_dashboard_summary()` (migration `0058_phase_22b_dashboard_summary_rpc.sql`) — `LANGUAGE sql STABLE SECURITY INVOKER` with `search_path = public, pg_catalog` pinned; GRANT EXECUTE to `authenticated` only, anon and public revoked
+  - new service layer `lib/server/dashboard/{summary-repository,summary-service,serialization}.ts`
+  - `lib/data-context.tsx` refactored: removed eager loads of leads / projects / tasks in `supabase` mode on mount; added `dashboardSummary` state + `isDashboardSummaryLoading` + `dashboardSummaryError` + `refreshDashboardSummary({ force?: boolean })` method + `useDashboardSummary()` hook
+  - new pure-helpers module `lib/dashboard/summary-cache.ts` (`isDashboardSummaryFresh`, `createDashboardSummaryDebouncer`) extracted for testability
+  - per-page lazy loaders added to `/dashboard/{leads,pipeline,projects,tasks,reports}/page.tsx` via `useRef`-guarded `useEffect` on mount in `supabase` mode
+  - dashboard home (`app/dashboard/page.tsx`) reads KPIs from `useDashboardSummary()` in `supabase` (mock mode keeps legacy `selectDashboardSummary(...)` path)
+- Wire shape (canonical):
+  - `{ data: { sales: { openLeads, wonLeads, pipelineValue, totalRevenue, closedLeads, overdueFollowUps, leadsByStatus }, delivery: { activeProjects, projectsInReview, completedProjects, pendingTasks, inProgressTasks, reviewTasks, actionableTasks }, checkedAt } }`
+  - `delivery.{pendingTasks,inProgressTasks,reviewTasks,actionableTasks}` are explicitly `null` (not `0`, not omitted) for `sales` and `sales_manager` roles — defense-in-depth null masking in `summary-service.ts` `TASK_RLS_DENIED_ROLES`
+  - `sales.leadsByStatus` is a jsonb object map (e.g. `{ "new": 2, "won": 8, "proposal": 14 }`) coerced from `null → {}` server-side in `serialization.ts` (`jsonb_object_agg` over zero rows returns NULL)
+  - `sales.closedLeads` is wire-only (not exposed in mock `SalesSummary`); consumer derives `conversionRate` as `closedLeads === 0 ? null : Math.round((wonLeads / closedLeads) * 100)`
+  - `actionableTasks = pendingTasks + inProgressTasks` when both are non-null; null when either is null
+  - `checkedAt` uses `now()` (transaction start, MVCC snapshot)
+- SQL parity (the load-bearing detail):
+  - the RPC reproduces `deriveProjectDisplayStatus` from `lib/projects/progress.ts:19-46` verbatim via a CTE with four per-project booleans (`has_any_tasks`, `all_tasks_done`, `any_review`, `any_in_progress_or_done`) plus a 7-branch ordered `CASE`
+  - **branch order is locked**: branch 1 `NOT has_any_tasks` MUST evaluate before branch 3 `persisted = delivered AND all_tasks_done` so an empty-task project returns persisted status (`delivered`), not the vacuous-truth `delivered` via branch 3's `all_tasks_done = true` on the empty set
+  - projects are filtered by `payment_activated = true` matching `lib/server/projects/repository.ts:83` and the `/api/projects` list endpoint precedent
+  - the JS-side rule and the SQL-side rule are tested for parity at fixture volume ≥10 leads / ≥5 projects / ≥10 tasks (23 chunk-1 server-side tests in `tests/server/api/dashboard/summary.test.ts`)
+- Caching model:
+  - 60-second stale-while-revalidate TTL in-memory only (no localStorage, no IndexedDB, no service worker)
+  - boundary is exclusive at exactly `fetchedAt + 60_000ms` (60001ms is stale)
+  - `refresh()` exposed by `useDashboardSummary()` always bypasses the TTL via `{ force: true }`
+- Invalidation model:
+  - debounced 250ms refetch-on-mutate, wired to 13 supabase-mode mutation surfaces in `lib/data-context.tsx`: `addLead`, `updateLead`, `deleteLead`, `updateLeadStatus`, `claimLead`, `releaseLeadAsNoResponse`, `addLeadProposal`, `updateLeadProposalStatus`, `createProjectFromProposal`, `updateProject`, `updateProjectStatus`, `addTask`, `updateTask`, `updateTaskStatus` (note: ADR-020 §D6 names 15 surfaces; mock-only paths `addProject` / `deleteProject` / `deleteTask` do NOT wire because they never reach the supabase branch)
+  - multiple rapid mutations within 250ms coalesce into a single refetch (the pipeline drag-drop scenario)
+  - `updateLead` invalidation fires on every successful mutation regardless of which field changed (no filter by `nextFollowUpAt`) — simple > clever; the next refetch is cheap
+  - `scheduleDashboardSummaryRefetch` and `refreshDashboardSummary` both short-circuit when `authMode !== 'supabase'` BEFORE the debouncer or the fetch — mock mode never touches the summary endpoint
+  - the debouncer is one-per-provider-instance and clears its pending timeout on unmount via `useEffect(() => () => debouncer.cancel(), [])`
+- RLS posture (validated):
+  - the RPC is `SECURITY INVOKER` (NOT `DEFINER`); runs under the calling user's `auth.uid()`
+  - existing RLS policies on `public.leads` (migration 0002), `public.projects` (0005), and `public.tasks` (0006 + 0009 recursion fix) filter rows BEFORE `COUNT(*)` / `SUM()` aggregates fire
+  - tasks RLS denies SELECT for `sales` and `sales_manager` roles — the wire payload returns `null` for the four task counters under those roles even if RLS regressed (defense-in-depth null masking in the service layer)
+  - developer role sees tasks scoped to own assignments — the per-project `display_status` derivation under the developer's RLS legitimately produces different values than admin/pm see (this is the existing client-side behavior, not a regression)
+  - `payment_activated = true` is NOT enforced by RLS; the SQL aggregate MUST apply this filter explicitly
+- Mutation-surface-out-of-band:
+  - 2 server-side mutations DO NOT trigger client-side invalidation: Stripe `POST /api/integrations/website/payment-confirmed` (flips `projects.payment_activated`) and the PM webhook `POST /api/inbound/pm-queue/[proposalId]/review-webhook` (PM approve / reject) — these run server-side without the client knowing
+  - stale window is bounded by the 60s SWR TTL plus next page-load picks them up; documented as acceptable for the pilot scope per spec §4
+  - pre-authorized future iteration: Supabase Realtime channel pushing summary invalidations to the client if pilot feedback indicates the window is uncomfortable
+- Validation evidence:
+  - 23 chunk-1 server-side parity tests at fixture volume (all 7 `deriveProjectDisplayStatus` branches exercised by 13 leads / 8 projects / 11 tasks); 17 chunk-2 client-side tests covering TTL boundaries / debounce coalescing / mode-agnostic short-circuit / wire-contract sanity; 26 chunk-3 testing-audit tests covering mutation→invalidation wiring + per-page lazy-load mount guards + provider unmount cleanup + em-dash rendering for null task counters
+  - total 486/486 tests pass at iteration close
+  - operator-validated 2026-05-22 on Vercel preview deploy: 21 open leads / 8 won / $103,969 pipeline / 100% conversion / leadsByStatus histogram matching SQL smoke
+  - security review GATE-OPEN in `docs/validations/r3-security-review-2026-05-22.md` (zero CRITICAL/HIGH/MEDIUM/LOW; 11 informational verifications)
+  - testing audit in `docs/validations/r3-testing-audit-2026-05-22.md`
+- Explicitly excluded from this slice:
+  - users pagination (`/api/users/admin`, `/api/users/delivery`) — operator-deferred; still uses `limit` parameter, no full `OffsetMeta` envelope
+  - pipeline / reports filter rewrite (R1 carry-over from F-V12)
+  - deep-link pagination state in URL (R2 carry-over)
+  - Maxwell counters and any AI-MVP pipeline KPI
+  - mock-mode behavior changes
+- Known open items:
+  - the cast `as unknown as { rpc: 'get_dashboard_summary' ... }` in `lib/server/dashboard/summary-repository.ts:40-47` is a deferral pattern pending `database.types.ts` regen including the new RPC — remove the cast once the regen ships
+  - pre-existing 6 lint warnings in `tests/server/website/webhook-events.test.ts` (unchanged by this iteration)
+
 ## Active risks
 - High:
   - mixed real/mock state can mislead future implementation if context files are not updated
   - auth is real enough to create expectations that business data is also durable when it is not
-  - `lib/data-context.tsx` still centralizes multiple domains in a way that will complicate partial migration
+  - `lib/data-context.tsx` still centralizes multiple domains in a way that complicates partial migration; the 2026-05-22 R3 iteration shifted dashboard KPIs to a server-side aggregate endpoint and made lists lazy-loaded per page, reducing — but not eliminating — the centralization risk (mutations + per-domain state still flow through the same provider; sidebar badges are decoupled by design)
 - Medium:
   - `switchRole()` remains a mock-only utility; the current settings UI is now honest in `supabase`, but future reuse elsewhere could still reintroduce confusion
   - page-level features outside the validated delivery surfaces may still rely on mock assumptions even with real auth active
