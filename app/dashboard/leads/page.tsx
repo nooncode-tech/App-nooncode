@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { startTransition, useCallback, useEffect, useState } from 'react'
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { buildLeadDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
@@ -115,6 +115,26 @@ export default function LeadsPage() {
   const [manualZoneText, setManualZoneText] = useState('')
   const [lastMaxwellResult, setLastMaxwellResult] = useState<MaxwellSearchResponse['data'] | null>(null)
   const requestedLeadId = searchParams.get('leadId')
+  // Tracks a leadId we just closed so the open-from-URL effect does not
+  // race-reopen the dialog while router.replace propagates the cleared
+  // searchParam (G18). Cleared once requestedLeadId becomes null or moves
+  // to a different id.
+  const justClosedLeadIdRef = useRef<string | null>(null)
+  // Carries the lead that was on-screen at close time so the dialog body
+  // stays mounted through Radix's ~200ms close animation. Only captured
+  // by the close handler (user click on X / ESC / backdrop). Avoids the
+  // header-only flash that happens when conditional body content unmounts
+  // mid-animation (G18 follow-up).
+  const [lingeringLead, setLingeringLead] = useState<Lead | null>(null)
+  const lingeringClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+  }, [])
+
+  const displayLead = selectedLead ?? lingeringLead
 
   const replaceLeadHref = useCallback((leadId: string | null) => {
     const nextHref = leadId
@@ -151,7 +171,20 @@ export default function LeadsPage() {
   }, [leads, replaceLeadHref, requestedLeadId, selectedLead])
 
   useEffect(() => {
-    if (!requestedLeadId || isLeadsLoading) {
+    if (!requestedLeadId) {
+      justClosedLeadIdRef.current = null
+      return
+    }
+
+    if (justClosedLeadIdRef.current && justClosedLeadIdRef.current !== requestedLeadId) {
+      justClosedLeadIdRef.current = null
+    }
+
+    if (isLeadsLoading) {
+      return
+    }
+
+    if (justClosedLeadIdRef.current === requestedLeadId) {
       return
     }
 
@@ -352,6 +385,21 @@ export default function LeadsPage() {
     if (open) {
       return
     }
+
+    if (selectedLead) {
+      justClosedLeadIdRef.current = selectedLead.id
+      setLingeringLead(selectedLead)
+    } else if (requestedLeadId) {
+      justClosedLeadIdRef.current = requestedLeadId
+    }
+
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+    lingeringClearTimerRef.current = setTimeout(() => {
+      setLingeringLead(null)
+      lingeringClearTimerRef.current = null
+    }, 200)
 
     setSelectedLead(null)
 
@@ -582,9 +630,9 @@ export default function LeadsPage() {
               Informacion completa y acciones disponibles
             </DialogDescription>
           </DialogHeader>
-          {selectedLead && (
+          {displayLead && (
             <LeadDetail
-              lead={selectedLead}
+              lead={displayLead}
               onStatusChange={handleStatusChange}
             />
           )}

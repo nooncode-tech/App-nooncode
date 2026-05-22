@@ -1,6 +1,6 @@
 'use client'
 
-import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth, canManageTeam } from '@/lib/auth-context'
 import { buildTaskDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
@@ -81,6 +81,19 @@ export default function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const requestedTaskId = searchParams.get('taskId')
+  // G18 mirror fix: blocks reopen race while router.replace propagates the cleared param.
+  const justClosedTaskIdRef = useRef<string | null>(null)
+  // G18 follow-up: carries the task on-screen at close time so the dialog
+  // body stays mounted through Radix's ~200ms close animation. Only
+  // captured by the close handler (X / ESC / backdrop).
+  const [lingeringTask, setLingeringTask] = useState<Task | null>(null)
+  const lingeringClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+  }, [])
   const canCreateTasks = user ? canManageTeam(user.role) : false
   const realProjects = projectBoardProjects.filter((project) => isUuid(project.id))
   const isSupabaseTeamTaskView = authMode === 'supabase' && user?.role !== 'developer'
@@ -144,6 +157,7 @@ export default function TasksPage() {
     () => visibleTasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, visibleTasks]
   )
+  const displayTask = selectedTask ?? lingeringTask
 
   useEffect(() => {
     if (!user) {
@@ -151,6 +165,15 @@ export default function TasksPage() {
     }
 
     if (!requestedTaskId) {
+      justClosedTaskIdRef.current = null
+      return
+    }
+
+    if (justClosedTaskIdRef.current && justClosedTaskIdRef.current !== requestedTaskId) {
+      justClosedTaskIdRef.current = null
+    }
+
+    if (justClosedTaskIdRef.current === requestedTaskId) {
       return
     }
 
@@ -323,6 +346,23 @@ export default function TasksPage() {
             return
           }
 
+          const closedId = selectedTaskId ?? requestedTaskId
+          if (closedId) {
+            justClosedTaskIdRef.current = closedId
+          }
+
+          if (selectedTask) {
+            setLingeringTask(selectedTask)
+          }
+
+          if (lingeringClearTimerRef.current !== null) {
+            clearTimeout(lingeringClearTimerRef.current)
+          }
+          lingeringClearTimerRef.current = setTimeout(() => {
+            setLingeringTask(null)
+            lingeringClearTimerRef.current = null
+          }, 200)
+
           setSelectedTaskId(null)
 
           if (requestedTaskId) {
@@ -337,10 +377,10 @@ export default function TasksPage() {
               Actualiza el estado y registra tu progreso
             </DialogDescription>
           </DialogHeader>
-          {selectedTask && (
+          {displayTask && (
             <TaskDetail
-              task={selectedTask}
-              projectName={getProjectName(selectedTask.projectId)}
+              task={displayTask}
+              projectName={getProjectName(displayTask.projectId)}
               onStatusChange={handleStatusChange}
               onSaveProgress={handleSaveProgress}
               getTaskActivity={getTaskActivity}
