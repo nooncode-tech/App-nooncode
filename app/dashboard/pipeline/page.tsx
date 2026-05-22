@@ -157,6 +157,7 @@ function PipelineCard({ lead, isDragging, onClick }: PipelineCardProps) {
       data-lead-trigger={lead.id}
       onClick={onClick}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onClick()

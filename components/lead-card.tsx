@@ -140,6 +140,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
       className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
       onClick={onClick}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onClick()
