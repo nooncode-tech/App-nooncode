@@ -98,7 +98,7 @@ function NavGroup({
       {label && (
         <div className="flex items-center gap-2 mb-1 px-2 py-1.5 group-data-[collapsible=icon]:hidden">
           {color && <span className="size-1.5 rounded-full shrink-0" style={{ background: color }} />}
-          <span className="text-[10px] font-semibold text-white/30">
+          <span className="text-[10px] font-semibold text-white/55">
             {label}
           </span>
         </div>
@@ -222,17 +222,17 @@ export function AppSidebar() {
             </div>
             <div className="flex flex-col leading-none">
               <span className="text-[17px] font-black tracking-[-0.04em] text-white">noon</span>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/25 mt-0.5">platform</span>
+              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/50 mt-0.5">platform</span>
             </div>
           </Link>
-          <SidebarTrigger className="shrink-0 text-white/20 hover:text-white/50 hover:bg-white/[0.05] size-7 [&>svg]:size-3.5" />
+          <SidebarTrigger className="shrink-0 text-white/50 hover:text-white/80 hover:bg-white/[0.05] size-7 [&>svg]:size-3.5" />
         </div>
         {/* Collapsed: logo + trigger stacked */}
         <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-2">
           <Link href="/dashboard" className="size-8 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
           </Link>
-          <SidebarTrigger className="text-white/25 hover:text-white/60 hover:bg-white/[0.07] size-7 [&>svg]:size-3.5" />
+          <SidebarTrigger className="text-white/50 hover:text-white/60 hover:bg-white/[0.07] size-7 [&>svg]:size-3.5" />
         </div>
       </SidebarHeader>
 
@@ -266,11 +266,11 @@ export function AppSidebar() {
       <SidebarFooter className="p-3 border-t border-white/[0.06]">
         {/* Balance strip — hidden when collapsed */}
         <div className="flex items-center gap-2 px-2 py-2 mb-1 group-data-[collapsible=icon]:hidden">
-          <Zap className="size-3.5 text-white/20 shrink-0" />
-          <span className="text-[11px] text-white/30 flex-1 tabular-nums truncate">
+          <Zap className="size-3.5 text-white/50 shrink-0" />
+          <span className="text-[11px] text-white/55 flex-1 tabular-nums truncate">
             {personalStats.balanceValueLabel}
           </span>
-          <span className="text-[10px] text-white/25 font-medium">balance</span>
+          <span className="text-[10px] text-white/50 font-medium">balance</span>
         </div>
 
         <DropdownMenu>
@@ -283,9 +283,9 @@ export function AppSidebar() {
               </Avatar>
               <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                 <p className="text-[13px] font-medium text-white/90 truncate leading-tight">{user.name}</p>
-                <p className="text-[10px] text-white/30 truncate mt-0.5">{getRoleLabel(user.role)}</p>
+                <p className="text-[10px] text-white/55 truncate mt-0.5">{getRoleLabel(user.role)}</p>
               </div>
-              <ChevronDown className="size-3.5 text-white/20 group-hover:text-white/40 transition-colors shrink-0 group-data-[collapsible=icon]:hidden" />
+              <ChevronDown className="size-3.5 text-white/50 group-hover:text-white/80 transition-colors shrink-0 group-data-[collapsible=icon]:hidden" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
