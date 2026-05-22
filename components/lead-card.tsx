@@ -136,8 +136,19 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
 
   return (
     <Card
-      className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20"
+      data-lead-trigger={lead.id}
+      className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Abrir detalle del lead ${lead.name}`}
     >
       <div className="flex items-start gap-4">
         {/* Score Badge */}
@@ -281,7 +292,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="size-8">
+              <Button size="icon" variant="ghost" className="size-8" aria-label="Acciones del lead">
                 <MoreVertical className="size-4" />
               </Button>
             </DropdownMenuTrigger>

@@ -211,9 +211,10 @@ export default function NotificationsPage() {
                         <button
                           onClick={() => handleMarkAsRead(item.id)}
                           disabled={markingId === item.id}
-                          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 ml-auto transition-colors disabled:opacity-40"
+                          aria-label={`Marcar como leída: ${item.title}`}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 ml-auto px-2 py-1 rounded transition-colors disabled:opacity-40 hover:bg-muted/40"
                         >
-                          <Check className="size-2.5" />
+                          <Check className="size-3" />
                           {markingId === item.id ? 'Marcando...' : 'Leída'}
                         </button>
                       )}
