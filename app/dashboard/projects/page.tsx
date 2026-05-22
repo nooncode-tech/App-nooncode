@@ -278,12 +278,36 @@ export default function ProjectsPage() {
   const { user, authMode } = useAuth()
   const {
     projectBoardProjects,
+    persistedProjects,
+    isProjectsLoading,
     deliveryUsers,
     getTasksByProject,
     getProjectActivity,
     updateProjectStatus,
     refreshProjects,
   } = useData()
+
+  // Post R3 chunk 2: provider no longer eager-loads projects in
+  // supabase mode. Trigger refreshProjects() on first mount; the ref
+  // guard prevents re-firing on subsequent renders.
+  const hasTriggeredInitialLoadRef = useRef(false)
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredInitialLoadRef.current) {
+      return
+    }
+    if (persistedProjects.length > 0) {
+      hasTriggeredInitialLoadRef.current = true
+      return
+    }
+    if (isProjectsLoading) {
+      return
+    }
+    hasTriggeredInitialLoadRef.current = true
+    void refreshProjects()
+  }, [authMode, isProjectsLoading, persistedProjects.length, refreshProjects])
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()

@@ -68,11 +68,58 @@ export default function TasksPage() {
   const {
     taskBoardTasks,
     projectBoardProjects,
+    persistedTasks,
+    persistedProjects,
+    isTasksLoading,
+    isProjectsLoading,
     updateTask,
     updateTaskStatus,
     getTaskActivity,
     addTaskNote,
+    refreshTasks,
+    refreshProjects,
   } = useData()
+
+  // Post R3 chunk 2: provider no longer eager-loads tasks/projects in
+  // supabase mode. Tasks page needs both the task fanout and the
+  // project list (for project-name resolution in the task cards), so
+  // we trigger both loaders on mount with independent ref guards.
+  const hasTriggeredTaskLoadRef = useRef(false)
+  const hasTriggeredProjectLoadRef = useRef(false)
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredTaskLoadRef.current) {
+      return
+    }
+    if (persistedTasks.length > 0) {
+      hasTriggeredTaskLoadRef.current = true
+      return
+    }
+    if (isTasksLoading) {
+      return
+    }
+    hasTriggeredTaskLoadRef.current = true
+    void refreshTasks()
+  }, [authMode, isTasksLoading, persistedTasks.length, refreshTasks])
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredProjectLoadRef.current) {
+      return
+    }
+    if (persistedProjects.length > 0) {
+      hasTriggeredProjectLoadRef.current = true
+      return
+    }
+    if (isProjectsLoading) {
+      return
+    }
+    hasTriggeredProjectLoadRef.current = true
+    void refreshProjects()
+  }, [authMode, isProjectsLoading, persistedProjects.length, refreshProjects])
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
