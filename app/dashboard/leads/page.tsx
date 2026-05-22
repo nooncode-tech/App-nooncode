@@ -120,6 +120,21 @@ export default function LeadsPage() {
   // searchParam (G18). Cleared once requestedLeadId becomes null or moves
   // to a different id.
   const justClosedLeadIdRef = useRef<string | null>(null)
+  // Carries the lead that was on-screen at close time so the dialog body
+  // stays mounted through Radix's ~200ms close animation. Only captured
+  // by the close handler (user click on X / ESC / backdrop). Avoids the
+  // header-only flash that happens when conditional body content unmounts
+  // mid-animation (G18 follow-up).
+  const [lingeringLead, setLingeringLead] = useState<Lead | null>(null)
+  const lingeringClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+  }, [])
+
+  const displayLead = selectedLead ?? lingeringLead
 
   const replaceLeadHref = useCallback((leadId: string | null) => {
     const nextHref = leadId
@@ -373,9 +388,18 @@ export default function LeadsPage() {
 
     if (selectedLead) {
       justClosedLeadIdRef.current = selectedLead.id
+      setLingeringLead(selectedLead)
     } else if (requestedLeadId) {
       justClosedLeadIdRef.current = requestedLeadId
     }
+
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+    lingeringClearTimerRef.current = setTimeout(() => {
+      setLingeringLead(null)
+      lingeringClearTimerRef.current = null
+    }, 200)
 
     setSelectedLead(null)
 
@@ -606,9 +630,9 @@ export default function LeadsPage() {
               Informacion completa y acciones disponibles
             </DialogDescription>
           </DialogHeader>
-          {selectedLead && (
+          {displayLead && (
             <LeadDetail
-              lead={selectedLead}
+              lead={displayLead}
               onStatusChange={handleStatusChange}
             />
           )}

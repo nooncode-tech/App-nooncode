@@ -292,6 +292,17 @@ export default function ProjectsPage() {
   const requestedProjectId = searchParams.get('projectId')
   // G18 mirror fix: blocks reopen race while router.replace propagates the cleared param.
   const justClosedProjectIdRef = useRef<string | null>(null)
+  // G18 follow-up: carries the project on-screen at close time so the
+  // dialog body stays mounted through Radix's ~200ms close animation.
+  // Only captured by the close handler (X / ESC / backdrop).
+  const [lingeringProject, setLingeringProject] = useState<Project | null>(null)
+  const lingeringClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+  }, [])
 
   const userRole = user?.role
   const canManageProjects = userRole ? ['admin', 'pm'].includes(userRole) : false
@@ -343,6 +354,7 @@ export default function ProjectsPage() {
     () => visibleProjects.find((project) => project.id === selectedProjectId) ?? null,
     [visibleProjects, selectedProjectId]
   )
+  const displayProject = selectedProject ?? lingeringProject
 
   useEffect(() => {
     if (!requestedProjectId) {
@@ -424,6 +436,18 @@ export default function ProjectsPage() {
     if (closedId) {
       justClosedProjectIdRef.current = closedId
     }
+
+    if (selectedProject) {
+      setLingeringProject(selectedProject)
+    }
+
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+    lingeringClearTimerRef.current = setTimeout(() => {
+      setLingeringProject(null)
+      lingeringClearTimerRef.current = null
+    }, 200)
 
     setSelectedProjectId(null)
 
@@ -603,10 +627,10 @@ export default function ProjectsPage() {
               Informacion completa y tareas del proyecto
             </DialogDescription>
           </DialogHeader>
-          {selectedProject && (
+          {displayProject && (
             <ProjectDetail
-              project={selectedProject}
-              tasks={getVisibleProjectTasks(selectedProject.id)}
+              project={displayProject}
+              tasks={getVisibleProjectTasks(displayProject.id)}
               deliveryUsers={deliveryUsers}
               getProjectActivity={getProjectActivity}
               onStatusChange={handleStatusChange}
