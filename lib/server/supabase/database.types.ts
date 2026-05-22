@@ -2281,6 +2281,25 @@ export type Database = {
         Args: { target_legacy_mock_id: string }
         Returns: string
       }
+      get_dashboard_summary: {
+        Args: never
+        Returns: {
+          active_projects: number
+          checked_at: string
+          closed_leads: number
+          completed_projects: number
+          in_progress_tasks: number
+          leads_by_status: Json
+          open_leads: number
+          overdue_follow_ups: number
+          pending_tasks: number
+          pipeline_value: number
+          projects_in_review: number
+          review_tasks: number
+          total_revenue: number
+          won_leads: number
+        }[]
+      }
       handoff_prototype_workspace_to_delivery: {
         Args: { target_workspace_id: string }
         Returns: {

@@ -28,23 +28,7 @@ import type { DashboardSummaryRow } from '@/lib/server/dashboard/serialization'
 export async function readDashboardSummary(
   client: DatabaseClient
 ): Promise<DashboardSummaryRow> {
-  // The RPC is regenerated into `Database['public']['Functions']` only
-  // after the operator applies the migration and re-runs the type
-  // generator (per ADR-006 / G7 — type-regen is operator's job
-  // post-merge). Until then, the function name is unknown to the
-  // generated `Database` type, so we cast through `unknown` to a
-  // narrowly-typed surface. This is consistent with the rollout
-  // pattern used by `handoff_prototype_workspace_to_delivery` and
-  // `link_lead_prototype_workspace_to_project` before their types
-  // landed.
-  const rpcClient = client as unknown as {
-    rpc: (name: 'get_dashboard_summary') => Promise<{
-      data: DashboardSummaryRow[] | null
-      error: { message: string } | null
-    }>
-  }
-
-  const { data, error } = await rpcClient.rpc('get_dashboard_summary')
+  const { data, error } = await client.rpc('get_dashboard_summary')
 
   if (error) {
     throw new Error(`Failed to read dashboard summary: ${error.message}`)
@@ -58,5 +42,11 @@ export async function readDashboardSummary(
 
   // The RPC is composed of cross-joined single-row CTEs so it always
   // returns exactly one row. Defensively pick the first.
-  return data[0]
+  //
+  // Generated types surface `leads_by_status` as the broad `Json` type
+  // (jsonb column). The runtime contract — `jsonb_object_agg(status,
+  // count)` over the `leads` table — narrows it to `Record<string,
+  // number> | null`. The boundary cast captures that runtime-known
+  // narrowing; the service layer / mapper rely on the narrow type.
+  return data[0] as DashboardSummaryRow
 }
