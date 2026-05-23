@@ -343,7 +343,7 @@ Note: Backend phases A and B sandwich the refactor step per router decision. Arc
 
 - **Draft** — 2026-05-23 (analysis output)
 - **Approved** — 2026-05-23 (operator sign-off: "Approved, arrancá architecture"; ADR-010 client-portal anchor reinforced explicitly post-Draft per operator emphasis)
-- **Implemented** — pending Validator COMPLETE
+- **Implemented** — 2026-05-23 (PR #102 merged at `41073a6` from squashed commit `1bc3ddd`, operator-confirmed merge, Validator verdict COMPLETE)
 - **Archived** — n/a
 
 Status changes recorded inline as dated notes when transitioned. Spec is not edited after Implemented; follow-up iterations create new spec files and reference this one.
