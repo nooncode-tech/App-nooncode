@@ -180,6 +180,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="-mx-4 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
         <TabsList>
           {isAdmin && (
             <TabsTrigger value="general">
@@ -216,6 +217,7 @@ export default function SettingsPage() {
             </TabsTrigger>
           )}
         </TabsList>
+        </div>
 
         {/* General Settings */}
         <TabsContent value="general" className="mt-6 space-y-6">
