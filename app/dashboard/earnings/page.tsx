@@ -33,6 +33,12 @@ import {
   ExternalLink,
   AlertCircle,
 } from 'lucide-react'
+
+// Stripe Connect is dormant per ADR-022 (docs/adrs/ADR-022-stripe-connect-dormant-manual-payouts.md).
+// Payouts operate manually until a reactivation trigger fires. Do NOT flip this constant in isolation —
+// reactivation requires the full iteration (Stripe Dashboard enrollment + backfill migration + Express
+// login link + e2e test + ToS extension) described in ADR-022.
+const STRIPE_CONNECT_ENABLED = false
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { toast } from 'sonner'
 
@@ -140,6 +146,7 @@ export default function EarningsPage() {
 
   const loadConnectStatus = () => {
     if (!isSupabase) return
+    if (!STRIPE_CONNECT_ENABLED) return
     setConnectLoading(true)
     fetch('/api/connect/status')
       .then((r) => r.json())
@@ -243,8 +250,9 @@ export default function EarningsPage() {
       </div>
       <div className="space-y-8">
 
-      {/* Stripe Connect card — solo para roles que reciben earnings via Stripe Connect (sellers + admin). PM/developer no tienen Connect personal. */}
-      {!connectLoading && connectStatus && user?.role !== 'pm' && user?.role !== 'developer' && (
+      {/* Stripe Connect card — dormant per ADR-022. Gated behind STRIPE_CONNECT_ENABLED at top of file.
+          While dormant, payouts are processed manually by admin (see ADR-022 for the reactivation iteration). */}
+      {STRIPE_CONNECT_ENABLED && !connectLoading && connectStatus && user?.role !== 'pm' && user?.role !== 'developer' && (
         <Card className={connectStatus.status === 'active' ? 'border-emerald-200/80 bg-emerald-50/20' : 'border-yellow-200/80 bg-yellow-50/20'}>
           <CardContent className="flex flex-col gap-3 pt-5 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-3">
