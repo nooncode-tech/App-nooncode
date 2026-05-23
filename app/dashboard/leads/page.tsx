@@ -439,7 +439,7 @@ export default function LeadsPage() {
           <h1 className="app-page-title">Leads</h1>
           <p className="app-page-subtitle">Cola comercial, prioridad por score y seguimiento activo.</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="default"
             onClick={handleMaxwellCurrentLocationSearch}
@@ -647,7 +647,7 @@ export default function LeadsPage() {
 
       {/* Lead Detail Dialog */}
       <Dialog open={!!selectedLead} onOpenChange={handleLeadDialogChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Detalle del Lead</DialogTitle>
             <DialogDescription>

@@ -1,0 +1,468 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser validation — G21 mobile responsive fix (2026-05-23)</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #111827;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --code-bg: #f3f4f6;
+    --pass: #16a34a;
+    --fail: #dc2626;
+    --pending: #d97706;
+    --primary: #1200c5;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    max-width: 880px;
+    margin: 2rem auto;
+    padding: 0 1.25rem 6rem;
+    line-height: 1.55;
+  }
+  h1 { font-size: 1.75rem; margin: 0 0 0.25rem; }
+  h2 { font-size: 1.25rem; margin: 2.5rem 0 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.05rem; margin: 1.75rem 0 0.5rem; }
+  h4 { font-size: 0.95rem; margin: 1rem 0 0.25rem; color: var(--muted); }
+  code, pre { background: var(--code-bg); border-radius: 4px; }
+  code { padding: 1px 5px; font-size: 0.85em; }
+  pre { padding: 0.75rem 1rem; overflow-x: auto; font-size: 0.85em; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+  .pill-pass { background: #dcfce7; color: var(--pass); }
+  .pill-fail { background: #fee2e2; color: var(--fail); }
+  .pill-pending { background: #fef3c7; color: var(--pending); }
+  .pill-na { background: #e5e7eb; color: var(--muted); }
+  .meta { color: var(--muted); font-size: 0.85rem; }
+  .placeholder { color: var(--pending); font-style: italic; }
+  blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--primary); color: var(--muted); background: #f9fafb; }
+  ul, ol { padding-left: 1.5rem; }
+  li { margin: 0.15rem 0; }
+  .screenshot-slot {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 0.5rem 0 1rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+    background: #fafafa;
+  }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+</style>
+</head>
+<body>
+
+<h1>Browser validation — G21 mobile responsive fix</h1>
+<p class="meta">Date: 2026-05-23 · Iteration: <code>fase-3-g21-mobile-responsive-fix</code> · Branch: <code>fix/fase-3-g21-mobile-responsive</code> · Spec: <code>specs/fase-3-g21-mobile-responsive-fix.md</code></p>
+
+<p>
+  This document records the browser validation evidence for the G21 iteration. Per <code>system-testing</code> declared
+  methodology (integration-first, browser validation is the gate), the eight acceptance criteria below are the
+  authoritative checklist. <strong>Operator fills in each row</strong> after running the steps in the runbook section.
+</p>
+
+<blockquote>
+  <strong>Verdict shorthand</strong> — <span class="pill pill-pass">PASS</span> verified working,
+  <span class="pill pill-fail">FAIL</span> regression or unmet criterion,
+  <span class="pill pill-pending">PENDING</span> not yet executed,
+  <span class="pill pill-na">N/A</span> not applicable with explicit reason.
+</blockquote>
+
+<h2>Runbook — how to execute</h2>
+
+<h3>Environment</h3>
+<ul>
+  <li><code>pnpm dev</code> against the Supabase dev/preview project (<code>AUTH_MODE=supabase</code> implied by env).</li>
+  <li>Chrome (or Edge / Firefox) with DevTools open in responsive mode.</li>
+  <li>Logged in as a role that has access to <code>/dashboard</code>, <code>/dashboard/leads</code>, and at least one
+      visible lead (any role except a permission-denied subset).</li>
+  <li>Optional: real-device verification (iPhone / Android) recommended for tap-target sanity but not gating per
+      spec § Recommended Testing Methodology.</li>
+</ul>
+
+<h3>Viewports to exercise</h3>
+<ol>
+  <li><strong>375 × 667</strong> (iPhone SE 2nd gen) — primary gate. Must pass all in-scope criteria.</li>
+  <li><strong>768 × 1024</strong> (iPad portrait) — breakpoint boundary check (<code>useIsMobile</code> returns
+      <code>false</code> at exactly 768 → desktop sidebar mode kicks in).</li>
+  <li><strong>1280 × 800</strong> — desktop regression check.</li>
+</ol>
+
+<h3>Horizontal-scroll quick check (paste in DevTools console at each viewport)</h3>
+<pre>// returns true if body horizontal-scrolls
+document.documentElement.scrollWidth &gt; window.innerWidth</pre>
+<p class="meta">Expected result: <code>false</code> at every in-scope viewport for every in-scope route.</p>
+
+<h2>Acceptance criteria — operator-filled verdicts</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 4%;">#</th>
+      <th style="width: 56%;">Criterion (verbatim from spec)</th>
+      <th style="width: 10%;">Verdict</th>
+      <th style="width: 30%;">Evidence / notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>
+        <strong>Mobile navigation works.</strong> On <code>/dashboard</code>, <code>/dashboard/leads</code>, and
+        inside the lead-detail Dialog, the user can open the navigation drawer with a single visible affordance
+        (the mobile <code>SidebarTrigger</code>), see the full nav list per role, tap any link, and land on the
+        requested route with the drawer auto-closed.
+      </td>
+      <td><span class="pill pill-pending">PENDING</span></td>
+      <td class="placeholder">Operator: confirm trigger visible top-left at 375 on each route; tap → drawer opens →
+        tap link → route changes + drawer closes. Screenshot of open drawer attached below.</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>
+        <strong>No horizontal scroll on <code>/dashboard</code> at 375×667.</strong>
+        Body-level <code>scrollWidth === innerWidth</code>. Header action chips reflow into multiple rows if
+        needed. No KPI card clips its number.
+      </td>
+      <td><span class="pill pill-pending">PENDING</span></td>
+      <td class="placeholder">Operator: paste console output of horizontal-scroll check + screenshot.</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>
+        <strong>No horizontal scroll on <code>/dashboard/leads</code> at 375×667.</strong>
+        Same body-level test. <code>LeadCard</code> rows fit within viewport. Long lead names truncate; long
+        emails wrap or truncate; price / badges / quick-actions never push the card beyond viewport width.
+      </td>
+      <td><span class="pill pill-pending">PENDING</span></td>
+      <td class="placeholder">Operator: scroll the list; confirm no body-level horizontal scroll; screenshot of
+        an outbound (Maxwell) lead card + an inbound lead card so both layouts are covered.</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>
+        <strong>Lead-detail Dialog usable at 375×667.</strong>
+        Open a lead → modal body fully readable (no horizontal scroll inside dialog body), tabs strip navigable
+        (horizontal scroll <em>inside</em> the tab strip is OK — that is the chosen mobile pattern), primary
+        actions tappable. Dialog dismiss (X / backdrop / Esc) restores focus to the card that opened it
+        (preserves G18 behavior).
+      </td>
+      <td><span class="pill pill-pending">PENDING</span></td>
+      <td class="placeholder">Operator: open lead → screenshot of Estado tab + Seguimiento tab at 375.
+        Dismiss via backdrop tap and confirm focus returns to the card (Tab key shows focus ring on the just-closed
+        card).</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>
+        <strong>Desktop regression check at 1280×800.</strong>
+        All four in-scope surfaces render identically to the pre-iteration baseline.
+        Sidebar <code>collapsible="icon"</code> mode still works, LeadCard horizontal layout unchanged at
+        desktop, lead-detail Dialog stays at <code>max-w-2xl</code> centered, <code>/dashboard</code> KPI grid at
+        <code>lg:grid-cols-4</code>.
+      </td>
+      <td><span class="pill pill-pending">PENDING</span></td>
+      <td class="placeholder">Operator: side-by-side screenshot comparison of develop vs the PR branch at 1280×800
+        on the four surfaces. Diff at component level should be zero (the only desktop CSS that changed are the
+        responsive-prefixed mobile overrides, which do not apply at md+).</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>
+        <strong>Tablet boundary check at 768×1024.</strong>
+        At the <code>useIsMobile</code> boundary (<code>MOBILE_BREAKPOINT = 768</code> → returns
+        <code>false</code> at exactly 768), navigation switches cleanly from drawer mode (&lt;768) to desktop
+        sidebar mode (≥768). No flash, no double-rendered triggers, no stuck overlay if the user resizes from
+        375 to 768 with the drawer open.
+      </td>
+      <td><span class="pill pill-pending">PENDING</span></td>
+      <td class="placeholder">Operator: at 767×… open drawer; resize DevTools width to 768. Drawer Sheet should
+        unmount cleanly, desktop sidebar should appear. <code>DashboardMobileHeader</code> should disappear
+        (<code>md:hidden</code>). No console warnings.</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>
+        <strong>No new typecheck or lint errors.</strong>
+        <code>npx tsc --noEmit</code> filtered for in-scope files is clean; <code>npx eslint</code> on the
+        six changed files is clean. Existing tests still pass (baseline 486 → expected 487 with the new
+        smoke test).
+      </td>
+      <td><span class="pill pill-pass">PASS</span></td>
+      <td>
+        Verified by testing skill before browser run.<br>
+        <code>npx tsc --noEmit | grep &lt;in-scope&gt;</code> → <strong>0 errors</strong>.<br>
+        <code>npx eslint &lt;6 files&gt;</code> → <strong>0 issues</strong>.<br>
+        <code>npx tsx --test tests/**/*.test.ts</code> → <strong>487/487 pass</strong>.
+      </td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>
+        <strong>No out-of-scope diff drift.</strong>
+        <code>git diff</code> at PR open shows changes only in: <code>components/app-sidebar.tsx</code>,
+        <code>app/dashboard/layout.tsx</code>, <code>app/dashboard/page.tsx</code>,
+        <code>app/dashboard/leads/page.tsx</code>, <code>components/lead-card.tsx</code>,
+        <code>components/lead-detail.tsx</code>, plus the net-new
+        <code>components/dashboard-mobile-header.tsx</code> and
+        <code>tests/components/dashboard-mobile-header.test.ts</code>. Files outside this list trigger Validator
+        scope-discipline check.
+      </td>
+      <td><span class="pill pill-pass">PASS</span></td>
+      <td>
+        Confirmed via <code>git diff --stat</code>. Files modified:
+        <ul>
+          <li><code>app/dashboard/layout.tsx</code> (+2)</li>
+          <li><code>app/dashboard/leads/page.tsx</code> (+1 / -1)</li>
+          <li><code>components/app-sidebar.tsx</code> (+16)</li>
+          <li><code>components/lead-card.tsx</code> (+13 / -13)</li>
+          <li><code>components/lead-detail.tsx</code> (+42 / -42)</li>
+          <li><code>components/dashboard-mobile-header.tsx</code> (new, 25 lines)</li>
+          <li><code>tests/components/dashboard-mobile-header.test.ts</code> (new, 22 lines)</li>
+          <li><code>specs/fase-3-g21-mobile-responsive-fix.md</code> (new spec)</li>
+          <li><code>docs/validations/Browser validation 2026-05-23 — G21 mobile responsive fix.html</code> (this file)</li>
+        </ul>
+        Note: <code>app/dashboard/page.tsx</code> was verified-only at static analysis (no edit needed). Zero changes
+        to <code>lib/data-context.tsx</code>, <code>app/api/**</code>, wire contracts, auth, middleware, or
+        out-of-scope surfaces.
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Per-surface walkthrough (operator runs in order)</h2>
+
+<h3>Surface 1 — Sidebar / shell (375×667)</h3>
+<ol>
+  <li>Navigate to <code>/dashboard</code> at 375×667.</li>
+  <li>Confirm <code>DashboardMobileHeader</code> is visible at top: <code>SidebarTrigger</code> on the left (touch
+      target ≈ 36×36 — within the 44px guideline for inner icon hit area + padding) + small "N" wordmark next to it.</li>
+  <li>Tap the trigger. The offcanvas <code>Sheet</code> slides in from the left containing the full
+      <code>AppSidebar</code> (Workspace / Ventas / Delivery / Finanzas / Admin nav per role, plus user footer).</li>
+  <li>Tap a nav link (e.g., <code>Leads</code>). The Sheet should auto-close (<code>useEffect</code> watching
+      <code>pathname</code> in <code>app-sidebar.tsx</code>) and the route should change.</li>
+  <li>Re-open the drawer. Tap the backdrop (the dimmed area outside the drawer). The Sheet should close. Press
+      <code>Esc</code> with the drawer open — also closes.</li>
+  <li>Screenshot: open drawer state at 375×667.</li>
+</ol>
+
+<div class="screenshot-slot">
+  <strong>SCREENSHOT — drawer open at 375×667</strong> · operator inserts <code>&lt;img src="..."&gt;</code> here.
+</div>
+
+<h3>Surface 2 — <code>/dashboard</code> home (375×667)</h3>
+<ol>
+  <li>From <code>/dashboard</code> at 375×667, run the horizontal-scroll console check. Expected: <code>false</code>.</li>
+  <li>Verify the header action chips group (Search / Wallet / Rewards / Nuevo lead) wraps to multiple rows
+      cleanly via <code>flex-wrap</code>. The <code>min-w-[170px]</code> on the closed search button means it takes
+      its own row width at 375.</li>
+  <li>Verify the KPI <code>metric-grid</code> stacks to a single column (it already uses
+      <code>sm:grid-cols-2</code>, which kicks in at ≥640; at 375 it is 1 column).</li>
+  <li>If the role is sales-capable, the Pipeline-por-estado <code>PieChart</code> renders as a fixed
+      72×72 SVG inside a single-column card. Should not overflow.</li>
+  <li>Screenshot: dashboard at 375×667 (above the fold).</li>
+</ol>
+
+<div class="screenshot-slot">
+  <strong>SCREENSHOT — /dashboard at 375×667 (above the fold)</strong>
+</div>
+
+<h3>Surface 3 — <code>/dashboard/leads</code> list (375×667)</h3>
+<ol>
+  <li>Navigate to <code>/dashboard/leads</code> at 375×667. Run the horizontal-scroll check. Expected:
+      <code>false</code>.</li>
+  <li>Verify the page header buttons (<code>Buscar leads cerca de mi</code>, <code>Buscar por zona</code>,
+      <code>LeadImportDialog</code>, <code>Nuevo Lead</code>) wrap. The page header uses <code>app-page-header</code>
+      which stacks at &lt;md per <code>globals.css</code>.</li>
+  <li>Verify the filter bar (search + status select + sort select + proximity button) stacks via
+      <code>flex-col sm:flex-row</code>.</li>
+  <li>Verify <code>LeadCard</code> internal layout at 375:
+    <ul>
+      <li>Score badge on the left (48×48, <code>shrink-0</code>).</li>
+      <li>Name + company truncate; right-group (badges + price) wraps to its own row below the name
+        (<code>flex-col md:flex-row</code>).</li>
+      <li>The advance-status button (e.g., "Contactado →") is <strong>hidden at &lt;md</strong>; still available
+        via the <code>MoreVertical</code> dropdown menu under "Cambiar estado".</li>
+      <li>Contact info (email / phone / WA) wraps via <code>flex-wrap</code>; long emails truncate within their
+        cell.</li>
+      <li>If an outbound (Maxwell) lead is visible, its snapshot section (mainPain, opportunity, Maxwell badges)
+        renders inside the card without horizontal scroll.</li>
+    </ul>
+  </li>
+  <li>Open the dropdown (<code>MoreVertical</code> button). Confirm it positions correctly at the screen edge
+      (Radix collision detection handles this; if it overflows, that is a finding).</li>
+  <li>Screenshot: leads list at 375×667 showing at least 2 cards.</li>
+</ol>
+
+<div class="screenshot-slot">
+  <strong>SCREENSHOT — /dashboard/leads list at 375×667</strong>
+</div>
+
+<h3>Surface 4 — Lead-detail Dialog (375×667)</h3>
+<ol>
+  <li>From <code>/dashboard/leads</code> at 375×667, tap any lead card. The Dialog opens.</li>
+  <li>Verify the Dialog width is <code>calc(100vw - 2rem)</code> = ≈ 343px, with ≈ 1rem margin on each side.</li>
+  <li>Verify the header inside <code>LeadDetail</code> stacks vertically at &lt;sm: score block on top,
+      price + status badge wrap to a second row below (<code>flex-col sm:flex-row</code>).</li>
+  <li>Verify the <code>TabsList</code> is horizontally scrollable (touch + drag horizontally over the tabs strip)
+      — this is the intentional mobile pattern. The dialog <em>body</em> itself does NOT horizontal-scroll.</li>
+  <li>Cycle through tabs: <code>Maxwell</code> (if outbound), <code>Seguimiento</code>, <code>Propuesta</code>,
+      <code>Estado</code>, <code>IA Asistente</code>. For each, run the console horizontal-scroll check on the
+      dialog body element if possible (use DevTools Elements panel to grab <code>data-slot="dialog-content"</code>
+      then evaluate <code>$0.scrollWidth &gt; $0.clientWidth</code>; expected <code>false</code>).</li>
+  <li>Verify the Contact Info grid stacks to single column at &lt;sm; each row truncates long values
+      (email / WhatsApp / location).</li>
+  <li>If a Propuesta form is editable in this lead (outbound, status=qualified), the
+      <code>Tipo de proyecto / Complejidad</code> selects stack to single column at &lt;sm.</li>
+  <li>Dismiss the dialog via backdrop tap. Confirm the dialog closes with the existing G18 animation
+      (lingeringLead + 200ms timer preserves body content during the close animation; this should NOT visually
+      regress).</li>
+  <li>Re-open the dialog, dismiss via <code>Esc</code> key.</li>
+  <li>Re-open, dismiss via the X close button (top-right of dialog, primitive default).</li>
+  <li>After dismiss, confirm focus returns to the lead card (Tab key shows focus ring on the just-closed card).</li>
+  <li>Screenshot: dialog open at 375×667 on Estado tab.</li>
+</ol>
+
+<div class="screenshot-slot">
+  <strong>SCREENSHOT — lead-detail dialog at 375×667 (Estado tab)</strong>
+</div>
+
+<h3>Surface 5 — Tablet boundary (768×1024)</h3>
+<ol>
+  <li>At 767×… (just under boundary), verify <code>DashboardMobileHeader</code> still renders and drawer mode is
+      active.</li>
+  <li>Resize DevTools to exactly 768×… (or just above). Verify <code>DashboardMobileHeader</code> disappears
+      (<code>md:hidden</code>) and the desktop sidebar appears in its <code>collapsible="icon"</code> state.</li>
+  <li>If the drawer was open at 767 and you resize to 768, the Sheet should unmount cleanly. Confirm no console
+      warnings about portal cleanup or overlay z-index.</li>
+  <li>Screenshot: side-by-side 767 vs 768 if possible (Edge dual-pane DevTools), otherwise two screenshots.</li>
+</ol>
+
+<div class="screenshot-slot">
+  <strong>SCREENSHOT — boundary at 767 vs 768</strong>
+</div>
+
+<h3>Surface 6 — Desktop regression (1280×800)</h3>
+<ol>
+  <li>Resize DevTools to 1280×800. Verify all four in-scope surfaces look identical to <code>develop</code>:
+    <ul>
+      <li>Sidebar in expanded mode (or icon mode if user previously collapsed it via the desktop trigger inside the
+          sidebar header).</li>
+      <li><code>/dashboard</code>: KPI grid <code>lg:grid-cols-4</code>.</li>
+      <li><code>/dashboard/leads</code>: LeadCard horizontal layout — score on left, content middle, advance button
+          + dropdown on right.</li>
+      <li>Lead-detail Dialog: <code>max-w-2xl</code> (672px), centered, with original <code>p-6</code> padding and
+          tabs strip <code>flex-1 md:flex-1</code> equal-width.</li>
+    </ul>
+  </li>
+  <li>Screenshot: desktop view of leads list + dialog open.</li>
+</ol>
+
+<div class="screenshot-slot">
+  <strong>SCREENSHOT — desktop /dashboard/leads + dialog at 1280×800</strong>
+</div>
+
+<h2>Findings (operator records as discovered)</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 6%;">ID</th>
+      <th style="width: 10%;">Severity</th>
+      <th style="width: 16%;">Type</th>
+      <th style="width: 16%;">Surface</th>
+      <th style="width: 52%;">Description / repro / suggested action</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+      <td class="placeholder">No findings yet. Add rows as needed during execution.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Methodology compliance</h2>
+
+<p>
+  Per <code>specs/fase-3-g21-mobile-responsive-fix.md</code> § Recommended Testing Methodology, the iteration uses
+  <strong>integration-first with browser validation as the gate</strong>. The spec also called for "one focused
+  component test that the new mobile-header renders <code>SidebarTrigger</code> and that the trigger composition
+  is functional inside <code>SidebarProvider</code>."
+</p>
+
+<h3>Methodology adjustment finding (recorded as test debt)</h3>
+<table>
+  <tr>
+    <th>Finding ID</th>
+    <td>T-G21-M1</td>
+  </tr>
+  <tr>
+    <th>Severity</th>
+    <td>LOW (acceptable for this iteration)</td>
+  </tr>
+  <tr>
+    <th>Type</th>
+    <td>methodology / test infra debt</td>
+  </tr>
+  <tr>
+    <th>Description</th>
+    <td>
+      The project has no React component testing infrastructure (no jsdom / no React Testing Library / no Vitest).
+      All 56 pre-existing test files are <code>.ts</code> and run under <code>tsx --test</code> (Node's built-in
+      runner) against server / lib / infra code. Introducing the spec-proposed component test that exercises
+      <code>SidebarProvider</code> + <code>SidebarTrigger</code> behavior would require adding the DOM-test
+      infrastructure as a dependency of G21 — that is iteration-scope creep and was not approved.
+    </td>
+  </tr>
+  <tr>
+    <th>Mitigation applied</th>
+    <td>
+      Followed the existing project pattern set by B18 (<code>tests/app/error-pages.test.ts</code>): smoke
+      <code>import</code> of the component module asserting the named export is a function. This catches missing
+      exports, broken imports, and TypeScript breaks. Behavioral validation is fully delegated to browser
+      validation (this document).
+    </td>
+  </tr>
+  <tr>
+    <th>Recommended next action</th>
+    <td>
+      Open a separate iteration "Frontend testing infra" if/when broader component coverage becomes a recurring
+      need (likely concurrent with the optional frontend-redesign track per
+      <code>docs/runbooks/frontend-redesign-playbook.md</code>). Until then, document the gap and rely on browser
+      validation + smoke imports.
+    </td>
+  </tr>
+</table>
+
+<h2>Test debt summary</h2>
+<ul>
+  <li><strong>T-G21-M1</strong> — DOM-level component test for the new mobile-header chrome is not added; smoke import only. Browser validation is the behavioral gate. See methodology adjustment above.</li>
+  <li>No other test debt introduced.</li>
+</ul>
+
+<h2>Testing outcome recommendation (for Validator)</h2>
+<p>
+  Once the operator executes the runbook and all eight rows in the acceptance criteria table report
+  <span class="pill pill-pass">PASS</span> (or an explicit <span class="pill pill-na">N/A</span> with reason),
+  the testing outcome is <strong>Ready for Validator</strong>.
+</p>
+<p>
+  If any criterion reports <span class="pill pill-fail">FAIL</span>, testing outcome flips to <strong>Needs
+  implementation fix</strong> and the iteration reroutes to <code>system-frontend</code> with the failing
+  criterion's repro attached. Validator does not run until findings are resolved or recorded as PARTIAL.
+</p>
+
+</body>
+</html>

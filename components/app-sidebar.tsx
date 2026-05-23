@@ -29,6 +29,7 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import {
   DropdownMenu,
@@ -152,7 +153,22 @@ export function AppSidebar() {
   const { authMode, user, logout } = useAuth()
   const walletState = useWalletContext()
   const router = useRouter()
+  const { isMobile, openMobile, setOpenMobile } = useSidebar()
   const [unreadNotifications, setUnreadNotifications] = useState(0)
+
+  // Auto-close the mobile drawer on navigation. The Sheet primitive does
+  // not close itself when a link inside it is clicked, so a tap on any
+  // NavGroup Link would land on the new route with the drawer still open
+  // over the content (G21 acceptance #1 requires drawer auto-closes).
+  useEffect(() => {
+    if (isMobile && openMobile) {
+      setOpenMobile(false)
+    }
+    // We intentionally watch `pathname` only: when the route changes we
+    // close the drawer. Re-running on `openMobile` toggling would cause
+    // the drawer to close itself the instant the user opens it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
 
   useEffect(() => {
     let isActive = true
