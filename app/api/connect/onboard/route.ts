@@ -1,8 +1,30 @@
 import { NextResponse } from 'next/server'
+import Stripe from 'stripe'
 import { requireRole } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { getOrCreateConnectAccount, createOnboardingLink } from '@/lib/server/stripe/connect'
+
+function handleConnectError(err: unknown, context: 'POST' | 'GET') {
+  if (err instanceof Stripe.errors.StripeError) {
+    console.error('[connect-onboard]', context, {
+      type: err.type,
+      code: err.code,
+      statusCode: err.statusCode,
+      message: err.message,
+      requestId: err.requestId,
+    })
+    return NextResponse.json(
+      {
+        error: `Stripe: ${err.message}`,
+        code: err.code ?? err.type ?? 'STRIPE_ERROR',
+      },
+      { status: err.statusCode ?? 502 }
+    )
+  }
+  console.error('[connect-onboard]', context, 'non-Stripe error', err)
+  return toErrorResponse(err)
+}
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +45,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: { url } })
   } catch (err) {
-    return toErrorResponse(err)
+    return handleConnectError(err, 'POST')
   }
 }
 
@@ -47,6 +69,6 @@ export async function GET(request: Request) {
 
     return NextResponse.redirect(url)
   } catch (err) {
-    return toErrorResponse(err)
+    return handleConnectError(err, 'GET')
   }
 }
