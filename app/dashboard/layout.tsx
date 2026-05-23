@@ -9,6 +9,7 @@ import { DataProvider } from '@/lib/data-context'
 import { WalletProvider } from '@/lib/wallet/context'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
+import { DashboardMobileHeader } from '@/components/dashboard-mobile-header'
 import { Spinner } from '@/components/ui/spinner'
 import { MaxwellFab } from '@/components/maxwell-fab'
 import dynamic from 'next/dynamic'
@@ -62,6 +63,7 @@ export default function DashboardLayout({
           <AppSidebar />
           <SidebarInset className="overflow-auto">
             <CommandPalette />
+            <DashboardMobileHeader />
             {children}
           </SidebarInset>
           <MaxwellFab />

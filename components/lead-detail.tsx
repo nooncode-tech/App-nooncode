@@ -1027,29 +1027,29 @@ Total: 8 semanas
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-4 min-w-0">
           <div
             className={cn(
-              'size-16 rounded-md flex items-center justify-center text-2xl font-semibold',
+              'size-16 rounded-md flex items-center justify-center text-2xl font-semibold shrink-0',
               getScoreColor(lead.score)
             )}
           >
             {lead.score}
           </div>
-          <div>
-            <h2 className="text-lg font-semibold">{lead.name}</h2>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold truncate">{lead.name}</h2>
             {lead.company && (
-              <p className="text-muted-foreground flex items-center gap-1">
-                <Building2 className="size-4" />
-                {lead.company}
+              <p className="text-muted-foreground flex items-center gap-1 min-w-0">
+                <Building2 className="size-4 shrink-0" />
+                <span className="truncate">{lead.company}</span>
               </p>
             )}
           </div>
         </div>
-        <div className="text-right">
+        <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-end sm:gap-1 sm:text-right">
           <p className="metric-value text-primary">${lead.value.toLocaleString()}</p>
           <Badge variant="outline" className={statusConfig[lead.status].color}>
             {statusConfig[lead.status].label}
@@ -1059,15 +1059,15 @@ Total: 8 semanas
 
       <div className="rounded-lg border bg-muted/15 p-4 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <LockKeyhole className="size-4 text-muted-foreground" />
+              <LockKeyhole className="size-4 shrink-0 text-muted-foreground" />
               <span className="text-sm font-medium">Asignacion comercial</span>
             </div>
             <Badge variant="outline" className={assignmentInfo.color}>
               {assignmentInfo.label}
             </Badge>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground break-words">
               {lead.assignmentStatus === 'proposal_locked'
                 ? lockedProposalTitle
                   ? `La propuesta "${lockedProposalTitle}" ya fue enviada y este lead quedo bloqueado hasta respuesta o liberacion manual.`
@@ -1114,9 +1114,9 @@ Total: 8 semanas
 
       <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <Calendar className="size-4 text-muted-foreground" />
+              <Calendar className="size-4 shrink-0 text-muted-foreground" />
               <span className="text-sm font-medium">Proximo seguimiento</span>
             </div>
             {followUpInfo && lead.nextFollowUpAt ? (
@@ -1124,15 +1124,15 @@ Total: 8 semanas
                 <Badge variant="outline" className={followUpInfo.color}>
                   {followUpInfo.label}
                 </Badge>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground break-words">
                   {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground break-words">
                   {followUpInfo.helper}
                 </p>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground break-words">
                 Aun no hay un seguimiento programado para este lead.
               </p>
             )}
@@ -1150,64 +1150,64 @@ Total: 8 semanas
       </div>
 
       {/* Contact Info */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
         {lead.email && (
-          <div className="flex items-center gap-2 text-sm">
-            <Mail className="size-4 text-muted-foreground" />
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <Mail className="size-4 shrink-0 text-muted-foreground" />
             {gmailComposeUrl ? (
               <a
                 href={gmailComposeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="text-primary hover:underline truncate"
               >
                 {lead.email}
               </a>
             ) : (
-              <span>{lead.email}</span>
+              <span className="truncate">{lead.email}</span>
             )}
           </div>
         )}
         {lead.phone && (
-          <div className="flex items-center gap-2 text-sm">
-            <Phone className="size-4 text-muted-foreground" />
-            <a href={buildPhoneCallUrl(lead.phone)} className="text-primary hover:underline">
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <Phone className="size-4 shrink-0 text-muted-foreground" />
+            <a href={buildPhoneCallUrl(lead.phone)} className="text-primary hover:underline truncate">
               {lead.phone}
             </a>
           </div>
         )}
         {lead.whatsapp && (
-          <div className="flex items-center gap-2 text-sm">
-            <MessageSquare className="size-4 text-green-600" />
-            <a href={buildWhatsAppUrl(lead.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <MessageSquare className="size-4 shrink-0 text-green-600" />
+            <a href={buildWhatsAppUrl(lead.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline truncate">
               {lead.whatsapp}
             </a>
           </div>
         )}
-        <div className="flex items-center gap-2 text-sm">
-          <Tag className="size-4 text-muted-foreground" />
-          <span>{sourceLabels[lead.source]}</span>
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <Tag className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">{sourceLabels[lead.source]}</span>
         </div>
         {lead.locationText && (
-          <div className="flex items-center gap-2 text-sm">
-            <MapPin className="size-4 text-muted-foreground" />
-            <span>{lead.locationText}</span>
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <MapPin className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{lead.locationText}</span>
           </div>
         )}
-        <div className="flex items-center gap-2 text-sm">
-          <Calendar className="size-4 text-muted-foreground" />
-          <span>Creado: {lead.createdAt.toLocaleDateString('es-MX')}</span>
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <Calendar className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">Creado: {lead.createdAt.toLocaleDateString('es-MX')}</span>
         </div>
         {lead.lastContactedAt && (
-          <div className="flex items-center gap-2 text-sm col-span-2">
-            <Clock className="size-4 text-muted-foreground" />
-            <span>Ultimo contacto: {lead.lastContactedAt.toLocaleDateString('es-MX')}</span>
+          <div className="flex items-center gap-2 text-sm min-w-0 sm:col-span-2">
+            <Clock className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">Ultimo contacto: {lead.lastContactedAt.toLocaleDateString('es-MX')}</span>
           </div>
         )}
         {lead.nextFollowUpAt && (
-          <div className="flex items-center gap-2 text-sm col-span-2">
-            <Calendar className="size-4 text-muted-foreground" />
-            <span>Proximo seguimiento: {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}</span>
+          <div className="flex items-center gap-2 text-sm min-w-0 sm:col-span-2">
+            <Calendar className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">Proximo seguimiento: {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}</span>
           </div>
         )}
       </div>
@@ -1227,7 +1227,7 @@ Total: 8 semanas
       {lead.notes && (
         <div className="p-3 bg-muted/50 rounded-lg">
           <p className="text-sm font-medium mb-1">Notas</p>
-          <p className="text-sm text-muted-foreground">{lead.notes}</p>
+          <p className="text-sm text-muted-foreground break-words whitespace-pre-wrap">{lead.notes}</p>
         </div>
       )}
 
@@ -1235,14 +1235,14 @@ Total: 8 semanas
 
       {/* Actions Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full">
+        <TabsList className="w-full max-w-full overflow-x-auto flex-nowrap justify-start md:justify-center">
           {maxwellSnapshot && (
-            <TabsTrigger value="maxwell" className="flex-1">Maxwell</TabsTrigger>
+            <TabsTrigger value="maxwell" className="shrink-0 md:flex-1">Maxwell</TabsTrigger>
           )}
-          <TabsTrigger value="activity" className="flex-1">Seguimiento</TabsTrigger>
-          <TabsTrigger value="proposal" className="flex-1">Propuesta</TabsTrigger>
-          <TabsTrigger value="status" className="flex-1">Estado</TabsTrigger>
-          <TabsTrigger value="ai" className="flex-1">IA Asistente</TabsTrigger>
+          <TabsTrigger value="activity" className="shrink-0 md:flex-1">Seguimiento</TabsTrigger>
+          <TabsTrigger value="proposal" className="shrink-0 md:flex-1">Propuesta</TabsTrigger>
+          <TabsTrigger value="status" className="shrink-0 md:flex-1">Estado</TabsTrigger>
+          <TabsTrigger value="ai" className="shrink-0 md:flex-1">IA Asistente</TabsTrigger>
         </TabsList>
 
         {maxwellSnapshot && (
@@ -1253,9 +1253,9 @@ Total: 8 semanas
               </CardHeader>
               <CardContent className="px-4 space-y-4">
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="rounded-md border bg-muted/20 p-3 min-w-0">
                     <p className="text-xs text-muted-foreground">Industria</p>
-                    <p className="text-sm font-medium">{maxwellSnapshot.business.industry}</p>
+                    <p className="text-sm font-medium break-words">{maxwellSnapshot.business.industry}</p>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
                     <p className="text-xs text-muted-foreground">Prioridad</p>
@@ -1271,7 +1271,7 @@ Total: 8 semanas
 
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Dolor principal</p>
-                  <p className="text-sm text-muted-foreground">{maxwellSnapshot.audit.mainPain}</p>
+                  <p className="text-sm text-muted-foreground break-words">{maxwellSnapshot.audit.mainPain}</p>
                 </div>
 
                 <div className="space-y-2">
@@ -1280,40 +1280,40 @@ Total: 8 semanas
                     {maxwellSnapshot.audit.pains.map((pain) => (
                       <div key={`${pain.title}-${pain.evidence}`} className="rounded-md border p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-medium">{pain.title}</p>
-                          <Badge variant="outline" className="capitalize">
+                          <p className="text-sm font-medium break-words min-w-0 flex-1">{pain.title}</p>
+                          <Badge variant="outline" className="capitalize shrink-0">
                             {pain.confidence}
                           </Badge>
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">{pain.evidence}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{pain.impact}</p>
+                        <p className="mt-1 text-sm text-muted-foreground break-words">{pain.evidence}</p>
+                        <p className="mt-1 text-xs text-muted-foreground break-words">{pain.impact}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border p-3 min-w-0">
                     <p className="text-sm font-medium">Oportunidad Noon</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="mt-1 text-sm text-muted-foreground break-words">
                       {maxwellSnapshot.opportunity.noonOpportunity}
                     </p>
                   </div>
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border p-3 min-w-0">
                     <p className="text-sm font-medium">Idea de prototipo</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="mt-1 text-sm text-muted-foreground break-words">
                       {maxwellSnapshot.opportunity.prototypeIdea}
                     </p>
                   </div>
                 </div>
 
-                <div className="rounded-md border p-3">
+                <div className="rounded-md border p-3 min-w-0">
                   <p className="text-sm font-medium">Objeciones probables</p>
                   <div className="mt-2 space-y-2">
                     {maxwellSnapshot.objections.map((item) => (
-                      <div key={`${item.objection}-${item.response}`}>
-                        <p className="text-sm">{item.objection}</p>
-                        <p className="text-xs text-muted-foreground">{item.response}</p>
+                      <div key={`${item.objection}-${item.response}`} className="min-w-0">
+                        <p className="text-sm break-words">{item.objection}</p>
+                        <p className="text-xs text-muted-foreground break-words">{item.response}</p>
                       </div>
                     ))}
                   </div>
@@ -1343,8 +1343,8 @@ Total: 8 semanas
                   ))}
                 </div>
 
-                <div className="rounded-md border bg-muted/20 p-3">
-                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{currentSpeech}</p>
+                <div className="rounded-md border bg-muted/20 p-3 min-w-0">
+                  <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{currentSpeech}</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -1455,8 +1455,8 @@ Total: 8 semanas
           </Card>
 
           {isSupabaseMode && (
-            <div className="flex items-center justify-between border-t pt-3">
-              <div>
+            <div className="flex items-center justify-between gap-3 border-t pt-3">
+              <div className="min-w-0">
                 <p className="text-sm font-medium">Seguimiento automático</p>
                 <p className="text-xs text-muted-foreground">
                   Maxwell genera un mensaje cuando vence el seguimiento
@@ -1520,9 +1520,9 @@ Total: 8 semanas
                 {activities.map((activity) => (
                   <div key={activity.id} className="py-3 space-y-1.5">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium">{formatActivityTitle(activity)}</p>
-                        <p className="text-xs text-muted-foreground">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium break-words">{formatActivityTitle(activity)}</p>
+                        <p className="text-xs text-muted-foreground break-words">
                           {activity.actorName} · {activity.createdAt.toLocaleString('es-MX')}
                         </p>
                       </div>
@@ -1530,7 +1530,7 @@ Total: 8 semanas
                         {activity.type === 'note_added' ? 'Nota' : activity.type.replaceAll('_', ' ')}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
                       {formatActivityBody(activity)}
                     </p>
                   </div>
@@ -1560,15 +1560,15 @@ Total: 8 semanas
                     className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-medium">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium break-words">
                           Proyecto derivado: {proposal.linkedProject?.name}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground break-words">
                           Originado desde la propuesta &quot;{proposal.title}&quot;.
                         </p>
                       </div>
-                      <Badge variant="outline">
+                      <Badge variant="outline" className="shrink-0">
                         {proposal.linkedProject
                           ? projectStatusLabels[proposal.linkedProject.status]
                           : 'Proyecto'}
@@ -1628,7 +1628,7 @@ Total: 8 semanas
 
               {lead.leadOrigin === 'outbound' ? (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="proposal-project-type">Tipo de proyecto</Label>
                       <Select
@@ -1835,14 +1835,14 @@ Total: 8 semanas
                   const reviewCfg = reviewStatusConfig[proposal.reviewStatus ?? 'pending_review']
                   return (
                   <div key={proposal.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{proposal.title}</p>
-                        <p className="text-xs text-muted-foreground">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                      <div className="min-w-0 sm:flex-1">
+                        <p className="font-medium break-words">{proposal.title}</p>
+                        <p className="text-xs text-muted-foreground break-words">
                           {proposal.currency} ${proposal.amount.toLocaleString()} · v{proposal.versionNumber} · {proposal.createdAt.toLocaleDateString('es-MX')}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-1 justify-end">
+                      <div className="flex flex-wrap gap-1 sm:justify-end shrink-0">
                         {proposal.linkedProject ? (
                           <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700">
                             Convertida
@@ -1880,14 +1880,14 @@ Total: 8 semanas
                       </div>
                     )}
 
-                    <p className="text-sm whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                    <p className="text-sm whitespace-pre-wrap break-words text-muted-foreground max-h-40 overflow-y-auto">
                       {proposal.body}
                     </p>
 
                     {proposal.linkedProject && (
-                      <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
-                        <FolderKanban className="size-4" />
-                        Proyecto creado: {proposal.linkedProject.name}
+                      <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary min-w-0">
+                        <FolderKanban className="size-4 shrink-0" />
+                        <span className="break-words min-w-0">Proyecto creado: {proposal.linkedProject.name}</span>
                       </div>
                     )}
 
@@ -2239,7 +2239,7 @@ Total: 8 semanas
                     </Button>
                   </div>
                   <div className="p-4 bg-muted/50 rounded-lg max-h-64 overflow-y-auto">
-                    <pre className="text-sm whitespace-pre-wrap font-sans">{generatedContent}</pre>
+                    <pre className="text-sm whitespace-pre-wrap break-words font-sans">{generatedContent}</pre>
                   </div>
                   <div className="flex gap-2">
                     <Button className="flex-1" disabled={isReleasedLeadPendingClaim}>
