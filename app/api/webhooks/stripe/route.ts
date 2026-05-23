@@ -5,10 +5,10 @@ import { errorToLogContext, logger } from '@/lib/server/api/logger'
 import { getRequestId, jsonWithRequestId } from '@/lib/server/api/request'
 import { getStripeClient } from '@/lib/server/stripe/client'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
-import type { Database, Json } from '@/lib/server/supabase/database.types'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
 import { getSellerFeeByPaymentId, getSellerFeeByProposalId } from '@/lib/server/seller-fees/repository'
 import { cancelSellerFee, confirmSellerFee } from '@/lib/server/seller-fees/service'
+import { creditActivationEarnings } from '@/lib/server/earnings/activation-credit'
 import { debitWalletForRefund } from '@/lib/server/earnings/refund-service'
 import {
   beginStripeWebhookEvent,
@@ -17,43 +17,6 @@ import {
 } from '@/lib/server/stripe/webhook-events'
 
 type SupabaseAdminClient = Awaited<ReturnType<typeof createSupabaseAdminClient>>
-type MonetaryEntryType = Database['public']['Enums']['monetary_entry_type']
-type WalletBalanceBucket = 'available_to_spend' | 'available_to_withdraw' | 'pending' | 'locked'
-
-async function creditWalletBucket(
-  client: SupabaseAdminClient,
-  input: {
-    profileId: string
-    amount: number
-    currency: string
-    entryType: MonetaryEntryType
-    balanceBucket: WalletBalanceBucket
-    referenceType: string
-    referenceId: string
-    actorProfileId?: string | null
-    metadata?: Json
-    idempotencyKey: string
-    createdAt?: string
-  }
-) {
-  const { error } = await client.rpc('credit_wallet_bucket', {
-    p_profile_id: input.profileId,
-    p_amount: input.amount,
-    p_currency: input.currency,
-    p_entry_type: input.entryType,
-    p_balance_bucket: input.balanceBucket,
-    p_reference_type: input.referenceType,
-    p_reference_id: input.referenceId,
-    p_actor_profile_id: input.actorProfileId ?? undefined,
-    p_metadata: input.metadata ?? {},
-    p_idempotency_key: input.idempotencyKey,
-    p_created_at: input.createdAt,
-  })
-
-  if (error) {
-    throw new Error(`Failed to credit wallet: ${error.message}`)
-  }
-}
 
 // Exported for unit testing in tests/server/api/webhooks/stripe-checkout-completed.test.ts.
 // Next.js route runtime only treats the named exports POST / GET / etc. as
@@ -181,102 +144,36 @@ export async function handleCheckoutSessionCompleted(
     developerUserId = project?.developer_user_id ?? null
   }
 
-  const earningRows: Array<{
-    actor_id: string | null
-    actor_role: 'seller' | 'developer' | 'noon'
-    earning_type: 'activation'
-    amount: number
-    currency: string
-    lead_id: string
-    proposal_id: string
-    payment_id: string
-    idempotency_key: string
-    notes: string
-  }> = []
+  // Earnings allocation + per-actor wallet credit. Extracted to the shared
+  // service so the symmetric inbound path (`receiveWebsitePaymentConfirmed`)
+  // can reuse the same allocation policy. See ADR-021 (decision D1).
+  //
+  // `channel: 'outbound'` is hard-coded because the TRANSPORT for this handler
+  // is always Stripe (the webhook source). The namespace guard inside the
+  // service requires `stripe:` prefix when channel='outbound'. The rare
+  // defensive case where `leadOrigin === 'inbound'` reaches this handler
+  // (impossible per ADR-010 — `/api/payments/checkout/route.ts` rejects
+  // inbound with INBOUND_PAYMENT_LINK_OWNED_BY_WEBSITE) still works because
+  // `sellerInput` is null in that path → service computes `base =
+  // activationAmount` (no seller subtraction). The only cosmetic regression
+  // is the audit field `metadata.channel` reads `'outbound'` instead of
+  // `'inbound'`/`'unknown'` for that impossible case.
+  const sellerInput = leadOrigin === 'outbound' && sellerFeeRow
+    ? { actorId: sellerId, amount: sellerFeeAmount }
+    : null
 
-  const base = leadOrigin === 'outbound'
-    ? Math.max(activationAmount - sellerFeeAmount, 0)
-    : activationAmount
-
-  // Seller commission - outbound only, persisted value from seller_fees.
-  if (leadOrigin === 'outbound') {
-    earningRows.push({
-      actor_id: sellerId,
-      actor_role: 'seller',
-      earning_type: 'activation',
-      amount: sellerFeeAmount,
-      currency: 'USD',
-      lead_id: proposal.lead_id,
-      proposal_id: activation.proposal_id,
-      payment_id: activation.payment_id,
-      idempotency_key: `stripe:${session.id}:earning:seller:${sellerId}`,
-      notes: `Outbound activation - $${sellerFeeAmount} (seller-selected)`,
-    })
-  }
-
-  // Developer commission - 50% of base
-  if (base > 0) {
-    earningRows.push({
-      actor_id: developerUserId,
-      actor_role: 'developer',
-      earning_type: 'activation',
-      amount: parseFloat((base * 0.5).toFixed(2)),
-      currency: 'USD',
-      lead_id: proposal.lead_id,
-      proposal_id: activation.proposal_id,
-      payment_id: activation.payment_id,
-      idempotency_key: `stripe:${session.id}:earning:developer:${developerUserId ?? 'unassigned'}`,
-      notes: developerUserId
-        ? `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation - 50% of base $${base}`
-        : 'Developer not yet assigned - pending resolution',
-    })
-
-    // Noon share - 50% of base
-    earningRows.push({
-      actor_id: null,
-      actor_role: 'noon',
-      earning_type: 'activation',
-      amount: parseFloat((base * 0.5).toFixed(2)),
-      currency: 'USD',
-      lead_id: proposal.lead_id,
-      proposal_id: activation.proposal_id,
-      payment_id: activation.payment_id,
-      idempotency_key: `stripe:${session.id}:earning:noon`,
-      notes: `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation - 50% of base $${base}`,
-    })
-  }
-
-  if (earningRows.length > 0) {
-    const { error: earningsError } = await client
-      .from('earnings_ledger')
-      .upsert(earningRows, { onConflict: 'idempotency_key', ignoreDuplicates: true })
-    if (earningsError) throw new Error(`Failed to insert earnings: ${earningsError.message}`)
-
-    // Credit each real actor's pending wallet balance through a transactional RPC.
-    const creditedAt = new Date().toISOString()
-    for (const row of earningRows) {
-      if (!row.actor_id) continue
-
-      await creditWalletBucket(client, {
-        profileId: row.actor_id,
-        amount: row.amount,
-        currency: row.currency,
-        entryType: 'earnings_distribution',
-        balanceBucket: 'pending',
-          referenceType: 'payment',
-          referenceId: activation.payment_id,
-          metadata: {
-            earningType: 'activation',
-            actorRole: row.actor_role,
-            channel: leadOrigin ?? 'unknown',
-            notes: row.notes,
-            paymentId: activation.payment_id,
-          },
-        idempotencyKey: `stripe:${session.id}:wallet:${row.actor_role}:${row.actor_id}`,
-        createdAt: creditedAt,
-      })
-    }
-  }
+  await creditActivationEarnings(client, {
+    activationAmount,
+    currency: 'USD',
+    paymentId: activation.payment_id,
+    proposalId: activation.proposal_id,
+    leadId: proposal.lead_id,
+    seller: sellerInput,
+    developerUserId,
+    channel: 'outbound',
+    idempotencyKeyBase: `stripe:${session.id}`,
+    actorProfileId: null,
+  })
 
   // Transition seller_fees state potential → confirmed. Idempotent for
   // webhook retries per ADR-007 §rule 11; the service short-circuits if

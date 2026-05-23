@@ -947,7 +947,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
 - Explicitly excluded from this slice:
   - wallet model overhaul (`wallet_accounts` / `wallet_ledger_entries` shape preserved)
   - payout system rework (`payout_methods`, `payout_batches`, `payouts` unchanged)
-  - FASE 3 proposal lifecycle automation — the `potential → confirmed` transition still fires from the webhook; FASE 3 will hook into the existing service layer when it ships
+  - ~~FASE 3 proposal lifecycle automation~~ — shipped 2026-05-23 via the activation earnings auto-credit slice (see section below). The `potential → confirmed` transition still fires from the Stripe webhook only (seller-fee state machine is outbound-only by design); the new shared service handles the cross-cutting earnings allocation+credit step that previously was inline at `app/api/webhooks/stripe/route.ts:184-279`.
   - Stripe live-card end-to-end validation (deferred to B1 cutover)
 - Known open items:
   - **G10** — selector value does not persist between consecutive saves on the same lead; `useEffect([lead])` in `components/lead-detail.tsx:619-627` re-initializes the form when the lead object refreshes after save. UX-only, no functional or financial impact. Deferred to a UX iteration post-cutover.
@@ -955,6 +955,76 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - the hardcoded `$100` **must never** be re-introduced for "compatibility" reasons
   - role-aware visibility must remain enforced at the database layer (RLS), not at the application layer alone
   - the developer role must never gain `SELECT` access to `seller_fees`, by design
+
+## Confirmed activation earnings auto-credit slice
+- Anchors:
+  - `specs/fase-3-r4-inbound-earnings-auto-credit.md` (Approved 2026-05-23)
+  - `docs/adrs/ADR-021-inbound-earnings-auto-credit-extraction.md` (5 decisions: D1 extraction shape, D2 idempotency-key namespace strategy, D3 inbound allocation policy, D4 fail-closed error semantics, D5 logging contract)
+  - prior precedent: `docs/adrs/ADR-007-seller-fee-state-machine.md` (payment-event-driven model preserved), `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md` (architectural constraint — client never touches App), `docs/adrs/ADR-015-earnings-consolidation-atomic-rpc.md` (idempotency discipline pattern), `docs/adrs/ADR-016-transport-level-webhook-ledger-pattern.md` (transport ledger upstream of business handler)
+- Problem solved:
+  - prior to this slice, only the Stripe outbound webhook (`app/api/webhooks/stripe/route.ts`) auto-credited earnings shares (seller + developer + noon) post-`activatePaidProposal`. The symmetric inbound path triggered by NoonWeb's payment-confirmed webhook (`/api/integrations/website/payment-confirmed` → `receiveWebsitePaymentConfirmed`) only activated the project record and never credited developer or noon shares — operationally a money-allocation gap invisible to UX. The allocation+credit logic was also inline at the Stripe handler (~95 LOC) with no extraction point for the inbound caller to reuse.
+- Shared service:
+  - new file `lib/server/earnings/activation-credit.ts` exports `creditActivationEarnings(client, params)` as the allocation policy holder
+  - input contract: `{ activationAmount, currency, paymentId, proposalId, leadId, seller: { actorId, amount } | null, developerUserId, channel: 'inbound' | 'outbound', idempotencyKeyBase, actorProfileId, createdAt? }`
+  - computes `base = activationAmount - (seller?.amount ?? 0)`; builds 1-3 earnings rows (seller when present + developer + noon when `base > 0`)
+  - single atomic upsert into `earnings_ledger` with `onConflict: 'idempotency_key', ignoreDuplicates: true`
+  - per-row loop calls `credit_wallet_bucket` RPC (existing migration 0036) only when `actor_id !== null` (noon always skipped — no profile_id; developer skipped when unassigned)
+  - returns `{ base, rows: Array<{ actorRole, actorId, amount, earningsLedgerIdempotencyKey, walletIdempotencyKey, walletCredited }> }` for testability
+- Allocation policy asymmetry (load-bearing — do NOT "fix" without revisiting ADR-021):
+  - **outbound** (`seller !== null`): `base = activationAmount - seller.amount`; rows = seller + developer + noon; the seller's persisted take from `seller_fees.amount` is subtracted before the 50/50 dev/noon split
+  - **inbound** (`seller === null`): `base = activationAmount` (full amount distributed); rows = developer + noon only; no seller share by design because inbound has no `seller_fees` row per ADR-007
+  - signature requires `channel` as discriminator so the asymmetry is impossible to "accidentally fix" via a refactor
+- `developerUserId === null` handling (policy decision per ADR-021 D3 + R2):
+  - earnings_ledger audit row IS inserted with `actor_id = null` and notes `Developer not yet assigned - pending resolution` (audit invariant: "every payment activation has 2 or 3 earnings_ledger rows depending on channel")
+  - wallet credit loop short-circuits per row via `if (!actor_id) continue`
+  - net effect: developer share documented in `earnings_ledger` for future reconciliation, no `wallet_ledger_entries` row exists, money effectively unallocated until either (a) developer assigned + admin runs `POST /api/admin/earnings/credit` to reconcile, or (b) a future iteration introduces auto-reconcile
+  - matches the existing Stripe handler semantic for outbound projects with delayed developer assignment
+- Idempotency-key strategy (per ADR-021 D2):
+  - **two distinct keys per row** — defense-in-depth across two SQL surfaces
+  - `earnings_ledger.idempotency_key` column UNIQUE: `{idempotencyKeyBase}:earning:{actorRole}:{actorId ?? 'unassigned'}`
+  - `wallet_ledger_entries` partial unique index on `(metadata->>'idempotencyKey')`: `{idempotencyKeyBase}:wallet:{actorRole}:{actorId}` (no `unassigned` fallback because wallet credits only attempted for non-null actors)
+  - namespace separation: outbound callers pass `idempotencyKeyBase = 'stripe:${session.id}'`; inbound callers pass `'website:${external_payment_id}'`
+  - service rejects with `IDEMPOTENCY_KEY_BASE_NAMESPACE_MISMATCH` at entry if `channel` and base prefix disagree (defense against caller copy-paste bugs)
+  - Stripe handler always passes `channel: 'outbound'` regardless of `lead_origin` because the transport is Stripe; the rare defensive inbound-via-Stripe path (impossible per ADR-010 — `/api/payments/checkout/route.ts` rejects with `INBOUND_PAYMENT_LINK_OWNED_BY_WEBSITE`) still works correctly because `sellerInput` resolves to null → service computes `base = activationAmount` cleanly
+- Caller deltas:
+  - `app/api/webhooks/stripe/route.ts` — inline 95-LOC allocation+credit block at old lines 184-279 replaced by a single service call. Route file dropped from 607 to 504 LOC (-103 net). Kept in the handler (outbound-specific): `getSellerFeeByProposalId` lookup, sellerInput construction, `confirmSellerFee` transition with its existing fail-open try/catch, 50-points award to seller.
+  - `lib/server/website-integration.ts::receiveWebsitePaymentConfirmed` — gains a project lookup for `developer_user_id` immediately after `activatePaidProposal` (same pattern as Stripe handler) plus a service call with `seller: null`, `channel: 'inbound'`, `idempotencyKeyBase: \`website:${external_payment_id}\``, `currency: 'USD'` (hard-pinned per F-S-R4-1). Function signature gains optional `clientOverride?: SupabaseAdminClient` parameter for test DI (same pattern as `handleCheckoutSessionCompleted`).
+  - the `confirmSellerFee` state transition is NOT invoked from the inbound path — inbound has no `seller_fees` row by design (ADR-007)
+  - no points awarded in inbound — `sellerId === null` naturally skips the existing points path, and operator-confirmed no developer-points-in-inbound at scoping time
+- Error semantics (per ADR-021 D4):
+  - service is fail-closed: any error in `earnings_ledger.upsert` or `credit_wallet_bucket` RPC throws, the webhook returns 5xx, transport (Stripe/NoonWeb) retries
+  - idempotency at the SQL constraint level is the retry safety net — re-running the service after a partial failure dedupes per row
+  - the `confirmSellerFee` fail-open try/catch stays in the Stripe handler (outbound only) — ADR-007 keeps that audit-secondary semantic
+- Logging contract (per ADR-021 D5):
+  - one INFO log per call (`earnings.activation_credit.allocated`) with `channel`, `paymentId`, `proposalId`, `leadId`, `activationAmount`, `base`, `sellerAmount`, `developerUserId`, `rowCount`, `rowsCreditedToWallet`
+  - WARN/ERROR on failure paths with `stage: 'earnings_ledger_upsert' | 'wallet_credit'` and failed-actor details
+  - no PII (no customer name/email/phone); amounts are internal-workspace money data and are logged consistent with existing earnings logging precedent
+- Defense-in-depth (4 layers):
+  - L1: HMAC signature verification (`lib/server/website-webhook-auth.ts`, unchanged) gates inbound at the transport
+  - L2: transport-level `website_webhook_events` ledger (`lib/server/website/webhook-events.ts`, unchanged) catches duplicate webhooks at the route handler (per ADR-016)
+  - L3 (NEW): service-level fail-closed + namespace guard
+  - L4: SQL-level UNIQUE constraints — `earnings_ledger_idempotency_key_unique` (column) + `wallet_ledger_entries_idempotency_key_unique` (partial index on metadata JSON, both from migration 0036)
+- Tests:
+  - 12 new unit at `tests/server/earnings/activation-credit.test.ts` — outbound full / inbound seller-null / developer-null / RPC dedup / seller-takes-100% / activationAmount=0 / both namespace mismatches / upsert error / wallet RPC error / odd-base rounding / outbound + developer-null
+  - 4 new integration at `tests/server/api/integrations/website/payment-confirmed-earnings.test.ts` — happy-path inbound (full assertion on rows + RPC args + metadata channel + amounts + notes + idempotency keys), `developerUserId=null` boundary (audit-only row + zero RPC), table-touch discipline (asserts `seller_fees` / `points_ledger` / `lead_activities` never touched in inbound), replay idempotency (RPC returns false = deduped)
+  - existing 7 Stripe webhook regression tests (`tests/server/api/webhooks/stripe-checkout-completed.test.ts`) pass unchanged
+  - total 487 → 503/503 pass; typecheck on in-scope files clean; lint on modified files clean
+- Security posture (GATE-OPEN per security review 2026-05-23):
+  - zero CRITICAL/HIGH/MEDIUM findings
+  - F-S-R4-1 LOW (currency hard-pin USD) resolved in-iteration — the inbound credit call now passes `currency: 'USD'` literal mirroring the Stripe handler hardcoded value
+  - F-S-R4-2 LOW (NoonWeb-supplied `payment.amount` trust boundary inflation) deferred to `D:\Pedro\archivos-pedro\noon-app\potentials.md` as inherited pre-existing risk requiring future cross-repo coordination
+  - F-S-R4-3 INFO (theoretical race between `activate_paid_proposal` RPC commit and developer lookup) acknowledged, not exploitable, no action
+- Explicitly excluded from this slice (out-of-scope locks held):
+  - admin manual endpoint `POST /api/admin/earnings/credit` stays untouched as operator escape hatch for off-platform payments
+  - refund logic (`debit_wallet_for_refund` RPC + Stripe `charge.refunded` handler) unchanged
+  - consolidation cron (`/api/cron/consolidate-earnings`) unchanged
+  - `seller_fees` state machine — `confirmSellerFee` / `cancelSellerFee` semantics unchanged
+  - `lead/proposal status → won` without payment is NOT a trigger (ADR-007 payment-event-driven model preserved; status-only mutations never move money)
+  - cross-repo wire contract `websitePaymentConfirmedPayloadSchema` FROZEN (only what App does post-receipt changes)
+  - no schema change, no new migration, no new RPC, no UI surface modified
+  - no client-facing surface touched (ADR-010 anchor — client pays in NoonWeb, App credits internal colaborador wallets only)
+- Carry-forward documentation debt:
+  - `D:\Pedro\archivos-pedro\noon-app\potentials.md` records: F-S-R4-2 amount trust-boundary, T-R4-T2 silenced project-lookup error (inherited pattern from Stripe handler), informal future cleanup notes
 
 ## Confirmed dashboard summary aggregates slice
 - Anchors:

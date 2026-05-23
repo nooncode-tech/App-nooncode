@@ -7,6 +7,7 @@ import {
   signWebsitePayload,
 } from '@/lib/server/website-webhook-auth'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
+import { creditActivationEarnings } from '@/lib/server/earnings/activation-credit'
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>
 
@@ -472,8 +473,17 @@ async function getApprovedInboundProposalForPayment(
   }
 }
 
-export async function receiveWebsitePaymentConfirmed(payload: WebsitePaymentConfirmedPayload) {
-  const client = createSupabaseAdminClient()
+export async function receiveWebsitePaymentConfirmed(
+  payload: WebsitePaymentConfirmedPayload,
+  /**
+   * Optional Supabase admin client override. Defaults to a freshly created
+   * admin client in production. Tests inject a mock to assert the chain of
+   * writes (link lookup, payment record, activation RPC, project lookup,
+   * earnings_ledger upsert, credit_wallet_bucket RPC, link update).
+   */
+  clientOverride?: SupabaseAdminClient,
+) {
+  const client = clientOverride ?? createSupabaseAdminClient()
   let link = await findLinkByExternalRef(client, {
     external_source: payload.external_source,
     external_session_id: payload.external_session_id,
@@ -534,6 +544,41 @@ export async function receiveWebsitePaymentConfirmed(payload: WebsitePaymentConf
       external_proposal_id: payload.external_proposal_id,
     },
     projectDescription: buildProjectDescription(payload, proposalForPayment),
+  })
+
+  // Auto-credit developer + noon shares for this inbound activation.
+  // Inbound has no seller (no seller_fees row by design — ADR-007 + ADR-010).
+  // The service is the shared allocation policy holder (ADR-021); it
+  // dedupes via the SQL-level idempotency keys, so replay-safe under any
+  // retry path (transport ledger replay, webhook retry from NoonWeb,
+  // or activatePaidProposal returning the same project_id on retry).
+  const { data: project } = await table(client, 'projects')
+    .select('developer_user_id')
+    .eq('id', activation.project_id)
+    .maybeSingle()
+  const developerUserId: string | null = project?.developer_user_id ?? null
+
+  const activationAmount = Number(
+    payload.payment?.amount ?? payload.proposal?.amount ?? proposalForPayment.amount,
+  )
+
+  // Hard-pin USD (F-S-R4-1 mitigation, security review 2026-05-23): the
+  // Stripe outbound handler hardcodes USD; the inbound credit call mirrors
+  // that to prevent a NoonWeb-supplied currency from creating a mismatched
+  // wallet_ledger_entries.currency vs wallet_accounts.currency (single-
+  // currency-per-profile per migration 0036). Multi-currency support is a
+  // v3 product decision with its own iteration scope.
+  await creditActivationEarnings(client, {
+    activationAmount,
+    currency: 'USD',
+    paymentId: activation.payment_id,
+    proposalId: activation.proposal_id,
+    leadId: link.lead_id,
+    seller: null,
+    developerUserId,
+    channel: 'inbound',
+    idempotencyKeyBase: `website:${payload.external_payment_id}`,
+    actorProfileId: null,
   })
 
   const { error: linkError } = await table(client, 'website_inbound_links')
