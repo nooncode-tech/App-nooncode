@@ -317,7 +317,7 @@ If during the iteration any single surface reveals a scope balloon (e.g., LeadCa
 
 - **Draft** — 2026-05-23 (analysis output)
 - **Approved** — 2026-05-23 (operator sign-off: "Dale, arrancamos con el frontend")
-- **Implemented** — pending Validator COMPLETE
+- **Implemented** — 2026-05-23 (PR #100 merged at `f210d4a`, operator browser PASS, Validator verdict COMPLETE)
 - **Archived** — n/a
 
 Status changes recorded inline as dated notes when transitioned. Spec is not edited after Implemented; follow-up iterations create new spec files and reference this one.
