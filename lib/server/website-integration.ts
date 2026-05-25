@@ -8,6 +8,8 @@ import {
 } from '@/lib/server/website-webhook-auth'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
 import { creditActivationEarnings } from '@/lib/server/earnings/activation-credit'
+import { getPrototypeWorkspaceByLeadId } from '@/lib/server/prototypes/repository'
+import { ensureWebsiteInboundPrototypeWorkspace } from '@/lib/server/prototypes/website-inbound'
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>
 
@@ -141,6 +143,30 @@ function buildInboundLeadNotes(payload: WebsiteInboundProposalPayload) {
   }
 
   return notes.join('\n')
+}
+
+async function linkInboundPrototypeWorkspaceToProject(
+  client: SupabaseAdminClient,
+  leadId: string,
+  projectId: string
+) {
+  const workspace = await getPrototypeWorkspaceByLeadId(client, leadId)
+
+  if (!workspace || workspace.project_id) {
+    return
+  }
+
+  const { error } = await client
+    .from('prototype_workspaces')
+    .update({
+      project_id: projectId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', workspace.id)
+
+  if (error) {
+    throw new ApiError('INBOUND_PROTOTYPE_LINK_FAILED', error.message, 500)
+  }
 }
 
 function buildProjectDescription(payload: WebsitePaymentConfirmedPayload, proposal: { body?: string | null }) {
@@ -297,6 +323,11 @@ export async function receiveWebsiteInboundProposal(payload: WebsiteInboundPropo
 
   if (existingLink) {
     await updateInboundProposalSnapshot(client, existingLink, payload)
+    await ensureWebsiteInboundPrototypeWorkspace(client, {
+      leadId: existingLink.lead_id,
+      requestedByProfileId: await resolveIntegrationActorId(client),
+      maxwell: payload.maxwell,
+    })
     return {
       idempotent: true,
       linkId: existingLink.id,
@@ -379,6 +410,12 @@ export async function receiveWebsiteInboundProposal(payload: WebsiteInboundPropo
       500
     )
   }
+
+  await ensureWebsiteInboundPrototypeWorkspace(client, {
+    leadId: lead.id as string,
+    requestedByProfileId: actorId,
+    maxwell: payload.maxwell,
+  })
 
   return {
     idempotent: false,
@@ -592,6 +629,8 @@ export async function receiveWebsitePaymentConfirmed(
     .eq('id', link.id)
 
   if (linkError) throw new ApiError('INBOUND_LINK_PAYMENT_UPDATE_FAILED', linkError.message, 500)
+
+  await linkInboundPrototypeWorkspaceToProject(client, link.lead_id, activation.project_id)
 
   return {
     idempotent: Boolean(link.project_id || link.external_payment_id),

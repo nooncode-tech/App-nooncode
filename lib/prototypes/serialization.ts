@@ -8,6 +8,9 @@ export interface PrototypeWorkspaceWire {
   currentStage: PrototypeWorkspace['currentStage']
   status: PrototypeWorkspace['status']
   lastOperationId: string | null
+  generationPrompt: string | null
+  generatedContent: string | null
+  generatedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -31,6 +34,9 @@ export function deserializePrototypeWorkspace(workspace: PrototypeWorkspaceWire)
     currentStage: workspace.currentStage,
     status: workspace.status,
     lastOperationId: workspace.lastOperationId ?? undefined,
+    generationPrompt: workspace.generationPrompt ?? undefined,
+    generatedContent: workspace.generatedContent ?? undefined,
+    generatedAt: workspace.generatedAt ? new Date(workspace.generatedAt) : undefined,
     createdAt: new Date(workspace.createdAt),
     updatedAt: new Date(workspace.updatedAt),
   }

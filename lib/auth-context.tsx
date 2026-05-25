@@ -32,7 +32,7 @@ export interface LoginResult {
 const AuthContext = createContext<AuthContextType | null>(null)
 const MOCK_AUTH_STORAGE_KEY = 'noon.mockUserEmail'
 
-type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'pm' | 'admin' | 'finance'
+type DashboardAccessLevel = 'authenticated' | 'sales' | 'prototypes' | 'projects' | 'delivery' | 'pm' | 'admin' | 'finance'
 
 interface DashboardRouteAccessRule {
   prefix: string
@@ -43,7 +43,7 @@ const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
   { prefix: '/dashboard/settings', access: 'admin' },
   { prefix: '/dashboard/leads', access: 'sales' },
   { prefix: '/dashboard/pipeline', access: 'sales' },
-  { prefix: '/dashboard/prototypes', access: 'sales' },
+  { prefix: '/dashboard/prototypes', access: 'prototypes' },
   { prefix: '/dashboard/web-analysis', access: 'sales' },
   { prefix: '/dashboard/pm-queue', access: 'pm' },
   { prefix: '/dashboard/projects', access: 'projects' },
@@ -234,6 +234,14 @@ export function useAuth() {
 }
 
 // Role-based access helpers
+export function canAccessPrototypes(role: UserRole): boolean {
+  return canAccessSales(role) || role === 'pm'
+}
+
+export function canGeneratePrototypes(role: UserRole): boolean {
+  return role === 'admin' || role === 'pm'
+}
+
 export function canAccessSales(role: UserRole): boolean {
   return ['admin', 'sales_manager', 'sales'].includes(role)
 }
@@ -279,6 +287,7 @@ export function canAccessDashboardPath(role: UserRole, pathname: string): boolea
   const accessLevel = getDashboardAccessLevel(pathname)
 
   if (accessLevel === 'sales') return canAccessSales(role)
+  if (accessLevel === 'prototypes') return canAccessPrototypes(role)
   if (accessLevel === 'projects') return canAccessProjects(role)
   if (accessLevel === 'delivery') return canAccessDelivery(role)
   if (accessLevel === 'pm') return canAccessPmQueue(role)

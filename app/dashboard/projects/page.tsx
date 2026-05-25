@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
+import { canAccessDashboardPath, canGeneratePrototypes, useAuth } from '@/lib/auth-context'
 import {
   buildLeadDetailHref,
   buildProjectDetailHref,
@@ -58,6 +58,7 @@ import {
   Link2,
   CheckCheck,
   Sparkles,
+  Wand2,
 } from 'lucide-react'
 
 function UpdateClientPortalButton({ projectId }: { projectId: string }) {
@@ -268,6 +269,10 @@ function formatPrototypeWorkspaceStatus(status: Project['prototypeWorkspaceStatu
   }
 
   return 'Archivado'
+}
+
+function isHttpUrl(value: string): boolean {
+  return value.startsWith('http://') || value.startsWith('https://')
 }
 
 function formatPrototypeWorkspaceStage(stage: Project['prototypeWorkspaceStage']): string {
@@ -783,9 +788,11 @@ function ProjectDetail({
   canOpenLeadRoute,
   authMode,
 }: ProjectDetailProps) {
+  const { user } = useAuth()
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isPrototypeHandoffConfirmOpen, setIsPrototypeHandoffConfirmOpen] = useState(false)
   const [isHandingOffPrototype, setIsHandingOffPrototype] = useState(false)
+  const [isGeneratingPrototype, setIsGeneratingPrototype] = useState(false)
   const completedTasks = tasks.filter((t) => t.status === 'done').length
   const progress = canViewProjectTasks ? calculateProjectProgress(tasks) : null
   const displayStatus = canViewProjectTasks
@@ -801,7 +808,47 @@ function ProjectDetail({
     && canManageProjects
     && project.prototypeWorkspaceId
     && project.prototypeWorkspaceStage === 'sales'
+    && (project.prototypeWorkspaceStatus === 'pending_generation'
+      || project.prototypeWorkspaceStatus === 'ready')
+  const canGeneratePrototype = authMode === 'supabase'
+    && user
+    && canGeneratePrototypes(user.role)
+    && project.prototypeWorkspaceId
     && project.prototypeWorkspaceStatus === 'pending_generation'
+
+  const handleGeneratePrototype = async () => {
+    if (!project.prototypeWorkspaceId) {
+      return
+    }
+
+    setIsGeneratingPrototype(true)
+
+    try {
+      const response = await fetch(`/api/prototypes/${project.prototypeWorkspaceId}/generate`, {
+        method: 'POST',
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          payload && typeof payload.error === 'string'
+            ? payload.error
+            : 'No se pudo generar el prototipo con v0.'
+        )
+      }
+
+      await refreshProjects()
+      toast.success('Prototipo generado correctamente con v0.')
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo generar el prototipo con v0.'
+      )
+    } finally {
+      setIsGeneratingPrototype(false)
+    }
+  }
 
   const handleConfirmPrototypeHandoff = async () => {
     if (!project.prototypeWorkspaceId) {
@@ -990,19 +1037,59 @@ function ProjectDetail({
               </p>
             </div>
           </div>
+          {project.prototypeGeneratedContent ? (
+            <div className="rounded-lg border bg-background p-4 space-y-2">
+              <p className="text-sm font-medium">Referencia del prototipo</p>
+              {isHttpUrl(project.prototypeGeneratedContent) ? (
+                <a
+                  href={project.prototypeGeneratedContent}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-primary underline underline-offset-2"
+                >
+                  Abrir prototipo generado
+                </a>
+              ) : (
+                <pre className="text-xs overflow-auto max-h-48 whitespace-pre-wrap font-mono leading-relaxed">
+                  {project.prototypeGeneratedContent}
+                </pre>
+              )}
+            </div>
+          ) : null}
           <div className="rounded-lg border bg-background p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Blocks className="size-4 text-primary" />
               Handoff del prototipo
             </div>
             <p className="text-sm text-muted-foreground">
-              Este proyecto heredo un workspace solicitado desde ventas. Hoy solo existe la trazabilidad del workspace; la continuacion real del prototipo sigue pendiente de integracion.
+              Este proyecto heredo un workspace solicitado desde ventas. Admin o PM pueden generarlo con v0 y luego tomarlo en delivery.
             </p>
-            {canTriggerPrototypeHandoff ? (
-              <div className="pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
+              {canGeneratePrototype ? (
                 <Button
                   type="button"
                   size="sm"
+                  onClick={handleGeneratePrototype}
+                  disabled={isGeneratingPrototype}
+                >
+                  {isGeneratingPrototype ? (
+                    <>
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                      Generando con v0...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="size-4 mr-2" />
+                      Generar con v0
+                    </>
+                  )}
+                </Button>
+              ) : null}
+              {canTriggerPrototypeHandoff ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={canGeneratePrototype ? 'outline' : 'default'}
                   onClick={() => setIsPrototypeHandoffConfirmOpen(true)}
                   disabled={isHandingOffPrototype}
                 >
@@ -1015,8 +1102,8 @@ function ProjectDetail({
                     'Tomar en delivery'
                   )}
                 </Button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

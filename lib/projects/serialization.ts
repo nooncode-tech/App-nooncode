@@ -25,6 +25,7 @@ export interface ProjectWire {
   prototypeWorkspaceStage: Project['prototypeWorkspaceStage'] | null
   prototypeRequestedByName: string | null
   prototypeCreatedAt: string | null
+  prototypeGeneratedContent: string | null
 }
 
 export function deserializeProject(project: ProjectWire): Project {
@@ -53,5 +54,6 @@ export function deserializeProject(project: ProjectWire): Project {
     prototypeWorkspaceStage: project.prototypeWorkspaceStage ?? undefined,
     prototypeRequestedByName: project.prototypeRequestedByName ?? undefined,
     prototypeCreatedAt: project.prototypeCreatedAt ? new Date(project.prototypeCreatedAt) : undefined,
+    prototypeGeneratedContent: project.prototypeGeneratedContent ?? undefined,
   }
 }

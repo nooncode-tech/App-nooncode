@@ -37,6 +37,7 @@ export function mapProjectRowToWire(row: ProjectRowWithLineage): ProjectWire {
     prototypeWorkspaceStage: prototypeWorkspace?.current_stage ?? null,
     prototypeRequestedByName: prototypeWorkspace?.requested_by?.full_name ?? null,
     prototypeCreatedAt: prototypeWorkspace?.created_at ?? null,
+    prototypeGeneratedContent: prototypeWorkspace?.generated_content ?? null,
   }
 }
 

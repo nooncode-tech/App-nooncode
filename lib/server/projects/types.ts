@@ -20,6 +20,7 @@ export interface ProjectRowWithLineage extends ProjectRow {
     current_stage: Database['public']['Enums']['prototype_stage']
     status: Database['public']['Enums']['prototype_workspace_status']
     created_at: string
+    generated_content: string | null
     requested_by: {
       full_name: string
     } | null

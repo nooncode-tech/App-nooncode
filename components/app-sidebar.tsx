@@ -63,6 +63,7 @@ const salesNavItems = [
 const deliveryNavItems = [
   { title: 'Bandeja PM', href: '/dashboard/pm-queue', icon: ClipboardCheck },
   { title: 'Proyectos', href: '/dashboard/projects', icon: FolderKanban },
+  { title: 'Prototipos', href: '/dashboard/prototypes', icon: Blocks },
   { title: 'Mis Tareas', href: '/dashboard/tasks', icon: ListTodo },
 ]
 

@@ -16,6 +16,9 @@ export function mapPrototypeWorkspaceRowToWire(row: PrototypeWorkspaceRow): Prot
     currentStage: row.current_stage,
     status: row.status,
     lastOperationId: row.last_operation_id,
+    generationPrompt: row.generation_prompt,
+    generatedContent: row.generated_content,
+    generatedAt: row.generated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

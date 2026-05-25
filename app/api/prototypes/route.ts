@@ -7,7 +7,7 @@ import { listVisiblePrototypeWorkspaces } from '@/lib/server/prototypes/service'
 import { decodeCursor } from '@/lib/server/pagination/cursor'
 import { buildCursorResponse } from '@/lib/server/pagination/envelope'
 
-const allowedPrototypeRoles = ['admin', 'sales_manager', 'sales'] as const
+const allowedPrototypeRoles = ['admin', 'sales_manager', 'sales', 'pm'] as const
 
 export async function GET(request: Request) {
   try {

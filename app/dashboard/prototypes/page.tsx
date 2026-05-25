@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { startTransition, useEffect, useState } from 'react'
 import { Blocks, CircleOff, FolderKanban, Link2, Sparkles, UserRound, Wand2 } from 'lucide-react'
-import { useAuth, canAccessDashboardPath } from '@/lib/auth-context'
+import { useAuth, canAccessDashboardPath, canGeneratePrototypes } from '@/lib/auth-context'
 import type { PrototypeWorkspaceListItem } from '@/lib/types'
 import {
   deserializePrototypeWorkspaceListItem,
@@ -52,6 +52,10 @@ interface PrototypeListResponse {
   data: PrototypeWorkspaceListItemWire[]
 }
 
+function isHttpUrl(value: string): boolean {
+  return value.startsWith('http://') || value.startsWith('https://')
+}
+
 export default function PrototypesPage() {
   const { authMode, user } = useAuth()
   const searchParams = useSearchParams()
@@ -60,9 +64,8 @@ export default function PrototypesPage() {
   const [isLoading, setIsLoading] = useState(authMode === 'supabase')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
-  const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({})
-  const [demoUrls, setDemoUrls] = useState<Record<string, string>>({})
-  const [chatUrls, setChatUrls] = useState<Record<string, string>>({})
+
+  const canGeneratePrototype = user ? canGeneratePrototypes(user.role) : false
 
   const handleGenerate = async (workspaceId: string) => {
     setGeneratingId(workspaceId)
@@ -73,12 +76,18 @@ export default function PrototypesPage() {
         toast.error(json.error ?? 'Error al generar prototipo')
         return
       }
-      setGeneratedContent((prev) => ({ ...prev, [workspaceId]: json.data.generatedContent }))
-      if (json.data.demoUrl) setDemoUrls((prev) => ({ ...prev, [workspaceId]: json.data.demoUrl }))
-      if (json.data.chatUrl) setChatUrls((prev) => ({ ...prev, [workspaceId]: json.data.chatUrl }))
       setItems((prev) =>
         prev.map((item) =>
-          item.id === workspaceId ? { ...item, status: 'ready' as const } : item
+          item.id === workspaceId
+            ? {
+                ...item,
+                status: 'ready' as const,
+                generatedContent: json.data.generatedContent ?? item.generatedContent,
+                demoUrl: json.data.demoUrl ?? item.demoUrl,
+                chatUrl: json.data.chatUrl ?? item.chatUrl,
+                generatedAt: json.data.generatedAt ? new Date(json.data.generatedAt) : item.generatedAt,
+              }
+            : item
         )
       )
       toast.success('Prototipo generado correctamente')
@@ -133,31 +142,7 @@ export default function PrototypesPage() {
       })
       .then((payload) => {
         if (isActive) {
-          const deserialized = payload.data.map(deserializePrototypeWorkspaceListItem)
-          setItems(deserialized)
-          // Hydrate state from server so the iframe + source survive page reloads
-          // without re-calling /generate. Only populates entries that have data.
-          setGeneratedContent((prev) => {
-            const next = { ...prev }
-            for (const item of deserialized) {
-              if (item.generatedContent) next[item.id] = item.generatedContent
-            }
-            return next
-          })
-          setDemoUrls((prev) => {
-            const next = { ...prev }
-            for (const item of deserialized) {
-              if (item.demoUrl) next[item.id] = item.demoUrl
-            }
-            return next
-          })
-          setChatUrls((prev) => {
-            const next = { ...prev }
-            for (const item of deserialized) {
-              if (item.chatUrl) next[item.id] = item.chatUrl
-            }
-            return next
-          })
+          setItems(payload.data.map(deserializePrototypeWorkspaceListItem))
         }
       })
       .catch((error) => {
@@ -303,12 +288,12 @@ export default function PrototypesPage() {
                   </p>
                 </div>
 
-                {generatedContent[item.id] || demoUrls[item.id] ? (
+                {(item.generatedContent || item.demoUrl) ? (
                   <div className="app-panel-muted space-y-3">
                     <p className="metric-label">Prototipo generado por v0</p>
-                    {demoUrls[item.id] ? (
+                    {item.demoUrl ? (
                       <iframe
-                        src={demoUrls[item.id]}
+                        src={item.demoUrl}
                         title={`Prototipo ${item.leadName}`}
                         loading="lazy"
                         referrerPolicy="no-referrer"
@@ -317,19 +302,28 @@ export default function PrototypesPage() {
                       />
                     ) : null}
                     <div className="flex flex-wrap gap-3">
-                      {demoUrls[item.id] ? (
+                      {item.demoUrl ? (
                         <a
-                          href={demoUrls[item.id]}
+                          href={item.demoUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 text-sm font-medium text-primary underline underline-offset-2"
                         >
                           Abrir demo en pestaña nueva →
                         </a>
-                      ) : null}
-                      {chatUrls[item.id] ? (
+                      ) : item.generatedContent && isHttpUrl(item.generatedContent) ? (
                         <a
-                          href={chatUrls[item.id]}
+                          href={item.generatedContent}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm font-medium text-primary underline underline-offset-2"
+                        >
+                          Ver resultado generado →
+                        </a>
+                      ) : null}
+                      {item.chatUrl ? (
+                        <a
+                          href={item.chatUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 text-xs text-muted-foreground underline"
@@ -338,13 +332,13 @@ export default function PrototypesPage() {
                         </a>
                       ) : null}
                     </div>
-                    {generatedContent[item.id] ? (
+                    {item.generatedContent && (!item.demoUrl || !isHttpUrl(item.generatedContent)) ? (
                       <details className="group">
                         <summary className="text-xs text-muted-foreground cursor-pointer select-none">
                           Ver código fuente generado
                         </summary>
                         <pre className="mt-2 text-xs overflow-auto max-h-64 whitespace-pre-wrap font-mono leading-relaxed">
-                          {generatedContent[item.id]}
+                          {item.generatedContent}
                         </pre>
                       </details>
                     ) : null}
@@ -352,7 +346,7 @@ export default function PrototypesPage() {
                 ) : null}
 
                 <div className="flex flex-wrap gap-2">
-                  {item.status === 'pending_generation' && (
+                  {item.status === 'pending_generation' && canGeneratePrototype ? (
                     <Button
                       size="sm"
                       onClick={() => handleGenerate(item.id)}
@@ -365,7 +359,7 @@ export default function PrototypesPage() {
                       )}
                       {generatingId === item.id ? 'Generando...' : 'Generar con v0'}
                     </Button>
-                  )}
+                  ) : null}
                   {canOpenLeads ? (
                     <Button asChild variant="outline" size="sm">
                       <Link href={buildLeadDetailHref(item.leadId)}>

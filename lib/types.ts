@@ -280,6 +280,7 @@ export interface Project {
   prototypeWorkspaceStage?: PrototypeStage
   prototypeRequestedByName?: string
   prototypeCreatedAt?: Date
+  prototypeGeneratedContent?: string
 }
 
 export type ProjectDraft = Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
@@ -453,6 +454,9 @@ export interface PrototypeWorkspace {
   currentStage: PrototypeStage
   status: PrototypeWorkspaceStatus
   lastOperationId?: string
+  generationPrompt?: string
+  generatedContent?: string
+  generatedAt?: Date
   createdAt: Date
   updatedAt: Date
 }

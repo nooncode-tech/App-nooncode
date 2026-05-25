@@ -57,6 +57,7 @@ async function attachPrototypeWorkspaces(
       current_stage: workspace.current_stage,
       status: workspace.status,
       created_at: workspace.created_at,
+      generated_content: workspace.generated_content,
       requested_by: workspace.requested_by
         ? { full_name: workspace.requested_by.full_name }
         : null,
