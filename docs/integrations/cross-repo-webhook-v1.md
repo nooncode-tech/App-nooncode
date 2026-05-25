@@ -265,7 +265,7 @@ HTTP status: `201` if newly activated, `200` if idempotent (payment already reco
 
 ## 5. Inbound webhook — `prototype-decision` (Web → App)
 
-> **Status:** **Implemented 2026-05-25** (iteration `fase-3-adr-023-b-c-slice-prototype-decision-impl`). B-slice + C-slice landed bundled per ADR-025 D3 via migration `supabase/migrations/0059_phase_23a_prototype_decisions.sql` (persistence + RPC) plus route `app/api/integrations/website/prototype-decision/route.ts` and handler `receiveWebsitePrototypeDecision` in `lib/server/website-integration.ts`. NoonWeb route `/maxwell/prototipo/[token]` remains D-slice (NoonWeb-side).
+> **Status:** **Implemented 2026-05-25** (iteration `fase-3-adr-023-b-c-slice-prototype-decision-impl`). B-slice + C-slice landed bundled per ADR-025 D3 via migration `supabase/migrations/0060_phase_23a_prototype_decisions.sql` (persistence + RPC) plus route `app/api/integrations/website/prototype-decision/route.ts` and handler `receiveWebsitePrototypeDecision` in `lib/server/website-integration.ts`. NoonWeb route `/maxwell/prototipo/[token]` remains D-slice (NoonWeb-side).
 > **Anchor:** see `docs/adrs/ADR-023-prototype-decision-cross-repo-contract.md` for the rationale behind every shape decision below.
 
 ### 5.1 Endpoint
@@ -850,7 +850,7 @@ These files implement the v1 contract on the App side. The Go rewrite will reimp
 - HMAC sign + verify: `lib/server/website-webhook-auth.ts`
 - Inbound proposal route: `app/api/integrations/website/inbound-proposal/route.ts`
 - Inbound payment route: `app/api/integrations/website/payment-confirmed/route.ts`
-- Inbound prototype-decision route: `app/api/integrations/website/prototype-decision/route.ts` (B+C slice implemented 2026-05-25 — migration `0059_phase_23a_prototype_decisions.sql` + handler `receiveWebsitePrototypeDecision` + Maxwell draft `lib/server/maxwell/prototype-decision-draft.ts`; contract per ADR-023 + §5)
+- Inbound prototype-decision route: `app/api/integrations/website/prototype-decision/route.ts` (B+C slice implemented 2026-05-25 — migration `0060_phase_23a_prototype_decisions.sql` + handler `receiveWebsitePrototypeDecision` + Maxwell draft `lib/server/maxwell/prototype-decision-draft.ts`; contract per ADR-023 + §5)
 - Inbound prototype-signed-read route: `app/api/integrations/website/prototype-signed-read/[token]/route.ts` (handler iteration — pending implementation as of 2026-05-25; contract firmed by ADR-024 + §6 of this doc)
 - Schema definitions: `lib/server/website-integration.ts`
 - Outbound proposal-review-decision sender: `sendProposalReviewDecisionToWebsite` in `lib/server/website-integration.ts`

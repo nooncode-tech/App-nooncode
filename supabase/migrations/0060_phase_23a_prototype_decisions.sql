@@ -1,4 +1,4 @@
--- 0059_phase_23a_prototype_decisions.sql
+-- 0060_phase_23a_prototype_decisions.sql
 --
 -- Phase 23A (ADR-023 + ADR-025 implementation, B-slice):
 -- Materializes the persistence layer for the cross-repo `prototype-decision`

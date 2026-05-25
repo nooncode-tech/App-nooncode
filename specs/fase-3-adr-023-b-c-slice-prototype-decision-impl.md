@@ -25,7 +25,7 @@ This iteration unblocks NoonWeb dev's parallel D-slice build and closes the App-
 
 ### B-slice (persistence + RPC + helper extension)
 
-- **Migration `0059_phase_23a_prototype_decisions.sql`**:
+- **Migration `0060_phase_23a_prototype_decisions.sql`**:
   - Drop `prototype_workspaces.lead_id` UNIQUE constraint (today: `lead_id uuid not null unique`); replace with a non-unique index `idx_prototype_workspaces_lead_id`. Required because regenerate produces V1/V2/V3 workspaces sharing the same `lead_id`. See R1 below.
   - Add `prototype_workspaces.share_token text` with deferred `unique` constraint applied AFTER backfill (existing rows get token via `gen_random_uuid()::text` backfill within the migration). Final state: `text not null unique`.
   - Add `prototype_workspaces.share_token_superseded_at timestamptz null`.
@@ -40,7 +40,7 @@ This iteration unblocks NoonWeb dev's parallel D-slice build and closes the App-
   - On regenerate (existing workspace present and not yet decided-accepted), mark the previous workspace row's `share_token_superseded_at = clock_timestamp()` BEFORE inserting the new one. Issue a fresh `share_token` for the new row.
   - Gate A semantics preserved verbatim — credit cost still deducts, still raises `INSUFFICIENT_CREDITS` on shortfall. Both gates evaluate independently; either failure aborts the regenerate.
   - The new workspace row writes a fresh `share_token` (UUID-text via `gen_random_uuid()::text`).
-  - Migration `0059_phase_23a_prototype_decisions.sql` ships the RPC `create or replace` body in the same file as the schema changes (single atomic migration per ADR-014 convention).
+  - Migration `0060_phase_23a_prototype_decisions.sql` ships the RPC `create or replace` body in the same file as the schema changes (single atomic migration per ADR-014 convention).
 
 - **TypeScript helper extension**:
   - `lib/server/website/webhook-events.ts`: extend `WebsiteWebhookEndpoint` union with `'prototype-decision'`.
@@ -105,7 +105,7 @@ This iteration unblocks NoonWeb dev's parallel D-slice build and closes the App-
 
 Each criterion is observable via test, API call, or DB query.
 
-1. **AC-1 — Migration applies cleanly:** `0059_phase_23a_prototype_decisions.sql` applies via `mcp__supabase__apply_migration` (or Dashboard) with no errors; ledger row registered per ADR-014; `database.types.ts` regen produces a clean diff with `prototype_decisions` types, `prototype_workspaces.share_token` / `share_token_superseded_at`, `prototype_credit_settings.max_iterations_per_lead`, and `website_webhook_events.endpoint` enum literal `'prototype-decision'`.
+1. **AC-1 — Migration applies cleanly:** `0060_phase_23a_prototype_decisions.sql` applies via `mcp__supabase__apply_migration` (or Dashboard) with no errors; ledger row registered per ADR-014; `database.types.ts` regen produces a clean diff with `prototype_decisions` types, `prototype_workspaces.share_token` / `share_token_superseded_at`, `prototype_credit_settings.max_iterations_per_lead`, and `website_webhook_events.endpoint` enum literal `'prototype-decision'`.
 2. **AC-2 — RPC respects both gates:** `request_lead_prototype(uuid)` raises `INSUFFICIENT_CREDITS` (P0001) when wallet short. With sufficient credits AND `count(workspaces) >= max_iterations_per_lead`, raises `ITERATION_CAP_REACHED` (P0001). With both gates passing, inserts a new workspace, supersedes the previous one's token, deducts credits, returns the new workspace id.
 3. **AC-3 — Endpoint happy-path accept:** A signed POST with valid token + matching workspace UUID + `decision: 'accepted'` returns HTTP 201, persists a `prototype_decisions` row with the correct fields (including `webhook_event_id` FK populated), enqueues the Maxwell draft helper, sends one `user_notifications` row to the seller, and returns the wire-shape with `draftPropuestaQueued: true`.
 4. **AC-4 — Endpoint happy-path reject:** Same as AC-3 but with `decision: 'rejected'`, `notes` populated. Persists the row, does NOT call the Maxwell draft helper, sends one `user_notifications` row with "rejected" copy + truncated notes, returns `draftPropuestaQueued: false`.
@@ -124,7 +124,7 @@ Each criterion is observable via test, API call, or DB query.
 
 ### New files
 
-- `supabase/migrations/0059_phase_23a_prototype_decisions.sql`
+- `supabase/migrations/0060_phase_23a_prototype_decisions.sql`
 - `app/api/integrations/website/prototype-decision/route.ts`
 - `lib/server/maxwell/prototype-decision-draft.ts` (likely — Backend chain may instead append to `lib/server/maxwell/lead-engine.ts` if the existing module is the natural home; decision belongs to Backend)
 - `tests/integration/website/prototype-decision.spec.ts` (integration-first per recommended testing methodology — see §11)
@@ -238,7 +238,7 @@ Each criterion is observable via test, API call, or DB query.
 | **R3** | Maxwell draft helper produces a placeholder `amount` that drifts from the ADR-013 invariant the `proposal-amount-validation.ts` validator expects (e.g., picks `activationFinal` instead of `activationBase`, ships to production, seller cannot submit) | Medium | Medium (visible to operator, requires patch + redeploy) | **Medium** | Unit test on the helper: input `(projectType, complexity)` → assert output `amount === computePricing(projectType, complexity, 'outbound', 0).activationBase`. Integration test that asserts the validator REJECTS the draft until the seller fee row is created. |
 | **R4** | Fire-and-forget detached promise crashes the Node process under a serverless worker that recycles aggressively | Low | Medium (operator confusion, possible draft silently dropped) | **Low** | Wrap in `.catch(error => logger.error('prototype.decision.accepted.draft_creation_failed', {...}))`. The notification fan-out runs synchronously BEFORE the fire-and-forget so the seller is always told; even a process recycle leaves the seller informed. |
 | **R5** | RLS policy on `prototype_decisions` accidentally exposes cross-tenant data (e.g., the sales policy admits more rows than intended) | Low | High (data leak across sellers) | **Medium** | Mirror the `prototype_workspaces` policy verbatim, then explicit RLS verification test (AC-10) that signs in as a sales user and SELECTs — assert zero rows for decisions tied to leads not visible to that user. |
-| **R6** | Migration prefix collision with Phase 23A Maxwell Niches (`0059_phase_23a_*`) is resolved silently in the wrong direction (Maxwell Niches ships `0059`, this iteration ships `0060`, but a stale local branch holds the original `0059_phase_23a_prototype_decisions.sql` and confuses operators) | Medium | Low (recoverable by renumbering) | **Low** | Operator decides sequencing explicitly (this iteration first per the bundle decision); if Maxwell Niches lands first, this iteration renumbers in a single sed across the migration file + the spec + the PR description. No production data risk because neither migration has shipped yet. |
+| **R6** | Migration prefix collision with Phase 23A Maxwell Niches (`0059_phase_23a_*`) is resolved silently in the wrong direction (Maxwell Niches ships `0059`, this iteration ships `0060`, but a stale local branch holds the original `0060_phase_23a_prototype_decisions.sql` and confuses operators) | Medium | Low (recoverable by renumbering) | **Low** | Operator decides sequencing explicitly (this iteration first per the bundle decision); if Maxwell Niches lands first, this iteration renumbers in a single sed across the migration file + the spec + the PR description. No production data risk because neither migration has shipped yet. |
 | **R7** | NoonWeb-side D-slice payload diverges from the firmed §5.2 contract on first integration test (e.g., NoonWeb sends `clientUserAgent` camelCase instead of `client.user_agent` nested) | Medium | Medium (integration cycle slowdown, but caught early by HTTP 400 validation) | **Medium** | The Zod schema rejects deviations with `400 (validation)`; structured logs show the exact payload shape. Operator forwards the failing payload to NoonWeb-dev for fix. No App-side change required (contract is firmed). |
 | **R8** | Drop of `lead_id UNIQUE` requires a transaction-safe constraint drop on a non-empty table (existing rows respect uniqueness; the drop is purely a permission relaxation — but Postgres semantics around DROP CONSTRAINT on referenced tables can surface lock issues) | Low | Medium (migration apply blocks behind lock; rare in dev, possible in prod under traffic) | **Low** | Run the migration during a low-traffic window OR wrap in `lock_timeout` guard + retry. The constraint drop is metadata-only; no rewrite. Acceptable risk. |
 | **R9** | Test infrastructure for HMAC-signed inbound integration tests doesn't exist or is brittle | Low | Medium (testing chain stuck) | **Low** | Existing tests for `inbound-proposal` and `payment-confirmed` provide the harness; mirror their setup. If brittleness surfaces, that's a Testing-chain finding, not a blocker for this spec. |
@@ -263,7 +263,7 @@ Concrete test plan summary (Testing chain will expand):
 
 ## Definition of Done
 
-- [ ] Migration `0059_phase_23a_prototype_decisions.sql` applied to remote + ledger row registered per ADR-014.
+- [ ] Migration `0060_phase_23a_prototype_decisions.sql` applied to remote + ledger row registered per ADR-014.
 - [ ] `database.types.ts` regenerated cleanly; no manual override blocks.
 - [ ] Route file + handler + draft helper + notifications fan-out shipped.
 - [ ] All 12 acceptance criteria green.
@@ -372,12 +372,12 @@ This section records the three Architecture decisions made on top of the paralle
 
 ### A3 — Bundling decision (resolves the spec-vs-router divergence)
 
-**Decision:** bundle B-slice + C-slice in a single iteration. Single migration `0059_phase_23a_prototype_decisions.sql`. Single PR. Per ADR-025 D3.
+**Decision:** bundle B-slice + C-slice in a single iteration. Single migration `0060_phase_23a_prototype_decisions.sql`. Single PR. Per ADR-025 D3.
 
 **Backend constraints:**
 
 - **R1 grep pass is the first Backend step.** Before any code change, Backend greps for `prototype_workspaces` callers, especially `.single()` calls on `lead_id` lookups. Search patterns to cover: `from('prototype_workspaces')`, `prototype_workspaces`, `prototype_workspace` (singular references). Expected surface: `request_lead_prototype` RPC + workspace status update paths + the lead detail UI's prototype panel. If the grep surfaces >2-3 callers needing semantic refactor beyond "use latest workspace" (typical refactor: `.eq('lead_id', leadId).single()` → `.eq('lead_id', leadId).order('created_at', { ascending: false }).limit(1).single()` or equivalent "latest workspace" pattern), Backend pauses and proposes re-cut to ADR-025 D3 alternative (c) — B-slice solo + C-slice follow-up. Architecture amends ADR-025 with a closure note documenting the re-cut.
-- **Migration is single-file (not split).** `0059_phase_23a_prototype_decisions.sql` carries all six elements per ADR-025 D3:
+- **Migration is single-file (not split).** `0060_phase_23a_prototype_decisions.sql` carries all six elements per ADR-025 D3:
   1. Drop `prototype_workspaces.lead_id UNIQUE` constraint; replace with non-unique index `idx_prototype_workspaces_lead_id` (per spec §B-slice).
   2. Add `share_token text` + backfill via `gen_random_uuid()::text` + final state `not null unique`; add `share_token_superseded_at timestamptz null`.
   3. Add `prototype_credit_settings.max_iterations_per_lead integer not null default 3 check (max_iterations_per_lead > 0)`.
