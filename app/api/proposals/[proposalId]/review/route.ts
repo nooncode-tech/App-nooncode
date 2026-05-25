@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { assertRateLimit } from '@/lib/server/api/rate-limit'
 import { getRequestId, jsonWithRequestId } from '@/lib/server/api/request'
+import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { getLeadProposalById } from '@/lib/server/leads/proposal-repository'
 import { mapLeadProposalRowToWire } from '@/lib/server/leads/proposal-mappers'
@@ -34,6 +35,7 @@ export async function POST(
     const { proposalId } = paramsSchema.parse(await context.params)
     const { action } = bodySchema.parse(await request.json())
     const client = await createSupabaseServerClient()
+    const adminClient = createSupabaseAdminClient()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (client.rpc as any)('review_proposal', {
@@ -55,8 +57,9 @@ export async function POST(
       throw new Error(msg)
     }
 
-    // Re-fetch with linked_project join
-    const proposal = await getLeadProposalById(client, proposalId)
+    // PM can review via SECURITY DEFINER RPC but may not pass sales-scoped RLS on
+    // lead_proposals. Use the admin client for the post-review read + inbound sync.
+    const proposal = await getLeadProposalById(adminClient, proposalId)
     if (!proposal) {
       return jsonWithRequestId({ error: 'Proposal not found.', code: 'NOT_FOUND' }, { status: 404 }, requestId)
     }
