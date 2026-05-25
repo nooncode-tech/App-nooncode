@@ -1092,6 +1092,7 @@ export type Database = {
       prototype_credit_settings: {
         Row: {
           created_at: string
+          max_iterations_per_lead: number
           request_cost: number
           singleton_key: boolean
           updated_at: string
@@ -1099,6 +1100,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          max_iterations_per_lead?: number
           request_cost: number
           singleton_key?: boolean
           updated_at?: string
@@ -1106,6 +1108,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          max_iterations_per_lead?: number
           request_cost?: number
           singleton_key?: boolean
           updated_at?: string
@@ -1117,6 +1120,64 @@ export type Database = {
             columns: ["updated_by_profile_id"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prototype_decisions: {
+        Row: {
+          client_user_agent: string | null
+          created_at: string
+          decided_at: string
+          decision: string
+          id: string
+          lead_id: string
+          notes: string | null
+          prototype_workspace_id: string
+          webhook_event_id: string | null
+        }
+        Insert: {
+          client_user_agent?: string | null
+          created_at?: string
+          decided_at?: string
+          decision: string
+          id?: string
+          lead_id: string
+          notes?: string | null
+          prototype_workspace_id: string
+          webhook_event_id?: string | null
+        }
+        Update: {
+          client_user_agent?: string | null
+          created_at?: string
+          decided_at?: string
+          decision?: string
+          id?: string
+          lead_id?: string
+          notes?: string | null
+          prototype_workspace_id?: string
+          webhook_event_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prototype_decisions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prototype_decisions_prototype_workspace_id_fkey"
+            columns: ["prototype_workspace_id"]
+            isOneToOne: false
+            referencedRelation: "prototype_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prototype_decisions_webhook_event_id_fkey"
+            columns: ["webhook_event_id"]
+            isOneToOne: false
+            referencedRelation: "website_webhook_events"
             referencedColumns: ["id"]
           },
         ]
@@ -1135,6 +1196,8 @@ export type Database = {
           lead_id: string
           project_id: string | null
           requested_by_profile_id: string
+          share_token: string
+          share_token_superseded_at: string | null
           status: Database["public"]["Enums"]["prototype_workspace_status"]
           updated_at: string
         }
@@ -1151,6 +1214,8 @@ export type Database = {
           lead_id: string
           project_id?: string | null
           requested_by_profile_id: string
+          share_token: string
+          share_token_superseded_at?: string | null
           status?: Database["public"]["Enums"]["prototype_workspace_status"]
           updated_at?: string
         }
@@ -1167,6 +1232,8 @@ export type Database = {
           lead_id?: string
           project_id?: string | null
           requested_by_profile_id?: string
+          share_token?: string
+          share_token_superseded_at?: string | null
           status?: Database["public"]["Enums"]["prototype_workspace_status"]
           updated_at?: string
         }
@@ -1174,7 +1241,7 @@ export type Database = {
           {
             foreignKeyName: "prototype_workspaces_lead_id_fkey"
             columns: ["lead_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -2315,6 +2382,8 @@ export type Database = {
           lead_id: string
           project_id: string | null
           requested_by_profile_id: string
+          share_token: string
+          share_token_superseded_at: string | null
           status: Database["public"]["Enums"]["prototype_workspace_status"]
           updated_at: string
         }

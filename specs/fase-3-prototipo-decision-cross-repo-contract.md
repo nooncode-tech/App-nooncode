@@ -319,8 +319,8 @@ No Backend, Frontend, Infra, Security, Testing, Refactor, Docs (beyond ADR + con
 
 - **Draft** — 2026-05-23 (analysis output)
 - **Architecture** — 2026-05-23 — ADR-023 emitted at `docs/adrs/ADR-023-prototype-decision-cross-repo-contract.md`; cross-repo contract doc extended with §5 (`prototype-decision` inbound entry) plus renumber cascade (outbound → §6, common error → §7, rate limit → §8, idempotency → §9, versioning → §10, env vars → §11, test fixtures → §12, reference impl → §13, open issues → §14, change control → §15, references → §16). R4 verified: `lead_proposals.seller_fee_amount` column does not exist; seller fee lives in separate `seller_fees` table per ADR-013, so Option β is enforced by construction — no schema gap, no follow-up migration required. R5 verified: contract extension reuses ADR-016 transport-level idempotency verbatim (identity key `(endpoint, signature_hash)`); no variant scheme invented.
-- **Approved** — pending operator sign-off (will land when operator merges the PR that includes ADR-023 + contract doc extension)
-- **Implemented** — pending Architecture + Validator close
+- **Approved** — 2026-05-23 (operator merged PR #105)
+- **Implemented** — 2026-05-23 (PR #105 merged at `5016693` from squashed commit `cc16e5e`, Validator verdict COMPLETE, contract artifacts durable in `develop`: ADR-023 + `cross-repo-webhook-v1.md` §5 + this spec)
 - **Archived** — n/a
 
 Status changes recorded inline as dated notes when transitioned. Spec is not edited after Implemented; follow-up iterations (B/C/D slices) create new spec files and reference this one.
