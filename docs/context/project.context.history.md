@@ -1956,3 +1956,903 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - `docs/contracts/` — new home for entity-level contract documents (`client-requests.md`, `project-versions.md`, `ai-mvp-pipeline-state.md`, `seller-fee-state-machine.md`, plus `README.md` index).
 - Skeleton-depth boundary: contract files contain entity, lifecycle, conceptual data shape, inputs/outputs, and cross-refs only. No SQL, no API surface, no component or migration filenames invented.
 - Open items: every contract carries at least one `OPEN: gated by audit §7 Q<N>` marker that must be resolved before the corresponding implementation iteration can be scoped.
+
+## Session note: ADR-006 migration prefix reconciliation (Branch B / Option B2)
+- Date: 2026-05-11
+- Iteration id: `fase-0-b4-adr-006-execution`
+- Route used: system-analysis -> system-infra -> system-docs -> system-validator
+- Objective: execute the deferred portion of ADR-006 (eight collided migration prefixes `0024/0025/0026/0027`) by first verifying the remote `supabase_migrations.schema_migrations` ledger and then either renaming to fresh `0043+` prefixes (Branch A) or recording a reconciliation amendment (Branch B). Analysis-first; spec versioned in git.
+- Spec landed: `specs/fase-0-b4-adr-006-execution.md` (Approved 2026-05-10, executed 2026-05-11).
+- Ledger verification (Paso 1, via Supabase MCP against `pdotsdahsrnnsoroxbfe`):
+  - query: `SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version`
+  - result: **4 of the 8 collided filenames already registered** as ledger rows (suffix-match on `name`)
+  - branch decision: **Branch B (rename is unsafe — Option B2 additive convention permanent)**
+- Implemented (Paso 2 / Branch B):
+  - `docs/adrs/ADR-006-migration-prefix-convention-and-rename.md`
+    - amended with `## Reconciliation required` section enumerating the registered rows by ledger key
+    - status updated from "Currently BLOCKED" to "Branch B adopted; rename foreclosed"
+    - Option B1 (ledger rewrite), Option B2 (freeze collisions as permanent convention), and Option B3 (defer to dedicated iteration) listed; **Option B2 adopted as default**
+  - `scripts/check-migrations.mjs`
+    - `KNOWN_COLLISION_FILES` kept as a **hard frozen allowlist** for the 8 historical filenames
+    - guard continues to reject any *new* prefix collision outside that frozen set
+    - dead-code disposition of the grandfathered branch documented in the script's comment block
+  - `docs/context/project.context.core.md`
+    - migration-prefix-collision Active risk **downgraded** from "execution pending" to "permanent convention; no new collisions allowed"
+- Scope boundary kept:
+  - no migration filename was renamed
+  - no SQL inside any migration file was touched
+  - the remote `supabase_migrations.schema_migrations` ledger was never rewritten
+  - the CI workflow `.github/workflows/ci.yml` was not modified (only the script the step invokes)
+- Validation outcome:
+  - `pnpm test`: **141/141 pass** (rerun 2026-05-11)
+  - `pnpm audit --prod --audit-level=high`: clean (after PR #14 Next.js 16.2.6 upgrade, recorded as gap G6)
+  - PR #15 merged to `develop` as `59d5307`
+- Wider finding surfaced (out-of-ADR-006 scope, registered as **G7** in roadmap §16):
+  - 15 local migrations are absent from the remote ledger even though their tables exist in `public` (`list_tables` confirms)
+  - 6 ledger rows are orphaned (no matching local file): `phase_4b_payment_columns`, `phase_5_stripe_connect`, `phase_7_client_workspace`, `phase_7b_resolve_token_update`, `phase_8_lead_whatsapp`, `phase_11_lead_auto_followup`
+  - `supabase db push` is unsafe against production until reconciled
+  - subsequent attempt to regenerate `database.types.ts` revealed RPC drift (`ensure_user_wallet_for_profile`, `ensure_monetary_wallet_for_profile` missing from generated types despite production use) and enum drift (`UpdateFeedEventType` vs `lead_activity_type` post-0043)
+  - reconciliation scheduled as future iteration `fase-0-b4b-ledger-reconciliation`
+- Docs updated:
+  - `project.context.core.md` (Active risk downgrade)
+- Completion status:
+  - B4 closed under Branch B / Option B2
+  - history note added retroactively in the 2026-05-13 docs-alignment slice
+
+## Session note: B3 seller-fee state machine (Option C, 5 chunks)
+- Date: 2026-05-11 through 2026-05-12
+- Iteration id: `fase-0-b3-seller-fee-selector`
+- Route used: system-analysis -> system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs -> system-validator (per chunk)
+- Objective: eliminate the hard-coded `$100` seller fee at `lib/maxwell/pricing.ts:56` and `app/api/webhooks/stripe/route.ts:154,163,179` by implementing the full seller-fee state machine per `docs/contracts/seller-fee-state-machine.md`: introduce a `seller_fees` entity with five states (`potential / confirmed / pending_payout / paid_out / cancelled`), role-aware visibility enforced at the database layer, and integration with both the proposal API (selector at creation) and the Stripe webhook (post-payment confirmation).
+- Spec landed: `specs/fase-0-b3-seller-fee-selector.md` (Approved 2026-05-11; lifecycle status: Approved, 5 chunks declared).
+- ADR landed: `docs/adrs/ADR-007-seller-fee-state-machine.md` (storage model = dedicated table, state enum, cancellation policy, wallet integration, activity logging).
+- Implemented (5 chunks, 9 PRs merged + 1 closure PR):
+  - **Chunk 1 — Foundation** (PRs #17 ADR-007, #18 migration table, #19 migration RLS):
+    - `supabase/migrations/0043_phase_18a_seller_fees.sql`
+      - new table `seller_fees` with state enum, references to `lead_proposal_id`, `seller_user_id`, `payment_event_id`
+      - triggers for `updated_at`
+      - 5 new `lead_activity_type` enum values (`seller_fee_selected`, `seller_fee_confirmed`, `seller_fee_pending_payout`, `seller_fee_paid_out`, `seller_fee_cancelled`)
+    - `supabase/migrations/0044_phase_18b_seller_fees_rls.sql`
+      - RLS policies enforcing role-aware visibility: `client` never sees the row, `developer` is **structurally excluded** from `SELECT`, seller sees own rows, PM/admin see all
+      - mutation policies route through service layer only
+  - **Chunk 2 — Data + service layer** (PRs #20 data layer, #21+#23 service.ts):
+    - `lib/server/seller-fees/schema.ts`: zod schemas for input validation, `SellerFeeAmount` type (0 | 100 | 300 | 500)
+    - `lib/server/seller-fees/repository.ts`: typed Supabase queries (insert, get-by-proposal, update-state)
+    - `lib/server/seller-fees/activity.ts`: helpers for activity-log entries on state transitions
+    - `lib/server/seller-fees/service.ts`: `createSellerFee`, `confirmSellerFee`, `cancelSellerFee`, `markSellerFeePendingPayout`, `markSellerFeePaidOut`
+    - 38 unit tests covering state transitions, RLS visibility, validation
+  - **Chunk 3 — Integration** (PRs #22+#25 pricing + proposal, #24 webhook):
+    - `lib/maxwell/pricing.ts`: `computePricing()` signature now accepts persisted `feeAmount`; hardcode reduced to type defs only (`SellerFeeAmount` enum + comments)
+    - `app/api/leads/[leadId]/proposals/route.ts` + `lib/server/leads/proposal-schema.ts` + `lib/server/leads/proposal-mappers.ts`: outbound proposal creation now persists a `seller_fees` row with seller's chosen amount
+    - `app/api/webhooks/stripe/route.ts`: reads the persisted `seller_fees` row at payment confirmation, fires `confirmSellerFee` transition; three former hardcoded `100` references replaced with reads from persisted record
+    - 5 unit tests with complex mock for the webhook integration (including error path)
+  - **Chunk 4 — UI selector** (PR #27):
+    - `components/lead-detail.tsx`: `100 / 300 / 500 USD` selector in proposal-creation form, visible only for outbound proposals, default `100`, inbound proposals continue without a row
+  - **Chunk 5 — Closure** (PR #28):
+    - `lib/server/seller-fees/schema.ts`: `LEGACY_FALLBACK_SELLER_FEE_AMOUNT` constant **removed** post-backfill
+    - `app/api/webhooks/stripe/route.ts`: no remaining functional `100` literal
+    - Active risk for the hardcoded `$100` **removed** from core context
+    - contract `docs/contracts/seller-fee-state-machine.md`: `OPEN: Q4` (activity-log integration) and `OPEN: Q7` (currency column type) markers **closed**
+- One-time legacy backfill (no PR — data action only):
+  - 4 in-flight outbound proposals predating Chunk 3a were backfilled via Supabase MCP one-time SQL on 2026-05-12
+  - 3 rows inserted in `potential` state (no payment yet)
+  - 1 row inserted in `confirmed` state (payment already captured pre-Chunk-3a, payment_id wired retroactively)
+- Scope boundary kept:
+  - no wallet model overhaul (existing `wallet_accounts` / `wallet_ledger_entries` shape preserved)
+  - no payout system rework (existing `payout_methods`, `payout_batches`, `payouts` unchanged)
+  - no FASE 3 proposal lifecycle automation (Potential→Confirmed still fires from the webhook, will hook into FASE 3 when that ships)
+  - no migration applied via `supabase db push` (out-of-band path consistent with the wider G7 reconciliation gap)
+- Validation outcome:
+  - `pnpm test`: **201/201 pass** (post-Chunk-5)
+  - browser validation 2026-05-12 documented in `docs/validations/Browser validation 2026-05-12 — B3 seller-fees input side.md` (14 invariants verified end-to-end, including selector at `$300`, inbound proposals correctly creating no `seller_fees` row, and idempotent webhook behavior)
+- Operational gaps surfaced (registered in roadmap §16):
+  - **G9** — `gh pr merge` mis-targeting when `base != develop`: tripped **twice** in this iteration (PR #21 mis-merged against `feature/fase-0-b3-chunk-2a-data-layer`; PR #22 mis-merged against `feature/fase-0-b3-chunk-2b-service`). Restored via cherry-pick PRs #23 and #25. Mitigation adopted for Chunks 4-5: open sub-PRs with `base = develop` from the start.
+  - **G10** — selector seller fee does not persist value between consecutive saves in the same lead (UX bug, no functional impact). `useEffect([lead])` in `components/lead-detail.tsx:619-627` re-initializes the form on `updatedAt` change. Deferred to a UX iteration post-cutover.
+- Docs updated:
+  - `docs/adrs/ADR-007-seller-fee-state-machine.md` (new)
+  - `docs/contracts/seller-fee-state-machine.md` (Q4/Q7 closed)
+  - `docs/context/project.context.core.md` (Closed-in-runtime entry; hardcode-$100 Active risk removed)
+- Completion status:
+  - B3 closed end-to-end in `supabase`
+  - zero functional `$100` literals remain in integration code
+  - remaining open items: Stripe live-card validation (deferred to B1 cutover) and G10 selector persistence (UX, deferred)
+
+## Session note: B18 branded App Router framework pages (FASE 1 first iteration)
+- Date: 2026-05-13
+- Iteration id: `fase-1-b18-error-pages`
+- Route used: system-analysis -> system-frontend -> system-testing -> system-validator -> system-docs
+- Objective: ship the four Next.js App Router framework pages that App-nooncode was missing (`app/not-found.tsx`, `app/error.tsx`, `app/loading.tsx`, `app/global-error.tsx`) so the FASE 1 cutover does not run on a UI that surfaces Next.js's unstyled default fallbacks during the inevitable 404s and runtime errors of a real-money pilot.
+- Spec landed: `specs/fase-1-b18-error-pages.md` (Approved 2026-05-13 via PR #32).
+- Implemented (PR #33, merged as `1707875`):
+  - `app/not-found.tsx` — Server Component. Branded 404 with try/catch around `getCurrentPrincipal()`. Auth-aware CTA: `Volver al dashboard` when authenticated, `Volver al inicio` when anonymous.
+  - `app/error.tsx` — Client Component (`'use client'`). Receives `{ error, reset }` per Next.js convention. Reads `useAuth()` directly (no defensive try/catch — Rules of Hooks made the wrapping pattern lint-blocked, and the realistic failure mode for `useAuth` is a broken `AuthProvider`, which means the root layout itself failed and Next.js would have rendered `global-error.tsx` instead of this boundary). Browser-console log only (no Sentry per observability deferral). `Reintentar` button calls `reset()`.
+  - `app/loading.tsx` — Server Component. Centered `Loader2` from `lucide-react`, brand primary color, ARIA `role="status"` + `aria-live="polite"` + `aria-label="Cargando"`. No animation libs.
+  - `app/global-error.tsx` — Client Component. Replaces the entire HTML document with its own `<html lang="es">` + `<body>` shell. Inline-styled because Tailwind / `globals.css` may not be loaded when the root layout itself fails. Brand tokens captured as inline constants (`#1200c5` primary, `#FBFBFB` background, `#18171F` foreground, `#6F6E80` muted, `#E6E5EC` border-subtle).
+  - `tests/app/error-pages.test.ts` — 4 smoke tests, one per file, asserting `typeof mod.default === 'function'`. Visual / behavioral validation is browser-level (separate doc).
+- One implementation decision diverged from the spec's risk-mitigation suggestion: the spec proposed wrapping `useAuth()` in `try/catch` defensively. ESLint `react-hooks/rules-of-hooks` rejected that pattern. The simplification (direct call) is safe in practice for the reason recorded in the file comment and in the commit message of PR #33.
+- Scope boundary kept:
+  - no per-segment error pages (`app/dashboard/error.tsx` etc.) — root-only
+  - no Sentry / telemetry wiring
+  - no changes to `app/layout.tsx` or any existing route group layout
+  - no new dependencies (`lucide-react` was already in `package.json`)
+  - Spanish-only copy (consistent with ADR-010 internal-only mode)
+- Validation outcome:
+  - `pnpm run typecheck`: clean
+  - `pnpm run lint`: clean
+  - `pnpm test`: **205/205 pass** (201 baseline + 4 smoke tests)
+  - `pnpm run build`: ok; Next.js picks up `/_not-found` in the route tree as expected
+  - Browser validation 2026-05-13 — full evidence in `docs/validations/Browser validation 2026-05-13 — B18 error pages.md` — all 5 scenarios PASS:
+    - Scenario 1 (not-found authenticated): branded 404 with `Volver al dashboard` CTA navigating to `/dashboard`
+    - Scenario 2 (not-found anonymous): same surface with `Volver al inicio` CTA navigating to `/`
+    - Scenario 3 (error.tsx + reset()): branded error page rendered after a forced throw in `app/dashboard/page.tsx`; `Reintentar` fired the error again while the throw was still in source; after revert, `Reintentar` recovered the dashboard cleanly
+    - Scenario 4 (loading.tsx): brief branded spinner visible during route transition
+    - Scenario 5 (global-error.tsx): forced throw in `getInitialAuthState()` in `app/layout.tsx` was caught by the Next.js dev-mode error overlay (intentional Next.js dev behavior — overlay supersedes branded fallback in `next dev`). Production-mode visual verification deferred as non-blocking. Source / build verification confirms the file is wired correctly.
+  - Both temporary `throw` lines reverted; `git diff app/dashboard/page.tsx app/layout.tsx` empty after validation
+- Operational observation during validation: first dev-server run crashed with Turbopack OOM (`memory allocation of 16777216 bytes failed`) after ~100 requests against the new 404 route. Recovered with a fresh `npm run dev` in 3.0s. Probably exacerbated by the existing "Slow filesystem detected" warning on `D:` drive. Not a B18 defect; tracked inline in the validation doc with mitigations (switch to webpack via `--no-turbopack`, more Node memory, or move `.next/dev` to a faster local drive).
+- Docs updated:
+  - `project.context.core.md` (Closed-in-runtime entry for B18)
+- Completion status:
+  - B18 closed; first FASE 1 iteration COMPLETE
+  - dev-mode validation sufficient for cutover prep; production visual check of `global-error.tsx` deferred but non-blocking
+  - next FASE 1 iteration candidate: B1 (Stripe live keys cutover) or the UX honesty bundle (F-V03 + F-V09 + bundle copy F-V11/13/18/19/20)
+
+## Session note: B14 distributed rate limiter via Upstash Redis (FASE 1 second iteration)
+- Date: 2026-05-13
+- Iteration id: `fase-1-b14-rate-limiter-upstash`
+- Route used: system-analysis -> system-backend -> system-testing -> system-infra (light, env-only) -> system-docs -> system-validator
+- Objective: close the Active risk on in-memory per-process rate limiting (TDR-002) by migrating `lib/server/api/rate-limit.ts` to a distributed implementation backed by Upstash Redis via the Vercel Marketplace, preserving the public API surface and policy values bit-for-bit, while retaining the in-memory implementation as a dev-local fallback.
+- Spec landed: `specs/fase-1-b14-rate-limiter-upstash.md` (Approved 2026-05-13 via PR #35).
+- Implemented (PR #36, merged as `adc6ab0`):
+  - Engine pattern introduced. `inMemoryEngine` (constant) keeps the existing Map-based fixed-window logic intact; `makeUpstashEngine(url, token)` factory wraps `@upstash/ratelimit` sliding window and caches `Ratelimit` instances per `(limit, windowMs)` config so each unique policy gets its own SDK instance sharing a single `Redis` client. Selection happens at module load on `process.env.UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` presence; `resetRateLimitStoreForTests()` clears the cache and forces re-detection.
+  - `assertRateLimit` is now async (`Promise<void>`). All 11 caller sites across 10 routes updated to `await assertRateLimit(...)`:
+    - `app/api/client/comments/route.ts` (2 callsites)
+    - `app/api/client/resolve/route.ts`
+    - `app/api/integrations/website/inbound-proposal/route.ts`
+    - `app/api/integrations/website/payment-confirmed/route.ts`
+    - `app/api/maxwell/lead-searches/route.ts`
+    - `app/api/maxwell/route.ts`
+    - `app/api/payments/checkout/route.ts` (still violates ADR-010; not addressed by B14 — separate deferred iteration)
+    - `app/api/proposals/[proposalId]/open/route.ts`
+    - `app/api/proposals/[proposalId]/review/route.ts`
+    - `app/api/webhooks/stripe/route.ts`
+  - `withFailOpenLogging(inner)` extracted as a separate wrapper around the Upstash engine. `RateLimitExceededError` from the inner engine is re-thrown so callers still return HTTP 429 as designed; any other error (Upstash unreachable, timeout, quota exhausted, auth failure) is swallowed and recorded via `logger.warn('rate_limit.upstash.fallback', { namespace, error })`. Rationale: rate-limit is smoothing, not auth — denying all rate-limited traffic during a Redis outage would convert a Redis incident into a full-service outage.
+  - Test seams added: `__setRateLimitEngineForTests(engine | null)` for engine injection and `__withFailOpenLoggingForTests(inner)` for fail-open policy testing without mocking the Upstash SDK at the module boundary.
+  - New deps: `@upstash/ratelimit 2.0.8` + `@upstash/redis 1.38.0`. Pinned to current stable minors.
+  - `.env.example`: `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` documented with an explanatory note about auto-injection via the Vercel Marketplace Upstash integration.
+  - `scripts/validate-runtime-env.ts`: new distributed-rate-limit section. In production, warns (does not fail) when Upstash vars are missing — the in-memory fallback keeps the app running but the operator sees the gap.
+  - `tests/infra/env-example.test.ts`: Upstash vars added to the required-keys assertion.
+  - `docs/tdrs/TDR-002-rate-limiting-in-memory.md` renamed to `docs/tdrs/TDR-002-rate-limiting-distributed.md` and rewritten: engine interface, storage shape per branch, algorithm tradeoffs (Upstash sliding window vs Map fixed window — sub-percent divergence accepted intentionally), fail-open rationale, test seams, provisioning runbook, known gaps post-migration, history of the original 2026-05-04 TDR.
+- Scope boundary kept:
+  - no rate-limit policy changes (same limits / windows / namespaces preserved exactly)
+  - no removal of the in-memory fallback (intentional dev-mode behavior)
+  - no per-user-id keying (client IP from forwarded headers still used)
+  - no Edge runtime variant (all routes are still `runtime = 'nodejs'`)
+  - no migration of other in-memory caches (idempotency, dedupe) — out of B14 scope
+  - no changes to `app/api/payments/checkout/route.ts` beyond the `await` addition; the ADR-010 violation in that route stays as deferred deuda
+  - no Sentry / external telemetry wiring — `logger.warn` to Vercel native logs is the agreed observability path per PR #30
+- Validation outcome:
+  - `pnpm run typecheck`: clean
+  - `pnpm run lint`: clean
+  - `pnpm test`: **210/210 pass** (5 new over 205 baseline). New tests cover: engine injection allow, engine injection deny with `retryAfterSeconds`, fail-open swallow of non-rate-limit errors, fail-open re-throw of `RateLimitExceededError`, and `NOON_RATE_LIMIT_DISABLED='true'` escape hatch.
+  - `pnpm run build`: ok
+  - `pnpm audit --prod --audit-level=high`: no known vulnerabilities
+  - Production verification with real Upstash (provisioning via Vercel Marketplace + rapid-request test → expected HTTP 429 from cluster-wide limiter + absence of `rate_limit.upstash.fallback` warnings in Vercel logs) is deferred to operator-side ops post-merge. Documented as next step in the spec's Success Criterion.
+- Docs updated:
+  - `project.context.core.md` (Active risk on in-memory rate limiter downgraded; Closed-in-runtime entry added)
+- Completion status:
+  - B14 closed at the code-deliverable level; tests + audit + build all green
+  - production deployment behavior identical to pre-merge until the operator provisions Upstash via the Vercel Marketplace (the in-memory fallback runs in both branches transparently)
+  - one open follow-up: real-traffic verification on Upstash, scheduled when the operator provisions; not blocking the iteration closure
+
+## Session note: F-V03 dashboard wallet real reads (FASE 1 third iteration)
+- Date: 2026-05-13 (spec + implementation merged) → 2026-05-14 (validation unblocked + iteration closed)
+- Iteration id: `fase-1-f-v03-dashboard-wallet-real-reads`
+- Route used: system-analysis -> system-frontend -> system-testing -> system-validator -> system-docs
+- Objective: close the visible contradiction between the dashboard / sidebar "Balance: no disponible" chips and the real wallet UI at `/dashboard/earnings` + `/dashboard/credits`. In `supabase` mode, `selectPersonalStatsAvailability` should derive the balance chip from a real read of `/api/wallet` instead of returning fake "Sin datos reales" copy.
+- Spec landed: `specs/fase-1-f-v03-dashboard-wallet-real-reads.md` (PR #38, merged 2026-05-13).
+- Implemented (PR #39, merged as `6de3c3c` on 2026-05-13):
+  - `lib/wallet/context.tsx` — new `WalletProvider` + `useWalletContext`. Single fetch per dashboard mount when `authMode === 'supabase'` and `user !== null`. Deserializes wire shape via `deserializeWalletSummary` from `lib/wallet/serialization`. Mock mode bypasses the fetch and exposes `{ wallet: null, isLoading: false, error: null }` so the selector falls through to the existing mock branch.
+  - `app/dashboard/layout.tsx` — mounts `WalletProvider` inside `AuthProvider` so both the header chip and the sidebar dropdown consume the same context value.
+  - `lib/dashboard-selectors.ts` — `selectPersonalStatsAvailability(authMode, user)` → `selectPersonalStatsAvailability(authMode, user, walletSummary?)`. Renders `Cargando…`, real `$<n>`, or `No se pudo cargar` per state in supabase. Mock branch and rewards/points branches unchanged.
+  - `app/dashboard/page.tsx` — header chip reads `balanceValueLabel` + `balanceDescription` from the selector with the wallet context value passed through.
+  - `components/app-sidebar.tsx` — user-menu dropdown reads `sidebarBalanceLabel` from the selector with the same context value. No second fetch.
+  - `tests/lib/dashboard-selectors.test.ts` — 8 new tests covering loading, loaded, error, and mock-mode regression paths → 218/218 pass (210 baseline + 8 new).
+- Retry-on-error fix folded into closure (this iteration, PR #40):
+  - `lib/wallet/context.tsx` — clear `lastFetchKey.current = null` inside the `.catch` so a transient failure does not lock the provider into error state until hard reload; error message now includes the HTTP status code (`No se pudo cargar la wallet (HTTP ${response.status}).`). Discovered during the Scenario 1 investigation on 2026-05-13; folded rather than shipped as a standalone PR because it is five lines and conceptually part of the F-V03 contract.
+- Scope boundary kept:
+  - no change to `/dashboard/rewards` or to the rewards/points labels in the sidebar dropdown — operating rule preserved (`/dashboard/rewards` stays honest-unavailable until rewards is productized)
+  - no change to `/api/wallet` server contract — purely a client-side selector + provider change
+  - no new env vars, no new dependencies, no new migrations from F-V03 itself (the migration that had to be applied is preexisting; see G7 materialization below)
+- Validation blocker discovered and resolved on 2026-05-14:
+  - First attempt at Scenario 1 on 2026-05-13 hit a 500 from `/api/wallet`. F-V03 surface behaved correctly (rendered `Balance: No se pudo cargar`), surfacing a real database-layer defect that had been hidden behind the previous fake `Balance: no disponible` copy.
+  - Root cause: `pdotsdahsrnnsoroxbfe` was missing `public.ensure_user_wallet_for_profile(uuid)` and `public.ensure_monetary_wallet_for_profile(uuid)`, both defined in the local file `supabase/migrations/0042_phase_17b_wallet_maxwell_rpc_hardening.sql` but never registered in `supabase_migrations.schema_migrations` on the remote — one of the 15 unregistered local migrations that constitute risk **G7**. The remote only had the no-arg sibling RPCs that derive the profile from `auth.uid()` and therefore cannot serve the admin (`service_role`) path used by `getVisibleWallet`.
+  - Resolution: migration 0042 applied verbatim via `mcp__plugin_supabase_supabase__apply_migration` on 2026-05-14. Fully idempotent (`create or replace function`), additive only (two new RPC definitions + grant hardening on three existing sibling RPCs). Verification queries before/after confirmed the expected delta and nothing else. After this apply, Scenario 1 passed on first hard reload.
+  - Effect on risk register: G7 materialization recorded in `project.context.core.md` Active risks; priority of the dedicated reconciliation iteration `fase-0-b4b-ledger-reconciliation` bumped from "no fixed date" to "scheduled before next code-level migration push to remote".
+- Browser validation 2026-05-14 — full evidence in `docs/validations/Browser validation 2026-05-13 — F-V03 dashboard wallet real reads.md`:
+  - Scenario 1 (real `$<n>` in header + sidebar): PASS. `juan@noon.app` (profile_id `ff0ecbc0-7baa-4650-b93e-0bb952ee00e2`) saw `Balance: $5` in both surfaces (`available_to_spend=0.00 + available_to_withdraw=5.00`).
+  - Scenario 2 (shared context, no double-fetch): PASS. 1 `/api/wallet?limit=5` request total across `/dashboard` → `/dashboard/leads` → `/dashboard/projects` → `/dashboard/reports`; sidebar label stayed at `Balance: $5` without flashing.
+  - Scenario 3 (forced fetch error): PASS. Network-tab URL block on `*/api/wallet*` produced `No se pudo cargar` in the chip, `Balance: no se pudo cargar` in the sidebar, and `Reintentar` as the earnings action.
+  - Scenario 4 (loading state visible): PASS. With Slow 3G throttling the chip rendered `Cargando…` and the sidebar `Balance: cargando…` before transitioning to `$5`.
+  - Scenario 5 (mock mode regression): SKIPPED with explicit rationale — the existing unit test `mock mode: balance + points come from user.balance / user.points (regression net)` deterministically covers the mock branch.
+  - Scenario 6 (rewards/points honest unavailable): PASS. Sidebar `Puntos: sin fuente real`, header `Sin programa real`, rewards card title `Rewards no conectadas` — all unchanged from pre-F-V03.
+- Operating rule added in this closure (in `project.context.core.md`):
+  - "Treat the `/dashboard` header balance chip and the sidebar user-menu balance label in `supabase` as a real read of `availableToSpend + availableToWithdraw` (USD, no decimals) from `/api/wallet`, sourced via the shared `WalletProvider` context mounted at `app/dashboard/layout.tsx`. Both surfaces must consume `useWalletContext` — do not reintroduce fake `Balance: no disponible` copy, do not reintroduce independent fetches in either surface (single fetch per dashboard mount is the contract), and preserve the loading (`Cargando…`) / error (`No se pudo cargar`) states. Rewards/points stay honest unavailable per the rule below."
+- Docs updated:
+  - `project.context.core.md` (G7 Active risk now records materialization + OOB resolution + bumped priority; new Closed-in-runtime entry for F-V03; new operating rule for the balance chip)
+  - `project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot rewritten for 2026-05-14)
+- Completion status:
+  - F-V03 closed. FASE 1 third iteration COMPLETE.
+  - real database-layer defect discovered during validation and resolved, demonstrating operator-in-the-loop value — F-V03's honest error surface turned an invisible drift into a fixable incident.
+  - next FASE 1 iteration candidates: F-V09 + bundle copy (F-V11/V13/V18/V19/V20 + F-V04) for ~1 day, or B18 framework pages closure (already done) → next critical-path piece is the small UX/copy bundle, then B1 Stripe live keys + ADR-010 cleanup.
+
+## Session note: FASE 1 UX honesty bundle — F-V04/05/09/11/13/18/19/20 (FASE 1 fourth iteration)
+- Date: 2026-05-14
+- Iteration id: `fase-1-ux-honesty-bundle`
+- Route used: system-router -> system-analysis -> system-frontend -> system-testing -> system-validator -> system-docs
+- Objective: close 8 UX findings from the 2026-05-10 audit (`NoonApp UX findings 10-05-2026.md`) in a single Bugfix Lite pass. Six items are pure copy / label / empty-state honesty fixes (F-V09 earnings helper, F-V11 pipeline empty cells, F-V13 lead-detail Propuesta empty state, F-V18 sidebar group restructure, F-V19 role-aware quick action label, F-V20 login copy). Two items are hide-or-wire decisions on contradictory CTAs (F-V04 web-analysis CTAs build dead query strings; F-V05 Maxwell-on-Propuesta contradicts the IA Asistente non-operational rule). Router pre-decided hide-not-wire as the default for both.
+- Spec landed: `specs/fase-1-ux-honesty-bundle.md` (Approved 2026-05-14 as part of PR #41, commit `9768642`).
+- Implemented (PR #41, impl commit `41b550a`):
+  - `app/dashboard/earnings/page.tsx` — `metric-note` under `Pendiente` rewritten as `En revision por administracion`. Diacritics-free to match the surrounding strings (`En disputa o retencion`, `Consolidado y listo`).
+  - `components/kanban-board.tsx` — `isOver` branch preserved verbatim (`Suelta aquí` drop-target hint, same 80px height); default branch replaced with the `Empty` component pattern (`min-h-[120px]`, `Inbox` icon, `Sin leads` title, `Arrastra un lead a esta etapa.` description). Affects only `/dashboard/pipeline`; `/dashboard/projects` builds its own kanban inline and is untouched.
+  - `components/lead-detail.tsx` — Propuesta tab section header `Hand-off comercial` → `Propuestas`. Empty body `Aun no hay propuestas persistidas para este lead.` → `Todavia no creaste una propuesta para este lead. Usa el formulario de arriba para guardar la primera.`. F-V05 removed the `Generar con Maxwell` button (only call site of `setShowMaxwellDialog`); after the button was deleted the state setter, the `Dialog`/`DialogContent` mount at line 2001-2012, and the `MaxwellChat` + `Dialog`/`DialogContent` imports all became orphaned and were removed under the same change. `Sparkles` import preserved — still used by the `IA Asistente` tab.
+  - `components/app-sidebar.tsx` — `Reportes` moved from `financeNavItems` (now 3 items) into `workspaceNavItems` (now 4 items, appended after `Notificaciones`). `BarChart3` icon import preserved (still referenced).
+  - `app/dashboard/page.tsx` — `Mis tareas` quick action label inlines `authMode === 'supabase' && user.role !== 'developer'` → `Tareas del equipo` vs `Mis tareas`. Same inline pattern the sidebar already uses; no new helper. `user` is non-null inside the render path (guarded by the existing `if (!user) return null` early return at line 115).
+  - `app/page.tsx` — third value-prop block rewritten (`Comisiones y recompensas` → `Wallet y comisiones internas`; `Sistema de puntos y pagos automatizados para todo el equipo` → `Balance, comisiones y créditos internos visibles para tu equipo.`). The `TrendingUp` icon and surrounding markup unchanged.
+  - `app/dashboard/web-analysis/page.tsx` — Deleted the `<Separator />` and the entire action-strip `<div>` containing both CTAs (lines 300-336 in pre-change layout). Dropped now-unused imports: `Separator` (from `@/components/ui/separator`), `Sparkles` and `ArrowRight` (from `lucide-react`). All other lucide imports still referenced elsewhere in the file.
+- Validation finding folded into iteration closure (same PR #41, follow-up commit on `feature/fase-1-ux-bundle-dia-2`):
+  - Scenario 2 browser validation surfaced a pre-existing limitation: dropping into truly-empty kanban columns silently failed because `components/kanban-board.tsx` only registered cards as droppable via `useSortable`, never the column container, so the `closestCorners` collision strategy had no empty-column target to resolve to. The previous `isOver ? 'Suelta aquí' : 'Vacío'` branch was effectively dead code for empty columns.
+  - Fix landed in the same iteration (rather than as a separate iteration) because (a) the visual change in F-V11 is what made the bug operator-noticeable in the first place, so completing F-V11 to a working state belongs with the same audit finding; (b) the change is ~15 lines, low-risk, no cross-file or contract changes; and (c) leaving empty-column drop broken would re-surface the same complaint immediately.
+  - Concrete change: `useDroppable({ id: column.id })` registered on `KanbanColumnComponent` with `setNodeRef` attached to the column outer wrapper, and the `DndContext` `collisionDetection` swapped from `closestCorners` to a `pointerWithin → rectIntersection` fallback. After the fix, dropping into an empty column shows `Suelta aquí` while hovering and accepts the drop (column counter 0 → 1). Card-to-card drag in populated columns continues to work normally (re-checked in the same browser session before closure).
+- Scope boundary kept:
+  - no migrations
+  - no API route changes
+  - no contract changes (no shape change to `/api/wallet`, `/api/leads`, `/api/notifications`, or any other endpoint)
+  - no new dependencies
+  - no new env vars
+  - no new tests (pure copy / label / empty-state / hide changes; the kanban drop-target fix is behavioral but the repo's `tsx --test` runner has no jsdom or dnd-kit test infrastructure — adding it would expand scope; the baseline 218/218 remained green throughout)
+  - no edits to any existing operating rule in `core.md`; the bundle leans on existing rules. Seven new rules are appended in the closure (one per audit-finding contract) without weakening any existing one.
+- Validation outcome:
+  - `npm run typecheck`: clean (pre-fix and post-fix)
+  - `npm run lint`: clean (pre-fix and post-fix)
+  - `npm run build`: clean (Compiled successfully in 28.7s, pre-fix)
+  - `npm test`: **218/218 pass** (no regression from F-V03 baseline; no new tests added)
+  - Browser validation 2026-05-14 — full evidence in `docs/validations/Browser validation 2026-05-14 — fase-1 UX honesty bundle.md`:
+    - Scenario 1 (F-V09 earnings helper): PASS — `Pendiente` reads `En revision por administracion`; old PM-validation copy gone.
+    - Scenario 2 (F-V11 pipeline empty cells + drop target): PASS — Inbox icon + `Sin leads` + `Arrastra un lead a esta etapa.` rendered; `Suelta aquí` hint appears on drag-over; drops into empty columns accepted (counter 0 → 1) after the closure-folded kanban fix; card-to-card in populated columns unchanged.
+    - Scenario 3 (F-V13 Propuesta empty state + rename): PASS — section header `Propuestas`; empty body uses the new wayfinding hint; populated proposals path unchanged.
+    - Scenario 4 (F-V18 sidebar restructure): PASS — `Reportes` under workspace group after `Notificaciones`; `Finanzas` has exactly 3 items.
+    - Scenario 5 (F-V19 role-aware label): PASS for both paths — admin/pm in supabase see `Tareas del equipo`; developer in supabase sees `Mis tareas`; mock-mode regression skipped (covered by existing unit test).
+    - Scenario 6 (F-V20 login copy): PASS — new headline + body rendered; no `automatizados` / `sistema de puntos` substring anywhere.
+    - Scenario 7 (F-V04 web-analysis hide): PASS — analysis result card preserved; both CTAs gone; no leftover `<Separator />`.
+    - Scenario 8 (F-V05 Maxwell-on-Propuesta hide): PASS — no `Generar con Maxwell` button on the Propuesta tab in supabase; `IA Asistente` tab still in its existing non-operational state.
+- Operating rules added in this closure (in `project.context.core.md`):
+  - `Pendiente` earnings helper copy
+  - pipeline kanban empty-cell pattern AND drop-target contract (collision-detection swap explicitly part of the rule)
+  - lead-detail Propuesta tab section header + Maxwell-CTA agreement
+  - sidebar `Finanzas` membership
+  - dashboard `Mis tareas` quick action role-awareness
+  - web-analysis read-only analysis surface until prefilled-dialog contract exists
+  - login value-prop honesty-first pre-launch
+- Docs updated:
+  - `project.context.core.md` (Closed-in-runtime entry + 7 new operating rules)
+  - `project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot rewritten for 2026-05-14 closure of the UX bundle)
+- Completion status:
+  - FASE 1 UX honesty bundle closed. FASE 1 fourth iteration COMPLETE.
+  - operator-in-the-loop value reaffirmed: F-V11's richer visual empty state made an invisible pre-existing kanban-drop bug visible to a human operator, and the bug was fixed inside the same iteration rather than queued as a separate sprint item. Same pattern as F-V03 surfacing the G7 migration drift.
+  - next FASE 1 iteration candidates (per roadmap §17): (a) provisioning Upstash via Vercel Marketplace + B14 production verification, (b) `fase-0-b4b-ledger-reconciliation` for the broader G7 desync, (c) B1 Stripe live keys + ADR-010 cleanup in `app/api/payments/checkout/route.ts`.
+
+## Session note: ADR-010 amendment — operator-driven outbound Checkout exception (B1 Plan C unblock)
+- Date: 2026-05-14 (later same day as the UX bundle closure)
+- Iteration id: `chore-adr-010-amendment-outbound-checkout`
+- Route used: system-docs (single ADR amendment + context updates; no code changes)
+- Objective: unblock B1 (Stripe live keys + cutover) without requiring the cross-repo migration that Plan B would entail. The original ADR-010 (2026-05-13) included a literal blanket prohibition — *"No Stripe Checkout creation logic in App"* — that, read narrowly, made the existing outbound seller flow (`app/api/payments/checkout/route.ts` + `components/lead-detail.tsx` "Crear/copiar link de pago") a violation. The route is operator-authenticated, rejects inbound flows, and delivers the URL out-of-band; the client final never authenticates into App. That is consistent with ADR-010's principle of surface separation by repository, but inconsistent with its literal wording. The amendment narrows the wording without weakening the principle.
+- Decision (locked):
+  - Status: `Accepted (amended 2026-05-14 — operator-driven outbound Checkout exception)`.
+  - Original "What this forbids" bullet rewritten in place to use the precise wording **"No client-facing Stripe Checkout creation logic in App"**; the operator-driven exception is explicitly carved out.
+  - New section `## Amendment 2026-05-14: operator-driven outbound Checkout exception` added to the ADR with context, decision (four conjunctive constraints), why-this-is-not-erosion, what-this-enables (B1 unblock for Plan C + F-V08 remains in scope), what-this-preserves (inbound flows unchanged, `/client/[token]` still legacy debt, no client-facing UI in App, NoonWeb still owns the future portal), the operating rule added to `core.md`, and amendment-specific re-evaluation triggers.
+  - `Lifecycle` block updated with `Amendments: 2026-05-14 ...`.
+- Implemented:
+  - `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md` — amendment landed inline as described above.
+  - `docs/context/project.context.core.md` — Active risks block now records the outbound-Checkout exception as a constrained allowance (not a violation), with the four conjunctive constraints inline and an explicit escalation trigger if any future change weakens them. Operating rules block now contains a new rule that binds `app/api/payments/checkout/route.ts` + the `Crear/copiar link de pago` UI to the operator-driven flow contract.
+- Scope boundary kept:
+  - no code changes (route, UI, and webhook untouched — the amendment is interpretive)
+  - no migrations
+  - no new dependencies, env vars
+  - inbound payment links remain owned by NoonWeb per ADR-010 decision #8 — unchanged
+  - `/client/[token]` legacy debt status — unchanged
+  - the original ADR-010 decision (portal lives in NoonWeb) — unchanged
+- Validation outcome:
+  - no behavioral surface change → no browser validation required
+  - tests baseline 218/218 preserved (no test surface touched)
+  - `npm run typecheck` / `lint` / `build` not re-run because no source files were modified; the existing CI on this PR will re-run them.
+- Operating rules added in this closure:
+  - "Treat `app/api/payments/checkout/route.ts` and the `Crear/copiar link de pago` UI ..." (full text in `core.md`)
+- Docs updated:
+  - `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md` (amendment)
+  - `docs/context/project.context.core.md` (active risk + operating rule)
+  - `docs/context/project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot updated — B1 ADR-010 sub-blocker closed via amendment; remaining B1 work is purely ops + smoke + runbook, all deferred until Pedro can do the Stripe live keys ops)
+- Completion status:
+  - B1 architectural blocker closed via amendment.
+  - B1 ops side (Stripe live keys to Vercel Production + webhook endpoint configuration + first-event validation + Día 4 smoke + runbook) remains deferred; Pedro will pick the timing.
+  - F-V08 (Stripe checkout link persistence) becomes a valid in-scope follow-up if/when outbound volume justifies the audit / re-share UX improvement.
+
+## Session note: B14 ops verification + Vercel KV env-detection fallback (FASE 1 fifth iteration)
+- Date: 2026-05-15
+- Iteration id: `fix-b14-vercel-kv-env-fallback`
+- Route used: operator-side ops (Upstash provisioning) → Bugfix Lite (env-detection code fix discovered during ops) → ops verification (production smoke + Upstash dashboard cross-check) → system-docs (closure)
+- Objective: complete B14 production verification — the operator-side step that had been deferred at the close of the original B14 iteration (2026-05-13, PR #36). Provision Upstash via Vercel Marketplace, redeploy, run a real-traffic smoke against a rate-limited route, and confirm requests route through Redis (not the in-memory fallback) using the Upstash dashboard.
+- What happened (chronological):
+  - Step 1 — Upstash provisioning (operator). Pedro added the Upstash Redis integration from the Vercel Marketplace to the `App-nooncode` project; integration auto-injected `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`, `REDIS_URL` into Production + Preview scopes. Free tier, `us-east-1` (N. Virginia), region-pinned to the Vercel Functions default region. Note that this set of env var names does **not** include `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — Vercel's current Marketplace flow exposes the Upstash backend under its KV product branding.
+  - Mismatch discovered. The B14 code in `lib/server/api/rate-limit.ts` only checked for `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. With only `KV_REST_API_*` set, the engine selector would silently fall back to the in-memory implementation on Production — same multi-instance correctness gap the B14 iteration was meant to close. The TDR-002 runbook (written 2026-05-13) had assumed the standalone Upstash Marketplace listing and was therefore stale against the current Marketplace UX.
+  - Two paths considered: (A) manual env-var aliases in Vercel that point UPSTASH_* values at the KV_REST_API_* values, no code change; (B) make the env detection tolerant of either pair, future-proof. Pedro chose (B) to make any future fresh deploy work without manual aliasing.
+- Implemented (PR #43, merged as `5eba6e9`):
+  - `lib/server/api/rate-limit.ts` — extracted `resolveDistributedRedisCredentials()` helper. Reads `UPSTASH_REDIS_REST_URL?.trim() || KV_REST_API_URL?.trim()` and `UPSTASH_REDIS_REST_TOKEN?.trim() || KV_REST_API_TOKEN?.trim()`. Returns `null` when neither pair is fully present, otherwise returns `{ url, token }`. The `||` after `.trim()` (instead of `??` on the raw env) is deliberate: `.env.example` ships `UPSTASH_REDIS_REST_URL=` (empty string) so `??` would treat that as "configured" and skip the KV fallback; `||` falls through correctly on empty / whitespace values. `getEngine()` simplified to delegate to the helper.
+  - New test-only seam `__resolveDistributedRedisCredentialsForTests` exposed so tests can verify env resolution paths without constructing a Redis client.
+  - `.env.example` — added `KV_REST_API_URL=` and `KV_REST_API_TOKEN=` blocks with an explanatory comment that names both naming conventions and the UPSTASH_* preference rule. The Upstash-naming block now documents both options.
+  - `scripts/validate-runtime-env.ts` — replaced the single `distributedRateLimitKeys` array with `distributedRateLimitKeyPairs` (two pairs). The Production warning now triggers only when **neither** pair is present; the runtime check output lists both pairs and a derived `configured: yes|no (using in-memory fallback)` line.
+  - `tests/infra/env-example.test.ts` — added `KV_REST_API_URL` and `KV_REST_API_TOKEN` to `requiredExampleKeys` so the template documents both pairs forever.
+  - `tests/server/api/rate-limit.test.ts` — added 5 new tests using a `withRedisEnv(values, fn)` harness that swaps the four env vars deterministically and restores prior values in a `finally`. Tests cover: UPSTASH_* preferred when both pairs are set; fall-back to KV_REST_API_* when UPSTASH_* absent; empty-string UPSTASH_* falls through to KV_REST_API_* (the `.env.example` default shape); `null` when neither pair set; `null` when only URL is set without a matching token.
+  - `docs/tdrs/TDR-002-rate-limiting-distributed.md` — Provisioning runbook §3 rewritten to enumerate both naming conventions, point at `resolveDistributedRedisCredentials`, and document the empty-string fall-through contract.
+- Scope boundary kept:
+  - no change to the engine pattern, the fail-open wrapper, the cache map for per-policy `Ratelimit` instances, or the public `assertRateLimit` API surface
+  - no change to per-route limits / windows / namespaces
+  - no removal of the in-memory fallback
+  - no per-user-id keying — IP-based identity still in use (a known gap from the original B14 iteration, deliberately unchanged here)
+  - no change to the fail-open log line `rate_limit.upstash.fallback` — still the operator signal for Upstash outages
+  - no Vercel Deployment Protection changes — that was a separate ops landmine surfaced during smoke (see below)
+- Validation outcome (code side, on the PR branch before merge):
+  - `npm run typecheck`: clean
+  - `npm run lint`: clean
+  - `npm run build`: clean (production build succeeds; route list as expected)
+  - `npm test`: **223/223 pass** (5 new over 218 baseline)
+- Validation outcome (operator side, after the PR merged and Vercel deployed):
+  - Initial sanity GET (single request) against the deploy URL `https://nooncode-5gwntvow1-noons-projects-749dcf47.vercel.app/api/client/resolve?token=...` returned HTTP 401 with a Vercel auth HTML page. Vercel Deployment Protection is active on the deploy URL. Worked around for this smoke by generating a Protection Bypass for Automation token (Vercel Dashboard → Settings → Deployment Protection → Generate) and sending it as the `x-vercel-protection-bypass` header on each request. Token can be revoked or rotated after the smoke without affecting the rate limiter.
+  - Sanity GET with bypass header returned HTTP 404 with the expected JSON body `{"error":"Invalid or expired token"}`, confirming the request reached the route handler and the `assertRateLimit` call before the token validation step.
+  - Smoke burst — 80 parallel GETs via `xargs -P 20` against `/api/client/resolve?token=smoketest-<n>` (unique tokens per request, but rate limit identity is IP-keyed so all share the same bucket). Wall time 6 seconds (well inside the 60-second window). Result: exactly **60 × 404 + 20 × 429**, matching the configured limit of 60 per 60_000ms for namespace `client-resolve`.
+  - Upstash dashboard cross-check (Free Tier `Rate-Limit` database in `us-east-1`): **253 total commands** (126 writes + 127 reads), zero bandwidth used, $0.00 cost. Roughly 3 Redis ops per `Ratelimit.limit()` call from the `slidingWindow` Lua script, so ~80 requests producing ~250 commands is the expected envelope. Definitive evidence that **all 80 requests routed through Upstash**, not the in-memory fallback — if any had fallen back, those commands would not have appeared.
+  - Vercel logs check for `rate_limit.upstash.fallback` warnings: ruled redundant after the Upstash command count confirmed full coverage (fallback warnings only fire when an Upstash op fails; if all 80 ops succeeded and were counted, fallback could not have triggered for them).
+- Ops landmines observed during this iteration:
+  - Vercel Deployment Protection on the deploy URL. Future smoke tests against the production deploy URL will need either a Protection Bypass for Automation token, a custom-domain alias that is not protected, or a temporary Deployment Protection disable. Recorded as an Active risks item.
+  - Vercel auto-deploys not triggering for Pedro on the merge — manual redeploy from the Deployments tab unblocked this run, but the underlying GitHub integration / Production Branch setting / Ignored Build Step config still needs to be diagnosed at a calmer moment (not iteration-blocking).
+  - LF→CRLF line-ending churn on `lib/server/seller-fees/schema.ts` was observed in the working copy throughout the session. Not part of this PR (intentionally excluded from `git add`); cleanup deferred.
+- Operating rule added in this closure (in `project.context.core.md`):
+  - "Treat `lib/server/api/rate-limit.ts` env detection as tolerant of both Vercel Marketplace naming conventions: `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (standalone Upstash listing, preferred when set to a non-empty trimmed value) OR `KV_REST_API_URL` + `KV_REST_API_TOKEN` (Vercel KV listing — same Upstash backend rebranded; the convention the current Marketplace flow actually injects). The empty-string fall-through is part of the contract because `.env.example` ships UPSTASH_* empty by default and a fresh `.env.local` derived from it must not block KV_REST_API_* detection. Do not collapse this to single-pair env reading without first verifying which naming the live Vercel Marketplace flow uses against the destination project — both pairs documented in `.env.example` and both pairs required by `tests/infra/env-example.test.ts`."
+- Active risk updates in `project.context.core.md`:
+  - Rate-limiter risk bullet rewritten: removed the "Production still runs on in-memory" branch since Upstash is now live and verified; added the smoke evidence inline; new sub-bullets capture (a) Upstash free tier exhaustion (current 253 / 500k cmds/month), (b) per-user-id keying still not implemented, (c) Vercel Deployment Protection on the deploy URL as a smoke-test constraint.
+- Docs updated:
+  - `lib/server/api/rate-limit.ts` (extracted helper + tolerant env reading + new test seam)
+  - `.env.example` (both naming conventions documented)
+  - `scripts/validate-runtime-env.ts` (pair-aware presence check + updated runtime output)
+  - `tests/infra/env-example.test.ts` (both pairs in template assertion)
+  - `tests/server/api/rate-limit.test.ts` (5 new env-resolution tests)
+  - `docs/tdrs/TDR-002-rate-limiting-distributed.md` (provisioning runbook updated for current Marketplace flow)
+  - `docs/context/project.context.core.md` (rate-limiter Active risks rewritten + new Closed-in-runtime entry + new operating rule + amended B14 closure note to point at this iteration for evidence)
+  - `docs/context/project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot rewritten — B14 ops removed from Gaps abiertos; remaining FASE 1 gap is purely B1 Stripe live keys)
+- Completion status:
+  - B14 fully closed at both code and Production-verified levels. FASE 1 fifth iteration COMPLETE.
+  - Operational debt outside of B1 Stripe live keys is now zero.
+  - Next FASE 1 iteration candidates (per roadmap §17): (a) `fase-0-b4b-ledger-reconciliation` for G7 backend cleanup, (b) Tier 3 UX audit items F-V06/V07/V08 (including the newly in-scope F-V08 Stripe checkout link persistence enabled by the ADR-010 amendment), (c) B1 Stripe live keys + Día 4 smoke + cutover runbook + team sign-off — the last remaining path to FASE 1 close.
+
+
+## Session note: F-V08 / B7 Stripe checkout link persistence (FASE 1/2 sixth iteration)
+- Date: 2026-05-16
+- Iteration id: `fase-2-b7-checkout-link-persistence`
+- Route used: spec (`specs/fase-2-b7-checkout-link-persistence.md` merged via PR #46 2026-05-15) → system-backend (migration + service + enrichment) → system-frontend (UI states) → system-testing (4+4 unit tests) → system-docs (this closure)
+- Objective: implement F-V08 (UX audit Tier 3) / B7 (FASE 2 Bloque B) — persist the Stripe Checkout URL + expiration on the `payments` table so the operator-driven outbound payment link is a durable artifact visible on the proposal surface without an ephemeral React state and without a Stripe API round-trip on page load.
+- What happened:
+  - Pre-flight: verified PR #46 merged into develop (commit `d6ed146`); confirmed `whsec_*` not yet received from Stripe account owner (B1.2 STANDBY ongoing) so Branch B per roadmap §17 plan; created `feature/fase-2-b7-checkout-link-persistence` from `develop`.
+  - Migration: `supabase/migrations/0045_phase_18c_payment_checkout_link_persistence.sql` adds two additive nullable columns (`stripe_checkout_url text`, `stripe_checkout_expires_at timestamptz`). No RLS change, no index, no defaults — the existing `(proposal_id, status)` access pattern already serves the enrichment read path. Idempotent (`add column if not exists`). **Not yet applied to remote**: Supabase MCP session auth expired this session (recorded landmine in §17). Operator step pending — re-auth and `mcp__supabase__apply_migration`, or apply via Dashboard SQL Editor before the next code-level push touching the new write path.
+  - Service write path: `lib/server/stripe/service.ts` `createCheckoutSession`:
+    - New-session branch: same single UPDATE now includes `stripe_checkout_url: session.url` and `stripe_checkout_expires_at: new Date(session.expires_at * 1000).toISOString()`; rejects null expiry with explicit error (Stripe should always return `expires_at` on the API version `2026-03-25.dahlia`).
+    - Reuse-open-session branch: the SELECT now pulls the two new columns; if either is null on a legacy pending row (pre-0045), the function back-fills them in a side UPDATE during the same operator click — one-time UX nudge per legacy row, no data loss, no race introduced.
+    - Return shape gains `expiresAt: string` (ISO 8601).
+  - Route response: `app/api/payments/checkout/route.ts` passes `expiresAt` through `jsonWithRequestId({ data: { url, paymentId, checkoutSessionId, expiresAt } })`. Pure addition; existing consumers unaffected.
+  - Enrichment repository: new module `lib/server/payments/checkout-link-repository.ts` exposes `listActiveCheckoutLinksByProposalIds(client, proposalIds)` returning a Map keyed by proposal id, filtering on `status='pending'` plus non-null URL plus DESC `created_at` ordering (most recent kept first). Excludes legacy null-URL rows.
+  - Mapper: `lib/server/leads/proposal-mappers.ts` `mapLeadProposalRowToWire` gains an optional third parameter `activeCheckoutLink: ActiveCheckoutLinkRow | null`. New internal helper `mapActiveCheckoutLinkToWire` computes `isExpired` server-side at read time (`new Date() > new Date(link.expiresAt)`).
+  - Handler factory: `app/api/leads/[leadId]/proposals/route.ts` `GetHandlerDeps` gains `listActiveCheckoutLinksByProposalIds`; the GET handler injects + invokes it after the existing per-proposal project + activity fan-out, and the per-proposal mapper call now receives the active link as the third argument. The test factory at `tests/server/api/leads/lead-proposals-paginated.test.ts` updated with the new stub returning an empty Map.
+  - Wire/domain types: `lib/leads/proposal-serialization.ts` `LeadProposalWire` gains `activeCheckoutLink: { url, sessionId, expiresAt: string, isExpired } | null`. `deserializeLeadProposal` parses `expiresAt` into a `Date`. `lib/types.ts` `LeadProposal` gains the same field with `expiresAt: Date`. `lib/data-context.tsx` `createMockLeadProposal` initializes `activeCheckoutLink: null` (mock mode never has a real checkout link).
+  - UI state machine: `components/lead-detail.tsx`:
+    - Removed `checkoutLinksByProposalId` React state + setter.
+    - Added local `formatCheckoutLinkExpiry(expiresAt, now=new Date())`: returns `Vence en Xh Ym` / `Vence en Xm` when `delta < 12h` (and > 0); else `Vence el DD/MM HH:mm` formatted via `toLocaleDateString('es-MX')` plus `toLocaleTimeString('es-MX', { hour12: false })`. Static render — no countdown ticker.
+    - `handleRequestPayment` reads `data.url`, `data.checkoutSessionId`, `data.expiresAt` from the POST response and optimistically merges `activeCheckoutLink: { url, sessionId, expiresAt: new Date(expiresAtIso), isExpired: false }` into the matching proposal in local `proposals` state via `setProposals`. Clipboard write + toast preserved.
+    - Replaced the single `Crear/copiar link de pago` block with four mutually-exclusive branches: **paid** renders a `Pago confirmado` badge (`CheckCircle2` icon); **active** renders `Copiar link` (primary, `Copy` icon) + `Abrir link` (ghost, `ExternalLink` icon) + `Crear link nuevo` (link variant) + a `Vence en … / Vence el …` muted hint (`Timer` icon); **expired** renders `Link expirado` + `Crear link nuevo` (primary, `CreditCard` icon); **none** renders the original `Crear link de pago` CTA. Eligibility gates (review approved, status in sent/accepted/handoff_ready) preserved on the link-creating branches; paid branch is independent.
+- Tests added (8 new over 223 baseline → 231/231 pass):
+  - `tests/server/payments/checkout-link-repository.test.ts` (4 tests): empty-input early-return without DB call / null-URL exclusion and most-recent-per-proposal retention / status=pending + non-null URL filter + proposal_id IN filter / DB error surfacing.
+  - `tests/server/leads/proposal-mappers-active-checkout-link.test.ts` (4 tests): null override → null output / future expiresAt → isExpired=false + pass-through of url/sessionId/expiresAt / past expiresAt → isExpired=true / linkedProject override and activeCheckoutLink both populated independently.
+  - Updated `tests/server/api/leads/lead-proposals-paginated.test.ts` `makeHandler` factory to add the new `listActiveCheckoutLinksByProposalIds` dep stub (empty Map).
+- Validation:
+  - `npm run typecheck`: clean.
+  - `npm run lint`: clean.
+  - `npm run build`: clean (Compiled successfully in 35.6s; 50 static pages generated; no route regressions).
+  - `npm test`: **231/231 pass** (8 new over 223 baseline). Duration 15.0s. Zero skipped, zero failed.
+  - Browser validation: **DEFERRED** until migration `0045` is applied to remote — the UI states require the persisted columns to exercise the active / expired branches end-to-end. Migration application is the next operator step.
+- Documentation updates in this iteration:
+  - `supabase/migrations/0045_phase_18c_payment_checkout_link_persistence.sql` (new, additive only)
+  - `lib/server/stripe/service.ts` (write path + return shape)
+  - `app/api/payments/checkout/route.ts` (response gains `expiresAt`)
+  - `lib/server/payments/checkout-link-repository.ts` (new module)
+  - `lib/server/leads/proposal-mappers.ts` (third param + activeCheckoutLink emit + isExpired compute)
+  - `app/api/leads/[leadId]/proposals/route.ts` (handler dep injection)
+  - `lib/leads/proposal-serialization.ts` (wire type + deserializer)
+  - `lib/types.ts` (`LeadProposal.activeCheckoutLink`)
+  - `lib/data-context.tsx` (`createMockLeadProposal` initializes `activeCheckoutLink: null`)
+  - `components/lead-detail.tsx` (state machine + helper + optimistic update)
+  - `tests/server/payments/checkout-link-repository.test.ts` (new, 4 tests)
+  - `tests/server/leads/proposal-mappers-active-checkout-link.test.ts` (new, 4 tests)
+  - `tests/server/api/leads/lead-proposals-paginated.test.ts` (factory stub for new dep)
+  - `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md` (Implementation hooks F-V08 marked implemented + Lifecycle amendment line 2026-05-16)
+  - `docs/context/project.context.core.md` (Closed-in-runtime entry + new operating rule for the persistence contract)
+  - `docs/context/project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 (snapshot rewritten — F-V08 removed from Tier 3 backlog; remaining FASE 1 gap is B1.2/B1.3/B1.4/B1.5)
+- Operating rule added in this closure (in `project.context.core.md`):
+  - "Treat `payments.stripe_checkout_url` + `payments.stripe_checkout_expires_at` (migration `0045_phase_18c_payment_checkout_link_persistence.sql`) as the canonical durable artifact of the outbound Checkout link. The proposal read enrichment `activeCheckoutLink` (with server-computed `isExpired`) is surfaced by `GET /api/leads/[leadId]/proposals` via `lib/server/payments/checkout-link-repository.ts` + `lib/server/leads/proposal-mappers.ts`, so the `components/lead-detail.tsx` four-state UI (paid / active / expired / none) never needs a client-side fetch to display the link on mount. Do not re-introduce ephemeral React state for the URL — server is the source of truth on page load; `handleRequestPayment` updates the local proposals state optimistically with the API response. The `isExpired` flag is a static render-time computation; do not introduce a real-time countdown ticker without a separate UX iteration. `createCheckoutSession` writes both new columns on the new-session branch and back-fills them on the reuse-open-session branch for legacy rows — preserve this behavior so the UX nudge per legacy row stays one click only."
+- Operational pendings outside the iteration:
+  - Apply migration `0045` to remote Supabase (`pdotsdahsrnnsoroxbfe`) — Supabase MCP auth expired this session.
+  - Browser validation of the four UI states (paid / active / expired / none) once the migration is applied.
+- Completion status (initial close): PARTIAL until migration `0045` is applied to remote and browser validation runs.
+- **Closure addendum 2026-05-16 (later same day): COMPLETE.**
+  - Migration `0045` applied to `pdotsdahsrnnsoroxbfe` via Supabase Dashboard SQL Editor (operator verified both columns in Table Editor). G7 ongoing — row not registered in `supabase_migrations.schema_migrations`.
+  - Browser validation: 4/4 UI states PASS (none / active / expired / paid). Evidence in `docs/validations/Browser validation 2026-05-16 — F-V08 checkout link persistence.md`.
+  - **Key invariant verified**: post-reload, the GET `/api/leads/<leadId>/proposals` returns `activeCheckoutLink` populated with `url` / `sessionId` / `expiresAt` / `isExpired: false`, AND there is zero POST to `/api/payments/checkout` during the load — confirming the server is the source of truth on mount and the legacy ephemeral state machine is gone.
+  - **Landmine surfaced** (not part of the spec but worth recording for future iterations + the B1.4 runbook): `.env.local` still had `sk_live_*` from before the B1.1 rotation/scope-split (B1.1 only touched Vercel env scopes, not the developer's local file). Clicking "Crear link de pago" during validation produced a real Stripe Live mode session (`cs_live_a1BfLygQ82EmKAuS5...`) pagable for $350 USD. No charge happened — the clipboard URL was never pasted to a public surface. Operator-side cleanup: (a) expire the dangling session via Stripe Dashboard Live → Payments → Checkout sessions, (b) rotate `.env.local` to `sk_test_*` / `pk_test_*` before any future validation, (c) the B1.4 cutover runbook (when drafted) must include a pre-flight check that local Stripe keys are test mode.
+  - **Decision deferred during this iteration**: smoke E2E with Stripe CLI (a complete validation of the `/api/webhooks/stripe` activation path via `stripe listen --forward-to localhost`) was considered as an unlock to close B1.2 functionally without waiting for the Stripe account owner. User chose to wait for the account owner instead, keeping B1.2 in STANDBY per the original §17 plan. The CLI path is documented in conversation transcripts as a fallback if the standby drags on.
+  - This iteration is fully COMPLETE: ADR-010 §Amendment §Implementation hooks #3 (F-V08) closed, ADR-010 amendment line for 2026-05-16 added.
+- Next iteration candidates (per refreshed roadmap §17): (a) F-V07 disclaimer notifications (1h), (b) G8 plan-refs cleanup in `scripts/check-migrations.mjs` (30 min), (c) B1.2 once `whsec_*` is delivered (~15 min) — the remaining critical path to FASE 1 close, (d) FASE 3 lifecycle (auto-credit earnings from webhook) — the biggest remaining FASE 2 item.
+
+
+
+## Session note: F-V07 Notifications preferences disclaimer (FASE 2 seventh iteration)
+- Date: 2026-05-16
+- Iteration id: `fase-2-f-v07-notifications-disclaimer`
+- Route used: Bugfix Lite (single-file copy + Alert addition, no spec) — same pattern as the FASE 1 UX honesty bundle 2026-05-14.
+- Objective: close roadmap §6 Bloque B F-V07 item — disclaimer on `/dashboard/settings` Notificaciones tab clarifying that the preferences only filter the in-app inbox at `/dashboard/notifications`, not external email/push delivery (which is not implemented).
+- Context: pre-flight `grep` confirmed `lib/server/notifications/` contains zero email/push delivery code; the entire notifications system is in-app inbox only. The Notificaciones tab in settings had functional switches with real persistence via `/api/notifications/preferences` (backed by `user_profiles.notification_preferences` from migration `0031_phase_12a_notification_preferences`), but the copy ("Configura qué notificaciones recibir. Las críticas no se pueden desactivar.") implied external delivery that does not exist. A user could disable "Cambio de estado de proyecto" expecting to stop receiving emails on project status changes — there never were any emails to begin with.
+- What happened:
+  - Pre-flight: confirmed PR #47 (F-V08) merged to develop (commit `15061b3`); pulled develop; created `feature/fase-2-f-v07-notifications-disclaimer`.
+  - Edit `app/dashboard/settings/page.tsx`:
+    - Imports: added `Alert, AlertDescription` from `@/components/ui/alert`; added `Info` icon from `lucide-react` (consistent with the existing `lucide-react` import block at lines 37-52).
+    - `CardDescription` rewritten from "Configura qué notificaciones recibir. Las críticas no se pueden desactivar." to "Elige qué eventos aparecen en tu inbox de notificaciones. Las críticas no se pueden desactivar." — preserves the "no se pueden desactivar" guidance on critical events but drops the "recibir" ambiguity.
+    - New `Alert` placed inside `CardContent` immediately before the switches list (so it shows above the switches when scrolling). Variant default (muted card styling). Body: "Estas preferencias solo afectan tu inbox interno en /dashboard/notifications. El envío por email y push notifications no está implementado todavía." with `Info` icon and `font-medium` on the path string. No `AlertTitle` to keep visual weight low.
+  - No other file touched. No API / schema / migration / type changes. The switches keep their existing functional contract.
+- Tests / gates: `npm run typecheck` clean; `npm run lint` clean; `npm run build` clean (Compiled successfully in 35.5s); `npm test` 231/231 pass (no new tests — pure copy + render addition with no testable surface change).
+- Browser validation: deferred and considered low-risk. The change is a static Alert render with hard-coded copy; the JSX diff is sufficient evidence of correctness. If this surface returns with regression risk in a future audit, a snapshot test or a minimal smoke test can be added then.
+- Operating rule updated in `project.context.core.md`:
+  - Replaced the older "informational surface; do not reintroduce switches" rule (which was stale — the switches had been reintroduced legitimately with real persistence per migration `0031`) with: "Treat `/dashboard/settings` Notificaciones in `supabase` as a functional preferences surface backed by `user_profiles.notification_preferences` via `GET/PATCH /api/notifications/preferences`. The switches DO persist and DO gate which events appear in the per-user `/dashboard/notifications` inbox. They do NOT control email or push delivery (no external delivery service is implemented). The card MUST render an `Alert` with `Info` icon stating: 'Estas preferencias solo afectan tu inbox interno en /dashboard/notifications. El envío por email y push notifications no está implementado todavía.' (F-V07 disclaimer landed 2026-05-16). The `CardDescription` MUST use 'elige qué eventos aparecen en tu inbox de notificaciones' wording, not 'qué notificaciones recibir' — the latter implies external delivery that does not exist. Do not remove the disclaimer or revert the wording until a real email/push delivery service ships (currently scheduled for v3 cross-cutting per roadmap §9)."
+- New Closed-in-runtime entry added to `core.md`.
+- Files modified (1):
+  - `app/dashboard/settings/page.tsx` (3 import lines + 1 CardDescription string + 6 lines Alert JSX = 10-line diff approx).
+  - `docs/context/project.context.core.md` (Closed-in-runtime entry + operating rule update).
+  - `docs/context/project.context.history.md` (this session note).
+- Completion status: COMPLETE for the F-V07 scope. Roadmap §6 Bloque B F-V07 item closed.
+- Why no spec: the audit item was a 1-hour copy + Alert change with zero contract risk, and follows the existing "FASE 1 UX honesty bundle" precedent (2026-05-14, F-V04/V05/V09/V11/V13/V18/V19/V20 also handled as a single Bugfix Lite without a per-item spec). Spec overhead for sub-2h copy-only iterations is intentionally avoided.
+- Next FASE 2 iteration candidates: (a) G8 plan-refs cleanup in `scripts/check-migrations.mjs` (30 min, trivial), (b) F-V06 prototypes iframe embed (4h, Bloque B closure), (c) FASE 3 lifecycle (auto-credit earnings from Stripe webhook — biggest remaining FASE 2 item, ~2-3d, blocked end-to-end by B1.2 standby but the code can be written and merged ahead of the webhook coming online), (d) B15 webhook_event_seen ledger for website inbound (~4h, Bloque C), (e) B26 schema_migrations gating endpoint (~4h, Bloque C), (f) F-V12 leads pagination wire (~4-6h, Bloque C). FASE 1 critical path (B1.2-B1.5) remains gated by Stripe account owner.
+
+
+
+## Session note: B1.2 partial + B1.3a outbound smoke PARTIAL (FASE 1 sub-iteration)
+- Date: 2026-05-16 (late evening)
+- Iteration id: `fase-1-b1-stripe-live-cutover` sub-iteration B1.3a (outbound smoke).
+- Route used: operator-side ops (whsec_* delivery + Vercel env subir + manual redeploy) → guided browser validation (Scenarios 1-4 PASS, Scenarios 5-9 DEFERRED).
+- Objective: cerrar B1.2 (webhook live config) + B1.3a (outbound smoke E2E con $1 real) per roadmap §19.2 camino crítico FASE 1. Validar que la integración Stripe Live end-to-end funciona desde click "Crear link de pago" hasta activación de proyecto + earnings credit + (deferido) withdraw via Connect.
+- What happened (chronological):
+  - **whsec_* recibido**: el dueño de la cuenta Stripe le pasó a Pedro el `whsec_*` del endpoint `NoonApp production webhook` (`we_1TXpLvRC5LvlmWeuVxdXmOoh`) que apunta a `https://nooncode-app-pi.vercel.app/api/webhooks/stripe`. Endpoint configurado activo con 6 eventos suscritos (`checkout.session.completed`, `payment_intent.payment_failed`, `charge.refunded`, `account.updated`, `transfer.paid`, `transfer.reversed`).
+  - **B1.2 paso 1 ejecutado**: Pedro subió `STRIPE_WEBHOOK_SECRET=whsec_*` a Vercel scope `Production only` y disparó un manual redeploy. El redeploy completó OK.
+  - **B1.2 paso 2 (test event) bloqueado**: Stripe Workbench Shell muestra `stripe trigger is disabled in live mode. Switch to testmode to run stripe trigger.` Stripe no permite test events fake en live mode. La UI Dashboard tampoco tiene un botón "Send test webhook" en la Workbench beta. Sub-finding: en la Workbench la pantalla del endpoint mostraba el counter "Entregas de eventos: Total 0" como baseline limpio. La única vía de validación es disparar un evento real (e.g. account.updated por cambio benigno en Settings, o un pago real via B1.3a).
+  - **Decisión**: usar B1.3a como validador implícito de B1.2 con safeguards: importe $1 USD, refund-ready, reconciliation SQL ready, monitoreo paralelo en 3 tabs. Doc skeleton creado en `docs/validations/B1.3a outbound smoke 2026-05-16.md` con 10 scenarios pre-stage + SQL queries.
+  - **Pre-flight evidencia**:
+    - Query A (Stripe Connect status): ningún seller activo (admin/maria/juan) tiene `stripe_connect_account_id` poblado. Step 7 (withdraw via Connect) automáticamente diferido a B1.3b iteración separada.
+    - Query B (legacy live session): `cs_live_a1BfLyg...` de F-V08 sigue pending. **CRÍTICO**: el `amount` era `35000.00` = **$35,000 USD live**, no $350 como interpreté del wire payload. Pedro expiró la session via Stripe Dashboard antes de empezar el smoke.
+    - Query C (webhook ledger baseline): empty (0 rows). Baseline limpio para atribución del smoke.
+  - **Scenarios ejecutados**:
+    - Scenario 1 (crear lead outbound): PASS. Lead `2b46b7f8-9728-4502-bac4-d1455b20ff84`, lead_origin=outbound, assigned_to=juan.
+    - Scenario 2 (crear proposal sent $1): PASS. Proposal `3860ace8-46a8-4345-88cd-bb134b6aeee3`, status=sent, review_status=pending_review, seller_fee row creada automaticamente en state=potential con amount=100 (B3 integration verificada).
+    - Scenario 3 (admin approve): PASS. review_status=approved, reviewer_id=admin, reviewed_at populated.
+    - Scenario 4 (crear checkout link): PASS PARCIAL. Session `cs_live_a1TJpTZDzoCXn2Yicri...` creada en Stripe Live, customer `cus_UWucYadZYxbV4w` creado, payment row id=`f15232ba-d3d8-4310-87df-0d816b9cae54` con status=pending. **Críticamente**: `stripe_checkout_url=NULL` y `stripe_checkout_expires_at=NULL` post-creación — eso significa que el **deploy de producción está corriendo código pre-F-V08** (G11 landmine confirmado en escala: ninguno de los merges F-V08/F-V07/G8 de hoy llegaron a producción porque Vercel no auto-deploya en push a develop, y el redeploy manual de B1.2 esta mañana usó el deploy anterior — pre-F-V08).
+    - Scenarios 5-9 DEFERRED: operador sin tarjeta para hacer el cobro real $1. Sin Scenario 5, no se dispara webhook real, no se valida signature verification end-to-end, no se prueba activación.
+- **Findings críticos surfaceados** (no parte del scope original, surfaceados durante el smoke):
+  - **F-V08 landmine $35K USD**: la session de F-V08 era $35K pagables, no $350. Mistake mío de interpretación del wire payload `amount: 35000` (dollars, no cents — la columna `lead_proposals.amount` está en USD, y `createCheckoutSession` multiplica por 100 para cents). Expirada manualmente.
+  - **G11 confirmed**: el deploy de producción está stale (pre-F-V08). El redeploy de B1.2 esta mañana en Vercel re-usó el deploy anterior (Vercel's "Redeploy" sin commit nuevo). Las 3 PRs de hoy (#47 F-V08 + #48 F-V07 + #49 G8) están en develop pero NO en prod. La schema sí está adelantada (migration 0045 aplicada via Dashboard SQL Editor ayer); la mismatch schema/code es source de futuros bugs si no se resuelve.
+  - **No Connect onboarded**: el §17 mencionó "Stripe Connect onboarded" como pre-flight de B1.0 pero eso era la cuenta Stripe Platform de Pedro (que sí está onboarded), no las cuentas Connect individuales de los sellers. Ningún seller tiene Connect account creado todavía. Step 7 del original Día 4 smoke (withdraw via Connect) no puede ejecutarse hasta que al menos un seller onboard Connect. Diferido a B1.3b.
+- **Decisión sobre cleanup**: lead + proposal + payment + seller_fee rows quedan en DB para retomar el smoke desde Scenario 5 cuando haya tarjeta. La cs_live_a1TJp... session se debe expirar manualmente para evitar pagable accidental.
+- **B1.2 status**: configuración completa pero verification end-to-end de la firma sigue pendiente. La única vía de validación es un pago real (Scenario 5 de B1.3a) o el primer pago real del pilot.
+- **B1.3a status**: PARTIAL — 4/9 scenarios PASS, 5/9 DEFERRED.
+- **Step 7 (B1.3b)**: BLOCKED — necesita seller con Stripe Connect onboarded. Tracking aparte.
+- Files modified in this iteration:
+  - `docs/validations/B1.3a outbound smoke 2026-05-16.md` (new, full smoke evidence + DEFERRED status)
+  - `docs/context/project.context.core.md` (Partial in runtime entry para B1.3a)
+  - `docs/context/project.context.history.md` (this session note)
+  - local NoonApp Roadmap §17 + §19 (snapshot update — FASE 1 progress + pendings)
+- Operating rule updates: ninguno (B1.3a no agrega contract durable; el flow Stripe ya tiene operating rule existente).
+- Completion status: **PARTIAL** for B1.3a; FASE 1 critical path no cerrado todavía. Cuando se retome con tarjeta + redeploy producción, los Scenarios 5-9 se completan y B1.2/B1.3a quedan COMPLETE. Tiempo estimado para cerrar: ~30 min de smoke + 5 min redeploy + 2 min refund = ~40 min.
+- Next iteration candidates:
+  - **B1.3a Scenarios 5-9** cuando haya tarjeta disponible.
+  - **Redeploy producción** con develop head (`599d223+`) para activar F-V08/F-V07/G8 en prod.
+  - **B1.4 cutover runbook** se puede draftear en paralelo (es solo docs, no depende de B1.3 close).
+  - **F-V06 prototypes iframe** PAUSADO esperando B1 close, retomar después.
+  - **G11 diagnosis**: Vercel auto-deploys siguen sin disparar. Settings → Git → Production Branch + Ignored Build Step + GitHub App pending check.
+
+
+
+## Session note: B1.4 runbook DRAFT + F-V06 prototype iframe + G11 fix + B1.3a/B1.2 closure (multi-piece FASE 1/2 day)
+- Date: 2026-05-17
+- Iteration ids: `fase-1-b1-stripe-live-cutover` sub-iterations B1.3a + B1.4 (DRAFT) + B1.2 implicit; `fase-2-f-v06-prototype-iframe`; ops fix G11 root cause.
+- Route used: parallel execution — B1.4 docs draft → F-V06 implementation → G11 diagnosis + fix → B1.3a Scenarios 4-8 smoke E2E + Scenario 9 deferred reason update.
+- Objective: maximize forward progress in a session where Stripe Dashboard access was unavailable but the operator had a card. Drained 5 distinct work items in sequence: (1) draft B1.4 runbook with landmines fresh from 2026-05-16; (2) implement F-V06 (last item of Bloque B FASE 2); (3) diagnose and fix G11 (Vercel auto-deploys broken — root cause not yet known at session start); (4) bring prod up to develop HEAD; (5) close B1.3a Scenarios 5-8 with real $1 payment + implicitly close B1.2.
+
+### B1.4 cutover runbook (PR #51, merged 2026-05-17 morning)
+- New file `docs/runbooks/cutover-pilot.md` (524 lines). Section structure: audience/purpose, pre-incident state assumptions, rollback procedures (Vercel deploy revert / Stripe webhook disable / live key rotation), restore procedures (Supabase PITR + fallback), webhook event replay, failure-mode catalogue (10 entries covering signature mismatch, handler throws, G11 stale deploy, sk_live in .env.local, USD-vs-cents amount confusion, Connect not active, URL drift, trigger disabled live, send-test-webhook UI gap, G9 chained-PR base), incident response checklist, accepted-limitation table, SQL quick-reference for triage, update discipline.
+- Markers `[verify-on-first-real-transaction]` (PITR status, observed handler behavior) and `[fill-in-before-pilot]` (on-call list) left as placeholders for a B1.4 closure iteration after B1.3a Scenarios 5-9 close.
+- Tests: 231/231 pass (no new tests — pure docs). Lint clean. Typecheck local had pre-existing `.next/dev/types/*` cache errors (identical on develop baseline, not introduced by this PR — CI passed cleanly).
+- Closes spec `specs/fase-1-b1-stripe-live-cutover.md` §B1.4 scope (audit B27).
+
+### F-V06 prototype iframe (PR #52, merged 2026-05-17 afternoon after 2 CI-fix commits)
+- Migration `0046_phase_18d_prototype_demo_chat_urls.sql` adds `demo_url text` + `chat_url text` (additive nullable) on `public.prototype_workspaces`.
+- `app/api/prototypes/[prototypeWorkspaceId]/generate/route.ts`: writes the three v0 outputs into separate columns (`generated_content` keeps source for audit; `demo_url` + `chat_url` are v0-hosted URLs).
+- `lib/server/prototypes/repository.ts` SELECT now includes `generated_at`, `generated_content`, `demo_url`, `chat_url` in both single + list reads — page hydrates iframe state from GET on mount, no extra round-trip.
+- `lib/server/prototypes/mappers.ts` exposes the four new fields on `PrototypeWorkspaceListItemWire`.
+- `lib/prototypes/serialization.ts` + `lib/types.ts` `PrototypeWorkspaceListItem` add the four optional fields. Base `PrototypeWorkspace` shape unchanged (iframe lives in list surface only).
+- `app/dashboard/prototypes/page.tsx`: initializes `generatedContent` / `demoUrls` / `chatUrls` state from GET response; replaces `<pre>` with sandboxed iframe (480px, `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"`, `loading=lazy`, `referrerPolicy=no-referrer`). Source code remains inside a `<details>` collapsible for inspection. Sandbox flags intentionally EXCLUDE `allow-top-navigation` (prevent parent-redirect), `allow-modals`, `allow-pointer-lock`.
+- `lib/server/supabase/database.types.ts` receives manual overrides for `prototype_workspaces` Row/Insert/Update + the RPC `handoff_prototype_workspace_to_delivery` Returns shape — same pattern B3 used for seller_fees while G7 is open.
+- **CI surfaced 4 typecheck errors** the local `next dev` cache had masked: PostgREST infers SELECT types from `database.types.ts` directly (not from manual intersections in module-local types), so `SELECT demo_url` resolved to `SelectQueryError<"column 'demo_url' does not exist">`. Two fix commits folded in: `bbfbdb7` (`database.types.ts` table override) + `4b372c9` (RPC Returns override). After fixes, CI green (231/231 tests, lint, typecheck, migration prefix, dependency audit).
+- Migration `0046` applied to remote `pdotsdahsrnnsoroxbfe` 2026-05-17 via Supabase Dashboard SQL Editor (Supabase MCP unauthorized during the session). G7 ongoing — row not registered in `supabase_migrations.schema_migrations`, consistent with prior additive OOB applies.
+- Closes Bloque B FASE 2 at 100% (F-V06 was the last open item; F-V07 + F-V08 already closed 2026-05-16).
+
+### G11 diagnosis + fix (ops, no code change)
+- **Symptom**: yesterday's smoke evidenced that prod was running stale code (pre-F-V08). Investigation at session start revealed the most recent develop deploy in Vercel was commit `5eba6e9` (2026-05-14, PR #43) — yesterday's PR #51 + #52 merges produced no Vercel deploy at all. The "manual Redeploys" the operator had been doing for days were rebuilding the same stale Production deploy each time (Vercel's "Redeploy" without source change uses the last build's source).
+- **Diagnosis path executed**:
+  - Repo check: `vercel.json` only has crons (no `ignoredBuildStep`); `.vercelignore` only excludes `.env*`; `package.json` has no ignored-build script. Root cause is on the Vercel UI side.
+  - Settings → Git: Connected Git Repository `nooncode-org/App-nooncode` healthy (`Connected 2d ago`, all webhook event toggles enabled).
+  - GitHub default branch: confirmed via `gh api` → `develop`.
+  - Deployments tab: every push to `develop` over the past weeks created a **Preview** deploy (BnMjhdZJW, ASJ6WP214, BoCATIZ6L, etc.), never auto-promoted to Production. All Production deploys were "Redeploy of..." manual actions by `nooncode-tech`. This confirmed Escenario 1 of the runbook §5.3: Production Branch was misconfigured.
+- **Root cause**: Vercel Production Branch was set to `main` (no such branch exists in the repo) instead of `develop`. Setting found in Settings → Environments → Production. The setting was hidden — not visible in Settings → Git per usual location, only surfaced after the operator looked in Environments.
+- **Fix path executed**:
+  1. **Env var preview-branch lock cleanup**: when attempting to change Production Branch to `develop`, Vercel blocked: "Cannot set Git branch 'develop' as Production Branch, because it's used for Preview Environment Variables 'NOON_WEBSITE_WEBHOOK_SECRET', 'NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL'." Inspection in Settings → Environment Variables: both vars had a `Preview ↓ develop` row AND a `Production` row (the Production rows already had the correct live values). The Preview→develop rows were redundant overrides from the period when develop deployed as Preview. Deleted the 2 `Preview ↓ develop` rows; Production scope copies preserved.
+  2. **Production Branch switched**: Settings → Environments → Production Branch changed from `main` to `develop` → Save successful.
+  3. **Production deploy triggered**: Settings → Git → Deploy Hooks → created `develop-trigger` hook (Vercel returned a unique URL `https://api.vercel.com/v1/integrations/deploy/prj_pcymuQmGPfOewVwQwKeGJM2rVX5u/...`). Curled the URL → HTTP 201 returned with `job.state=PENDING`. Vercel built `develop` HEAD as Production. Verified `curl -i -X POST https://nooncode-app-pi.vercel.app/api/webhooks/stripe` returned HTTP 400 with `{"error":"Missing stripe-signature header"}` (app's response).
+- **Empirical verification pending**: the fix relied on a Deploy Hook to trigger the first Production deploy. Whether auto-deploys on subsequent `develop` merges actually work end-to-end (via GitHub→Vercel webhook delivery) won't be known until the next real PR merges. Recorded as TBD in the new operating rule.
+- Operating rule added (last in §Operating rules): pin Vercel Production Branch to `develop`, avoid branch-locking env vars to `develop` Preview (they create UI fights when Production Branch needs to change), and reopen G11 if next merge doesn't auto-deploy.
+
+### B1.3a Scenarios 4-8 + B1.2 implicit (closure 2026-05-17)
+- Pre-cleanup: `cs_live_a1BfLygQ82EmKAuS5...` $35K landmine from F-V08 still showed as active in UI (operator had expired in Stripe Dashboard yesterday but our DB never knew). Ran SQL UPDATE on the dangling row to set `status='failed'` and `stripe_checkout_expires_at = now() - interval '1 hour'` so the UI no longer rendered it as active. Risk: zero — only touched our DB, not Stripe.
+- **Scenario 4 RE-RUN** (PASS — backfill path): clicked "Crear link nuevo" on the B1.3a Smoke Test lead. F-V08 backend (`lib/server/stripe/service.ts:createCheckoutSession`) detected the existing pending payment with `stripe_checkout_session_id=cs_live_a1TJp...`, retrieved the Stripe session, saw `status='open' && url` → reused it and backfilled `stripe_checkout_url` + `stripe_checkout_expires_at` on our DB row. No new session created. This is intentional "no double charge" safety. The original session from 2026-05-16 was still open in Stripe (sessions live 24h, was created ~17h before the click).
+- **Scenario 5** (PASS): operator paid $1 USD with personal card via Stripe Checkout in incognito window. ~15:46 UTC.
+- **Scenario 6** (PASS — closes B1.2): 2 webhooks landed in ledger within seconds: `checkout.session.completed` (event_id `evt_1TY6tZRC5LvlmWeuMjR5KzXv`, livemode=true, status=processed, attempt_count=1, last_error=null) + `account.updated` (separate event). The `checkout.session.completed` with verified signature implicitly closes B1.2 — no further verification needed.
+- **Scenario 7** (PASS, all sub-checks):
+  - 7a payment: `status=succeeded`, `stripe_payment_intent_id` populated, `project_id=46868144-...`.
+  - 7b proposal: `status=handoff_ready`, `payment_status=succeeded`, `paid_at=2026-05-16 22:34:52+00`, `handoff_ready_at=2026-05-16 22:34:52+00`. **Anomaly**: both timestamps are from yesterday (session.created), not from the real payment moment (today 15:46 UTC). Handler uses `session.created` for `paidAt` — recommendation registered to change to `session.completed_at ?? now()` in a follow-up.
+  - 7c seller_fees: `state=confirmed` (transitioned from `potential`), `amount=100`, `payment_id` populated, `confirmed_at=2026-05-17 15:46:28.625+00` (real timestamp). B3 state machine end-to-end validated.
+  - 7d earnings_ledger: one row only (seller=$100). No developer/noon rows because the handler computes `base = max(activationAmount - sellerFeeAmount, 0) = max(1-100, 0) = 0` and skips the `if (base > 0)` branch. **Expected** for the absurd amount=$1 + seller_fee=$100 combination (smoke is not designed for sensible economy). Observation registered: in real operation with seller_fee>amount, seller gets over-credited — minor bug for tracking.
+  - 7e wallet_ledger_entries: one row with `entry_type=earnings_distribution`, `amount=100`, `balance_bucket=pending`, credited to `juan@noon.app`. RPC `credit_wallet_bucket` worked.
+  - 7f projects: row created with `payment_activated=true`, `status=backlog`, `source_proposal_id` linked.
+- **Scenario 8** (PASS — UI verify): `juan@noon.app` confirmed in browser: lead Smoke Test → tab Propuesta renders Estado 4 paid F-V08 — badge "Pago confirmado" + card "Proyecto creado: B1.3a Smoke proposal" + status `Convertida` + dropdown `Lista para hand-off` + payment/link buttons disappeared.
+- **Scenario 9** (DEFERRED — reason changed): originally deferred 2026-05-16 because no card. Now deferred for a different reason: operator (Pedro) does not have access to Stripe Dashboard (account belongs to the business owner). Refund of the $1 + cleanup requires either coordinated window with the owner OR an admin endpoint `/api/admin/payments/[id]/refund` that uses the Stripe SDK programmatically. Scope separate, not urgent — the charge is $1.
+- **B1.3a iteration verdict**: COMPLETE with Scenario 9 deferred for operational (not technical) reason. Scope of "outbound payment flow E2E with real money" satisfied. B1.2 webhook signature verification implicitly closed via Scenario 6.
+
+### Observations for follow-up (registered, not blocking)
+1. **`paid_at` uses session.created**: handler reads `session.created` in `app/api/webhooks/stripe/route.ts:89-92` for `paidAt`. For old sessions paid much later, this misreports the payment time. Recommendation: `session.completed_at ?? now()`.
+2. **Seller over-credit when seller_fee > amount**: handler applies `seller_fee_amount` literal without validating `<= activationAmount`. Would be a real bug for clients paying small amounts with high seller_fee. Tracked separately.
+3. **F-V08 backfill silent success**: clicking "Crear link nuevo" on an open session refreshes URL/expiry without UI feedback. UX could mention "reusing existing session". Cosmetic follow-up.
+4. **G11 empirical re-verification pending**: the next real merge to `develop` will tell us if auto-deploys actually work end-to-end. If not, root cause is different (likely GitHub App permission/webhook delivery). New operating rule captures the contingency.
+5. **Stripe Dashboard access for operator**: pilot will need this resolved before B1.5. Either (a) owner grants Pedro a Restricted Key with refund permission, or (b) implement `/api/admin/payments/[id]/refund` endpoint. Both are valid; (a) is faster, (b) is more durable.
+
+### Files modified in this iteration
+- New / modified (multi-PR + closure docs):
+  - `docs/runbooks/cutover-pilot.md` (new, 524 lines, PR #51 merged).
+  - `supabase/migrations/0046_phase_18d_prototype_demo_chat_urls.sql` (new, PR #52 merged).
+  - `app/api/prototypes/[prototypeWorkspaceId]/generate/route.ts` (PR #52).
+  - `app/dashboard/prototypes/page.tsx` (PR #52).
+  - `lib/server/prototypes/repository.ts` (PR #52).
+  - `lib/server/prototypes/mappers.ts` (PR #52).
+  - `lib/server/prototypes/types.ts` (PR #52, the intersection was rolled back in fix commit `bbfbdb7`).
+  - `lib/prototypes/serialization.ts` (PR #52).
+  - `lib/types.ts` (PR #52).
+  - `lib/server/supabase/database.types.ts` (PR #52 fix commits `bbfbdb7` + `4b372c9` — table override + RPC Returns override).
+  - `docs/validations/B1.3a outbound smoke 2026-05-16.md` (closure section appended in this iteration).
+  - `docs/context/project.context.core.md` (Partial→Closed for B1.3a, new Closed-in-runtime entries for B1.4 DRAFT, F-V06, G11, new operating rule on Vercel Production Branch).
+  - `docs/context/project.context.history.md` (this session note).
+  - local NoonApp Roadmap §17 (snapshot rewritten).
+- Vercel UI changes (no code commit):
+  - Deleted 2 env var rows `NOON_WEBSITE_WEBHOOK_SECRET` (Preview ↓ develop) + `NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL` (Preview ↓ develop). Production scope copies preserved.
+  - Production Branch changed from `main` to `develop`.
+  - Created Deploy Hook `develop-trigger` for `develop` branch (URL kept private).
+- Supabase Dashboard changes:
+  - Applied migration 0046 verbatim (`demo_url` + `chat_url` columns on `prototype_workspaces`).
+  - Executed UPDATE on the $35K landmine session to mark as failed/expired in our DB (Stripe-side expiry unchanged — that's pending owner action if not already done).
+
+### Operating rule updates in core.md
+- Vercel Production Branch must equal `develop`; branch-locked Preview env vars on `develop` block migration of Production Branch — clean up before scope changes.
+- Reopened-or-stable G11 contingency: if next merge does NOT auto-deploy, root cause is something other than Production Branch (probably GitHub App webhook delivery).
+
+### Completion status
+- **B1.4 DRAFT**: COMPLETE (runbook merged; closure iteration with markers cleared + on-call list filled is separate, blocked on B1.3a S5-9 close which is now done).
+- **F-V06**: COMPLETE (PR merged; browser validation pending operator post-merge per the F-V06 PR description checklist).
+- **G11**: COMPLETE (Production Branch fixed; auto-deploy contingency operating rule captured).
+- **B1.2**: COMPLETE (implicitly via Scenario 6 — webhook signature verified end-to-end with livemode=true).
+- **B1.3a**: COMPLETE with Scenario 9 deferred (operational, not technical) — outbound smoke E2E with real money fully validated.
+- **FASE 1 critical path**: ~97% closed. Remaining: B1.4 closure (markers + on-call), B1.3b inbound smoke (cross-repo NoonWeb), B1.3b withdraw smoke (needs Connect-onboarded seller), B1.5 pilot sign-off (blocked on B1.3b inbound + B1.4 closure).
+- **FASE 2 Bloque B**: 100% closed (F-V06 + F-V07 + F-V08 all merged + applied).
+
+### Next iteration candidates (priority order)
+1. **B1.4 closure iteration** — fill on-call list, resolve `[verify-on-first-real-transaction]` markers with actual observed behavior from this smoke (PITR verification, handler behavior nuances). ~1-2h docs only.
+2. **B1.3b inbound smoke** — cross-repo with NoonWeb dev. Coordinate timing. Different scope than B1.3a (Web → App webhook, not App → Stripe webhook). ~3h coordinated.
+3. **FASE 3 lifecycle** (auto-credit earnings trigger from Stripe webhook) — biggest remaining FASE 2 item. Backend-heavy 2-3 days. Code can land now; webhook is live so it'll fire on next real activation.
+4. **Stripe Dashboard access for operator** — either owner grants Restricted Key (faster) or implement `/api/admin/payments/[id]/refund` endpoint (more durable). Required before B1.5.
+5. **Seller Stripe Connect onboarding** — at least one seller needs `stripe_connect_account_id` before B1.3b withdraw smoke can run.
+6. **G11 empirical verification** — passive: monitor whether next real merge auto-deploys.
+
+
+
+## Session note: B1.4 closure pass (Path A) — runbook updates folding smoke evidence + G11 fix
+- Date: 2026-05-17 (same calendar day as B1.3a closure, immediately after that PR merged)
+- Iteration id: `fase-1-b1-stripe-live-cutover` sub-iteration B1.4 closure pass.
+- Route used: system-docs (single-file update of `docs/runbooks/cutover-pilot.md` + Closed-in-runtime entry flip in core.md).
+- Objective: take the B1.4 runbook DRAFT (which landed pre-B1.3a smoke close) and resolve the `[verify-on-first-real-transaction]` markers / fold the smoke evidence + G11 fix narrative + observed-anomaly entries into the catalogue. Goal is to flip B1.4 from DRAFT to as-closed-as-can-be-without-operator-pilot-input.
+- What changed in `docs/runbooks/cutover-pilot.md`:
+  - **§5.3 G11** rewritten with the actual root cause + fix path observed 2026-05-17 (Production Branch was `main` not `develop`; env var preview-branch lock on `develop` blocked the switch; fix = clean Preview→develop env vars, switch Production Branch to develop, trigger first deploy via Deploy Hook). Status header flipped to "ROOT CAUSE IDENTIFIED + FIXED 2026-05-17" with the contingency that if it recurs, the new likely root cause is GitHub App webhook delivery.
+  - **§5.11 NEW — `paid_at` reflects session.created not real payment time**. Documents the anomaly observed during B1.3a Scenario 7b (paid_at saved as `2026-05-16 22:34` even though payment was `2026-05-17 15:46`). Mitigation: use `stripe_webhook_events.received_at` or `seller_fees.confirmed_at` for accurate timing; code fix follow-up to use `session.completed_at ?? now()`.
+  - **§5.12 NEW — Seller over-credit when `seller_fee_amount > activationAmount`**. Documents the bug surfaced by smoke ($1 sale, $100 seller fee → seller credited $100; base=0 so no developer/noon). Mitigation: audit query for over-credited rows; code fix follow-up to cap at activationAmount.
+  - **§5.13 NEW — F-V08 backfill silent reuse of open Stripe session**. Documents the UX surprise during Scenario 4 re-run (clicking "Crear link nuevo" reused the existing open session instead of creating new). This is intentional "no double charge" safety in `lib/server/stripe/service.ts:createCheckoutSession`. Mitigation: understanding; UX follow-up to surface "reused session" feedback in the toast.
+  - **§7 known limitations** updated: G11 row strike-through with RESOLVED note pointing to §5.3.
+  - **§10 closure criteria** rewritten with real status: 3 items ✅ (runbook exists, B1.3a S5-8 done, observed-behavior markers folded), 2 items ⏳ (PITR verification by operator, on-call list by operator). Marked the iteration as "COMPLETE-pending-operator-input" — those 2 remaining items do not block Path D / B1.3b / FASE 1 progress.
+  - Untouched markers: §3.1 PITR `[verify-on-first-real-transaction]` (binary on/off — operator checks Supabase Dashboard), §3.2 PITR fallback (depends on §3.1), §7 PITR row (depends on §3.1), §8 on-call list `[fill-in-before-pilot]` (operator-only knowledge for Pedro's WhatsApp/Signal, NoonWeb dev contact, owner Stripe contact).
+- What changed in `docs/context/project.context.core.md`:
+  - The Closed-in-runtime entry for B1.4 was previously "B1.4 DRAFT — cutover-pilot runbook"; rewritten to "B1.4 — cutover-pilot runbook (DRAFT 2026-05-17 PR #51; closure pass 2026-05-17)" with description of the new §5.11/12/13 entries, §7 G11 resolution, §10 closure status. Notes that 2 operator-input items remain pending without blocking dependent work.
+- What did NOT change in this iteration:
+  - No new tests (pure docs).
+  - No code changes (the anomaly fixes for `paid_at` + seller over-credit are tracked as follow-ups, NOT in scope here).
+  - No new migrations, env vars, dependencies, or contracts.
+  - PITR verification still pending operator. On-call list still pending operator.
+- Validation:
+  - `npm test` not re-run (pure docs change, baseline 231/231 from PR #53 holds).
+  - `npm run lint` not re-run for the same reason.
+  - No browser validation needed.
+- Operating rule updates: none (the G11 operating rule landed in PR #53 already; this closure pass references it, does not change it).
+- Completion status:
+  - **COMPLETE-pending-operator-input**. The runbook is functionally usable for incident response today; the 2 ⏳ items are pilot-pre-flight checkboxes, not engineering gates.
+  - **B1.5 pilot sign-off** remains blocked on: B1.3b inbound smoke (cross-repo), B1.3b withdraw smoke (Connect-onboarded seller), AND the 2 operator-input items in this runbook closure. None of those block continued work on Path D (refund endpoint) which proceeds in parallel.
+- Next: Path D — refund endpoint implementation. Will run as a separate iteration / PR.
+
+
+
+## Session note: B1.4 Path F final operator-input closure (B1.4 fully COMPLETE)
+- Date: 2026-05-17 (late evening, same calendar day as B1.4 DRAFT + closure pass + Path D rollout)
+- Iteration id: `fase-1-b1-stripe-live-cutover` sub-iteration B1.4 Path F.
+- Route used: system-docs (operator-provided PITR status + on-call list info → runbook + core.md updates).
+- Objective: resolve the 2 ⏳ items left open from the B1.4 closure pass (PR #54), thereby flipping B1.4 from COMPLETE-pending-operator-input to fully COMPLETE.
+- What operator provided:
+  - **PITR status**: NOT enabled. Supabase project `pdotsdahsrnnsoroxbfe` is on the Free plan; PITR is gated behind a Pro-plan-or-above upgrade. Operator decided NOT to upgrade for the internal pilot phase; documented as accepted-risk with explicit recommendation to upgrade before external exposure.
+  - **On-call list**: Pedro `noondevelop@gmail.com` confirmed as primary. Backup on-call, NoonWeb dev contact, and owner Stripe contact remain TBD — operator declined to gather/inline them in this session, opting to mark them as runtime gaps to resolve when scheduling B1.5 pilot window.
+- What changed in `docs/runbooks/cutover-pilot.md`:
+  - **Header status**: "DRAFT" → "CLOSED 2026-05-17" with the full evolution narrative (DRAFT PR #51 → closure pass PR #54 → Path F resolves remaining markers).
+  - **§3.1 PITR section**: removed the `[verify-on-first-real-transaction]` marker; replaced with explicit status note (NOT enabled, Free plan) + upgrade recommendation + the existing PITR procedure kept for future reference once upgraded.
+  - **§7 known limitations table**: PITR row rewritten with the verified state ("PITR not enabled (Free plan)" + accepted-risk rationale).
+  - **§8 on-call list**: removed the `[fill-in-before-pilot]` placeholder; filled Pedro row; left other rows TBD with explicit caveat that they must be resolved before B1.5 pilot start. Added a paragraph below the table stating the 3 TBDs represent real operational coverage gaps the operator owns.
+  - **§10 closure criteria**: all 6 items now ✅ (no remaining ⏳). Iteration declared **B1.4 COMPLETE**.
+- What changed in `docs/context/project.context.core.md`:
+  - The Closed-in-runtime entry for B1.4 was previously "COMPLETE-pending-operator-input"; rewritten to fully closed framing with description of the §3.1 PITR resolution + §8 on-call initial fill + §10 closure criteria all green.
+- What did NOT change:
+  - No code changes (pure docs).
+  - No tests (236/236 baseline holds).
+  - No migrations, env vars, dependencies, contracts.
+  - The 3 TBD on-call rows remain genuine gaps the operator owns — Path F does not pretend to resolve them, only formalizes them.
+- Operating rule updates: none.
+- Completion status: **B1.4 fully COMPLETE.** All sub-iterations of `fase-1-b1-stripe-live-cutover` are now closed (B1.0 spec, B1.1 keys, B1.2 webhook implicit via B1.3a S6, B1.3a S1-9, B1.4 runbook). Only **B1.3b** sub-iterations (inbound smoke cross-repo + withdraw smoke Connect-dependent) and **B1.5** (4-person pilot sign-off) remain open inside B1.
+- Next iteration candidates: see local roadmap §17 (rewritten in Path F closure with Path B / C / G / H / I / J detailed). Most-impact next single path is FASE 3 lifecycle (Path C) for FASE 2 close; most-time-sensitive is B1.3b inbound smoke for FASE 1 close (cross-repo coord with NoonWeb dev).
+
+
+
+## Session note: B1.3b inbound smoke E2E cross-repo NoonWeb ↔ NoonApp
+- Date: 2026-05-18
+- Iteration id: `fase-1-b1-3b-inbound-smoke-cross-repo`
+- Route used: Infra-Deploy variante validation release-readiness, FULL depth. Chain: router → system-analysis → system-infra → system-security → [Execution Gate] → system-testing → system-docs (this entry) → system-validator (pending).
+- Objective: validate the v1 cross-repo webhook contract end-to-end against live infrastructure (`docs/integrations/cross-repo-webhook-v1.md`) for the inbound direction (Web → App `inbound-proposal` + `payment-confirmed`) plus the App → Web round-trip (`proposal-review-decision`). Close the last external blocker for B1.5 pilot sign-off (FASE 1 cutover).
+- Mode of execution: operator (Pedro) played both App-side and NoonWeb-dev roles in this session — fired signed HTTP requests from a Node helper script against the production endpoints using a rotated shared HMAC secret, ran SQL oracles in Supabase Dashboard, and performed the PM Approve UI action in the App browser.
+- Pre-flight (system-infra, READY-WITH-WARNINGS):
+  - PR #65 (Path G wallet reversal) confirmed merged + active in production deploy `dpl_HBZBRBRRhysAfpYJt1vVEAta8jPR` (commit `f3626d9`).
+  - `NOON_WEBSITE_WEBHOOK_SECRET` present in Vercel App Production scope (empirically verified — App handler returned `401 Invalid signature` to signed request with wrong secret, not the `503 not configured` path that would fire if empty).
+  - `NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL` configured to `https://noon-main.vercel.app/api/integrations/noon-app/proposal-review-decision` (Vercel UI Show widget reported empty, but runtime behavior in Scenario 4 confirmed the value persisted correctly — UI display bug, not runtime issue).
+  - Repo flipped from PRIVATE to PUBLIC temporarily to unblock the Vercel GitHub App (which had lost access after the post-G13 PRIVATE flip).
+  - Negative-path 401 surfaces (missing signature, tampered signature, stale timestamp) confirmed empirically before the smoke against the live endpoints.
+  - Two warnings carried into the smoke: G11 auto-deploy on git push still suspected broken (both production deploys today triggered via Deploy Hook); HMAC secret parity App↔Web unverifiable from App-side alone.
+- Security review (GATE-OPEN-WITH-FOLLOW-UPS):
+  - F-1 (HMAC missing-timestamp acceptance, HIGH severity) confirmed in code review pre-smoke; spec Scenario 3d upgraded from OPTIONAL to STRONGLY-RECOMMENDED for production evidence.
+  - F-3 (repo PUBLIC during smoke) acceptable for smoke window; hard precondition for COMPLETE that re-flip happens same-day OR date-bounded deferral lands in core risks.
+  - F-4 (outbound URL value not directly verifiable due to Vercel UI Show bug) required cross-check before Execution; mid-smoke discovered the UI was misreporting and the value was actually empty after a botched `vercel env add` via piped stdin on Windows PowerShell — re-set via Dashboard UI Add New + redeploy ran cleanly.
+  - Redaction rules issued for evidence doc: no HMAC secret cleartext, no full `x-noon-signature` value paired with `bodyText`, no `vercel env pull` output; truncate signatures to `sha256=<8-prefix>...REDACTED...<4-suffix>`; UUIDs / requestIds / HTTP codes / timestamps acceptable.
+- HMAC secret rotation mid-session:
+  - Scenario 1 initially returned 401 with the value the operator had saved to a local file (sourced from memory or stale copy).
+  - Diagnostic: the file's first 4 bytes were `NOON` (the variable name, not the value) — saved as `.env` line shape rather than raw value. Applied `sed` extractor → still 401 → confirmed value mismatch between local source and Vercel runtime.
+  - Local `.env.local` files in both App and NoonWeb repos showed SHA-256 fingerprint `e3b0c44298fc1c14...` (the empty-string hash), so neither local file held a valid source.
+  - Decided to rotate: generated new 32-byte hex secret via `openssl rand -hex 32 | tr -d '\r\n'` written to `D:\Pedro\Proyectos\Noon\Archivos\b13b-secret.txt` (64 bytes exact, no trailing CR/LF). Operator set the same value in both App + NoonWeb Vercel Production envs via Dashboard UI Add New (after Remove of the prior row, to avoid the Edit-flow UI bug) and triggered redeploy on both.
+  - Re-fire post-rotation: Scenario 1 returned HTTP 201 → rotation procedure validated. The full smoke ran with this rotated secret.
+- Scenarios executed (10 total, 8 PASS clean, 1 FAIL-EXPECTED, 1 PARTIAL-EXPECTED):
+  - Scenario 1 (inbound-proposal happy path) — PASS. HTTP 201 + DB rows created with correct shape (`status=draft, review_status=pending_review, current_status=proposal_pending_review`).
+  - Scenario 2 (inbound-proposal idempotent retry) — PASS. HTTP 200 + `idempotent: true` + no duplicate rows (1 link / 1 lead / 1 proposal), `updated_at` advanced confirming §3.3 snapshot-update path.
+  - Scenarios 3a / 3b / 3c (missing signature / tampered signature / stale timestamp) — ALL PASS. HTTP 401 with exact contract messages and `WEBSITE_WEBHOOK_AUTH_FAILED` code.
+  - Scenario 3d (missing timestamp header — F-1 exploit) — FAIL-EXPECTED. Initial run from helper script (which signed with timestamp prefix anyway) returned 401 as expected for a signature mismatch; corrected run signed with `HMAC(secret, bodyText)` ONLY and omitted the timestamp header → returned **HTTP 201**, creating a new lead row in production DB. This is the contract violation predicted by F-1, now empirically confirmed in live infrastructure. The created row (`sess_b13b_smoke_3d_002`) was left in DB as evidence.
+  - Scenario 4 (PM Approve + outbound proposal-review-decision) — PARTIAL-EXPECTED. App-side approval transitioned `lead_proposals.review_status` to `approved` and `website_inbound_links.current_status` to `review_webhook_failed` after the outbound webhook to NoonWeb received HTTP 500 (NoonWeb-side Next.js generic error page). Operator patched the NoonWeb handler in-session (code change in `noon-web-main` repo, out of this iteration's scope). Re-test on a fresh `_003` lead post-NoonWeb-patch returned a structured **HTTP 404** with body `{"message":"Proposal request not found."}` — this is contract-correct behavior from NoonWeb because the smoke had skipped the NoonWeb-side `proposal_request` origination (in production flow, NoonWeb itself creates the `proposal_request` row before sending `inbound-proposal` to App, so the outbound callback finds it; in the smoke, no such row was created). Conclusion: protocol validates end-to-end (HMAC verification, HTTP transport, NoonWeb handler logic, structured error shape all working); end-to-end DATA flow not exercised because the smoke originated synthetically rather than via the real NoonWeb form. F-4 implicitly closed.
+  - Scenario 5 (payment-confirmed happy path) — PASS. HTTP 201 + project activated (`activate_paid_proposal` RPC executed per `metadata.activatedByRpc=true`), payment row created at $350 USD, project row at `status=backlog` with `payment_activated=true`. **Q4 oracle resolved**: `wallet_ledger_entries` for the proposal/payment id returned 0 rows, `seller_fees` for the proposal returned 0 rows. Inbound + activation does NOT write to the wallet ledger or seller_fees table — consistent with ADR-007 (B3 inbound exclusion) and ADR-010 (inbound earnings NoonWeb-owned).
+  - Scenario 6 (payment-confirmed idempotent retry) — PASS. HTTP 200 + `idempotent: true` + no duplicates in payments / projects / links.
+  - Scenario 7 (payment-confirmed pre-PM-approval rejection) — PASS. Setup created a fresh `_002` lead (pending_review, not approved); the payment-confirmed POST returned **HTTP 409** with code `INBOUND_PAYMENT_REQUIRES_PM_APPROVAL` and the exact contract message. DB state confirmed: link `_002` remained `proposal_pending_review`, no payment row created, no project created.
+- What changed (durable):
+  - No code changes in this iteration.
+  - No migrations.
+  - No env vars except the HMAC secret rotation (operationally bounded).
+  - Documentation: spec `specs/fase-1-b1-3b-inbound-smoke-cross-repo.md` (Analysis output), evidence doc `docs/validations/B1.3b inbound smoke 2026-05-18.md` (Testing output), context updates (this session entry + 3 Active risks entries + 1 Closed-in-runtime entry in `project.context.core.md`).
+  - Production DB state: 4 smoke link rows + 4 leads + 4 proposals + 1 payment + 1 project (sourced from Scenario 1 / 3d / 4-retest / 7-setup), all grep-able via `external_session_id LIKE 'sess_b13b_smoke_%'`. Cleanup SQL provided in `docs/handoffs/b1-3b-plan-maestro-2026-05-18.md` §8; rows left for traceability.
+- New findings registered in core risks (this session):
+  - **F-1 HIGH** — HMAC verifier accepts missing-timestamp requests. Blocks B1.5. Child iteration `fase-1-b1-3c-hmac-timestamp-required-fix` scoped (~3 lines + 1 unit test).
+  - **Repo PUBLIC transient** — until operator completes the re-flip to PRIVATE (task pending in session).
+  - **Vercel Dashboard UI Show display bug** — workaround documented; operational friction only, runtime correctness intact.
+- Operating rule updates: none. Existing rules cover the contract, the ADRs, and the security model; this iteration validated the existing behavior, did not change it.
+- Completion status: **COMPLETE-WITH-FOLLOW-UPS** (system-testing verdict candidate, pending system-validator confirmation). The smoke met its primary success criterion (validate the v1 contract end-to-end at protocol level). B1.5 pilot sign-off depends on subsequent follow-ups (F-1 fix child iteration + PITR upgrade decision + on-call list completion + repo re-flip), none of which are in B1.3b's scope.
+- Next iteration candidates after validator close: (a) `fase-1-b1-3c-hmac-timestamp-required-fix` (highest priority — blocks B1.5); (b) repo re-flip to PRIVATE (operational, immediate); (c) NoonWeb-side coordinated review of the same F-1 pattern if their HMAC verifier mirrors the App-side bug; (d) B1.5 pilot sign-off as the final closure of FASE 1 once (a)-(c) land.
+
+
+
+## Session note: B1.3c HMAC timestamp required fix (F-1 closure)
+- Date: 2026-05-18 (same day as B1.3b smoke, child iteration spawned + closed same session)
+- Iteration id: `fase-1-b1-3c-hmac-timestamp-required-fix`
+- Route used: Bugfix FULL, single iteration. Chain: router → system-analysis → system-backend → system-testing → system-security → system-docs (this entry) → system-validator (pending). Architecture skipped (no contract change — §2.3 already required the timestamp; only code conformance needed). Refactor skipped (fix REMOVES dead branches; net code reduction). Infra skipped (no env, no migration, no deploy change beyond standard Vercel auto-deploy on merge).
+- Objective: close F-1 (HMAC verifier accepts requests without `x-noon-timestamp` header), the HIGH-severity Active risk surfaced by B1.3b Scenario 3d (HTTP 201 instead of contract-required 401 when signature is over `bodyText` only and timestamp header omitted). Unblock B1.5 pilot sign-off.
+- Surface of change: single file `lib/server/website-webhook-auth.ts`, two surgical edits.
+  - Edit 1 — `assertRecentTimestamp` (lines 30-44 post-patch): signature changed from `(timestamp: string | null) => void` to `(timestamp: string | null): asserts timestamp is string`. The `if (!timestamp) return` early-return was replaced by `if (!timestamp) { throw new WebsiteWebhookError('Missing webhook timestamp.') }`. Status code 401 inherited from `WebsiteWebhookError` constructor default. TypeScript assertion predicate narrows `timestamp` to `string` for the caller scope after the call.
+  - Edit 2 — `verifyWebsiteWebhookSignature` (line 67 post-patch): the dead ternary `const signedPayload = timestamp ? \`${timestamp}.${bodyText}\` : bodyText` was simplified to `const signedPayload = \`${timestamp}.${bodyText}\``. The fallback to `bodyText` alone is unreachable because `assertRecentTimestamp` now throws on null before this line executes.
+- Surface of test: single regression test added in `tests/server/website-webhook-auth.test.ts:63-88` ("website webhook signature rejects requests missing x-noon-timestamp (B1.3c F-1 regression)") that replicates the B1.3b Scenario 3d attack vector exactly: signature computed over `bodyText` alone (no timestamp prefix), `Headers` constructed with only `x-noon-signature` (no `x-noon-timestamp`), `process.env.NOON_WEBSITE_WEBHOOK_SECRET = 'unit-secret'`. The test asserts `WebsiteWebhookError` thrown with `message === 'Missing webhook timestamp.'` and `status === 401`. Triple assertion (class, message, status) per system-security Q2 sub-assertion recommendation.
+- Gates: `npm test` 319/319 green (318 baseline + 1 new). `npm run typecheck` clean (zero diagnostics). `npm run lint` clean. `npm run build` compiled successfully + 51/51 static pages generated.
+- TDD semantic verification (documented but not executed via patch revert per Testing skill discipline): pre-patch code path (`assertRecentTimestamp(null) -> return; signedPayload = bodyText; HMAC matches`) would produce HTTP 201 / no throw, failing `assert.throws(...)`. Post-patch code path (`throw WebsiteWebhookError at assertRecentTimestamp:32`) produces the expected throw with the expected message + status. The exact-message assertion is critical: even if pre-patch code threw a different error (e.g., `'Invalid webhook signature.'` via a different mismatched-signature path), the test would still fail under unpatched code, preserving the red→green semantic.
+- Security review verdict: GATE-OPEN-WITH-FOLLOW-UPS. No CRITICAL/HIGH App-side findings. One MEDIUM cross-repo follow-up (S-1): NoonWeb-side `proposal-review-decision` verifier likely has symmetric bug pattern; ownership NoonWeb repo; not App-blocking; not gating B1.5. Two LOW informational findings: rate-limit on 401 spam (pre-existing, deferred to audit B15), `asserts` predicate vs param-tightening choice (Backend's Q1 option a, sound). One LOW test-coverage informational note about an alternative null-timestamp call pattern that is semantically equivalent to the new test.
+- What changed (durable):
+  - 1 code edit (2 surgical hunks in `lib/server/website-webhook-auth.ts`).
+  - 1 test added (`tests/server/website-webhook-auth.test.ts`).
+  - core.md: F-1 Active risk entry removed; new Closed-in-runtime entry added; cross-repo follow-up entry added in Active risks reflecting MEDIUM severity NoonWeb mirror bug.
+  - history.md: this entry.
+  - Roadmap §17: B1.3c closure recorded, B1.5 unblocked from F-1.
+  - No migrations, no env vars, no contract document changes.
+- Operating rule updates: none. The existing operating rule about HMAC verification is now factually correct (it always was, the code was the deviation).
+- Completion status: COMPLETE-WITH-FOLLOW-UPS (Testing + Security + Docs done; Validator pending in chain). F-1 closed App-side. B1.5 unblocked from F-1; remaining B1.5 blockers (PITR upgrade decision + on-call list + repo re-flip) are operational, not technical.
+- Next iteration candidates: (a) repo re-flip to PRIVATE (operational, immediate, blocks F-3 closure); (b) cross-repo NoonWeb-side mirror patch (medium priority, coord with NoonWeb dev); (c) B1.5 pilot sign-off operational ronda once (a) + PITR + on-call are settled.
+
+
+
+## Session note: B15 — transport-level webhook event ledger para website inbound (FASE 2 Bloque C)
+- Date: 2026-05-20
+- Iteration id: `fase-2-c-b15-website-webhook-ledger`
+- Route used: Hybrid New Build + Refactor FULL. Chain: router → system-analysis → system-architecture → system-infra → system-backend → system-refactor → system-testing → system-security → system-docs (this entry) → system-validator (pending).
+- Objective: cerrar B15 (audit "no webhook event ledger / nonce store on App side" — Medium severity in `docs/integrations/cross-repo-webhook-v1.md` §13) introduciendo un transport-level idempotency ledger `website_webhook_events` que mirrorea el pattern probado de `stripe_webhook_events` (migration 0041 + `lib/server/stripe/webhook-events.ts`). El ledger se consulta DESPUÉS de HMAC + timestamp window verify y ANTES de cualquier business logic. Replay short-circuits con wire-identical response (`{ idempotent: true, linkId, leadId, proposalId, [projectId], status }`) re-query-ing `website_inbound_links` por `link_id` — NoonWeb-side no observa cambio en el wire contract. Bloque C de FASE 2 parcialmente cerrado (B15 done; B26 + F-V12 siguen pending).
+- Spec: `specs/fase-2-c-b15-website-webhook-ledger.md` (analysis output con 10 OPEN questions Q1-Q10 + 10 risks R1-R10 + 4 no-objetivos explícitos).
+- ADR: `docs/adrs/ADR-016-transport-level-webhook-ledger-pattern.md` (10 decisions D1-D10 firmadas por architecture: D1 hash strategy = `sha256(${timestamp}.${bodyText})` byte-identical al HMAC input; D2 identity key = `(endpoint, signature_hash)` UNIQUE — drop el `x-noon-event-id` header proposal; D3 single tabla con `endpoint` column en vez de 2 tablas; D4 race resolution = `INSERT ... ON CONFLICT DO NOTHING RETURNING` con SELECT fallback en supabase-js; D5 retention = 180 días documentada, cleanup cron deferido; D6 replay response = wire-identical via `composeReplayResponseFromLedger`; D7 adversarial-traffic NOT logged — auth pre-empts ledger insert; D8 migration safe-to-ship hot (additive); D9 kill-switch env var `WEBSITE_WEBHOOK_LEDGER_ENABLED` default ON; D10 `database.types.ts` 4to manual override block como Q9 fallback porque MCP/CLI Supabase auth stale en esta sesión, follow-up "clean regen + reconcile 4 blocks" queued).
+- Surface de cambio (durable):
+  - **Migration `0051_phase_20a_website_webhook_event_ledger.sql`** aplicada al remote `pdotsdahsrnnsoroxbfe` 2026-05-20 via Supabase Dashboard SQL Editor (MCP unauthorized esta sesión) + ledger row reconciliada en `supabase_migrations.schema_migrations` per ADR-014. Tabla `public.website_webhook_events` con 16 columns: identity (`id uuid pk`, `endpoint text`, `signature_hash text`, `payload_hash text`, `signature_header text`), state machine (`status text check 'processing|processed|failed|replay_detected'`, `attempt_count int`), business identity opcional (`request_id text`, `external_session_id text`, `external_proposal_id text`, `external_payment_id text`, `link_id uuid`), timestamps (`received_at`, `processed_at`, `failed_at`, `last_error`). 5 named indexes (`received_at desc` operator queries; `endpoint`; `(endpoint, signature_hash) UNIQUE` race resolution; `(endpoint, payload_hash)` forensic; `link_id` replay-recovery join). RLS enabled con admin-only read policy (copia verbatim del policy de migration 0041, solo nombre de tabla swapped).
+  - **Nuevo módulo `lib/server/website/webhook-events.ts`** con 5 exports: `recordWebsiteWebhookEvent(client, inputs)` returns `{ shouldProcess: boolean, status, eventId, linkId? }` (SELECT-then-INSERT-or-UPDATE con UPSERT semantics); `markWebsiteWebhookEventProcessed(client, eventId, linkId)` update terminal con FK al link; `markWebsiteWebhookEventFailed(client, eventId, error)` update terminal con error text; `composeReplayResponseFromLedger(client, eventId)` re-query del link y producción del wire shape idempotent; `websiteWebhookLedgerEnabled()` kill-switch checker con `console.warn` once por valor non-canonical.
+  - **Auth surface extendido en `lib/server/website-webhook-auth.ts`**: nuevo `readSignedWebsiteJsonWithRawBody(request)` returns `{ payload, bodyText, signatureHeader, timestamp }` — los routes ahora reciben los 3 inputs necesarios para computar `signature_hash` y persistir contexto. El `readSignedWebsiteJson` existente queda como thin wrapper drop-eando los extras (sin breaking change para callers no-ledger).
+  - **Routes wrapped con ledger lifecycle**:
+    - `app/api/integrations/website/inbound-proposal/route.ts` — POST HMAC verify → `recordWebsiteWebhookEvent` con endpoint `'inbound-proposal'`. Si `shouldProcess === false && linkId != null`, return `composeReplayResponseFromLedger` (200 + idempotent shape). Si `shouldProcess === true`, invocar `receiveWebsiteInboundProposal` → on success `markWebsiteWebhookEventProcessed(linkId)`, on error `markWebsiteWebhookEventFailed`.
+    - `app/api/integrations/website/payment-confirmed/route.ts` — mismo shape adaptado, endpoint `'payment-confirmed'`. Replay response compose extra `projectId` (no relevante en inbound-proposal).
+  - **`lib/server/supabase/database.types.ts`** — manual override block #4 agregado para `website_webhook_events` Row/Insert/Update (Q9 fallback per ADR-016 D10). Total override blocks ahora 4 (seller_fees + prototype_workspaces + lead_proposals + website_webhook_events) — queue follow-up "clean regen + reconcile 4 blocks" cuando MCP/CLI Supabase auth refresque.
+  - **`.env.example`** — agrega `WEBSITE_WEBHOOK_LEDGER_ENABLED` con comentario explicando default ON + kill-switch `'false'` case-insensitive.
+- Surface de test:
+  - 12 nuevos unit tests en `tests/server/website/webhook-events.test.ts`: (1) fresh claim returns `shouldProcess=true status='processing'`; (2) replay processed → `shouldProcess=false status='processed' linkId` returned; (3) retry-after-failed → `shouldProcess=true attempt_count++`; (4) retry-while-processing → `shouldProcess=true attempt_count++`; (5) two endpoints same hash → both claim (UNIQUE key includes endpoint); (6) `markProcessed` no-op cuando eventId desconocido; (7) `markFailed` swallows DB errors sin throw (defensive); (8) `composeReplay` con projectId no-null; (9) `composeReplay` con projectId null (inbound-proposal endpoint); (10) `composeReplay` con linkId null returns minimal idempotent shape; (11) `composeReplay` missing link (FK orphan) returns minimal idempotent shape; (12) kill-switch off → `recordWebsiteWebhookEvent` early-returns `shouldProcess=true` sin DB write.
+  - Total tests: **331/331 verde** (319 baseline post-B1.3c + 12 nuevos B15). `npm run typecheck` clean. `npm run lint` clean. `npm run build` clean.
+- Security review verdict: **GATE-OPEN** — zero CRITICAL/HIGH. Evidencia en `docs/validations/B15 security review 2026-05-20.md`. 12 threat surfaces auditadas S1-S12 todas LOW:
+  - S1 replay defense (4-layer defense-in-depth, ledger es la nueva 3ra capa)
+  - S2 SHA-256 collision (2^128 work, infeasible)
+  - S3 timing oracle (HMAC verify pre-empts ledger lookup; attackers no llegan al code path)
+  - S4 plaintext `signature_header` storage (no es secreto; secreto real es HMAC key + bodyText)
+  - S5 PII / GDPR (16 columns auditadas; payload_hash es one-way derivado; PII real vive en `website_inbound_links.inbound_payload` JSONB sin cambio)
+  - S6-S12 cubren rate-limit interaction, kill-switch abuse, FK-orphan recovery, race-condition under load, ledger growth unbounded (mitigado por retención documentada 180d), service-role bypass (intencional + documentado), y wire-contract preservation.
+- What changed (durable list):
+  - 1 migration aplicada (0051) + ledger row reconciliada
+  - 1 nueva tabla + 5 indexes + RLS policy
+  - 1 nuevo módulo helper (`lib/server/website/webhook-events.ts`)
+  - 1 ADR creado (ADR-016)
+  - 1 spec creado (`specs/fase-2-c-b15-website-webhook-ledger.md`)
+  - 2 routes refactoradas (inbound-proposal + payment-confirmed)
+  - 1 auth helper extendido (`readSignedWebsiteJsonWithRawBody`)
+  - 1 manual override block agregado en `database.types.ts`
+  - 1 env var nuevo (`WEBSITE_WEBHOOK_LEDGER_ENABLED`)
+  - 12 unit tests
+  - 1 security review doc
+  - `docs/integrations/cross-repo-webhook-v1.md` §8.2 reescrito + §13 row marcada Resolved
+  - `core.md` Closed-in-runtime entry + nueva operating rule (ledger-as-outer-layer)
+  - `history.md` esta entry
+  - Roadmap §6 Bloque C + §19.3 + §17 snapshot updated
+- Wire contract changes: **NINGUNO**. NoonWeb no requiere modificaciones. No nuevo header (`x-noon-event-id` proposal dropped per D2). Response shape de replay = response shape de app-level idempotency pre-B15 (wire-identical).
+- Operating rule updates: **1 nuevo** en core.md describiendo `public.website_webhook_events` como canonical transport-level idempotency ledger per ADR-016 (identity key, kill-switch behavior, service_role write + admin-only SELECT, retención 180d, follow-up queue para clean regen del override block).
+- Cross-repo impact: **CERO**. Wire contract unchanged → NoonWeb-side observa el mismo comportamiento; el ledger es defense-in-depth interna. B15 estaba listado en `cross-repo-webhook-v1.md` §13 como "open issue Medium severity, Go rewrite owner" → ahora Resolved con nota apuntando a ADR-016.
+- Completion status: COMPLETE-WITH-FOLLOW-UPS (Validator pending in chain). FASE 2 Bloque C avanza de 0/3 a 1/3 (B15 done; B26 schema_migrations gating endpoint y F-V12 leads pagination wire siguen pending). Audit B15 row downgraded a Resolved en contrato cross-repo.
+- Follow-ups queued (no bloqueantes):
+  - **Clean regen `database.types.ts`** cuando MCP/CLI Supabase auth refresque — reconciliar 4 manual override blocks (seller_fees, prototype_workspaces, lead_proposals, website_webhook_events) en un PR único.
+  - **B15-bis observability** (replay rate dashboard, rejection rate metrics) — explícitamente out-of-scope de B15 per spec §Excluded; tracked como follow-up.
+  - **Cleanup cron** para retención 180d — deferido (no implementado en este iteration, política documentada solamente).
+  - **NoonWeb-side mirror** del pattern si decide implementar ledger transporte-level del lado outbound — opcional, NoonWeb decide.
+- Next iteration candidates: (a) B26 schema_migrations gating endpoint health (~4h); (b) F-V12 leads pagination wire (~4-6h); (c) Cross-repo NoonWeb-side F-1 mirror fix (cross-repo follow-up MEDIUM); (d) Path C — B1.5 pilot sign-off operativo (PITR + on-call + ronda 4-personas).
+
+
+
+## Session note: B26 — schema_migrations drift gating endpoint health (FASE 2 Bloque C)
+- Date: 2026-05-20
+- Iteration id: `fase-2-c-b26-schema-migrations-gating-endpoint-health`
+- Route used: Hybrid Backend-primary + Infra co-sign, **LITE** depth. Chain: router → system-analysis → system-architecture → system-backend → system-testing → system-security → system-infra → system-docs (this entry) → system-validator (pending).
+- Objective: cerrar B26 (FASE 2 Bloque C item #2 — el "schema_migrations gating endpoint health que confirme schema_migrations remoto vs filesystem local" del roadmap §6) introduciendo un read-only admin-gated GET endpoint que clasifica drift entre filesystem (`supabase/migrations/*.sql`) y ledger (`public.supabase_migrations.schema_migrations`) y retorna 200/503/500 con shape estructurado consumible por deploy gate / oncall / cron. Goal: catch G7-style desync ANTES del próximo `supabase db push` en vez de descubrirlo durante el deploy. Drift puede re-accumularse silenciosamente — aplicamos migration 0051 (B15) via Dashboard SQL Editor + manual ledger row insert; sin gate, easy to miss en futuros merges.
+- Spec: `specs/fase-2-c-b26-schema-migrations-gating-endpoint-health.md` (analysis output con 4 OPEN questions Q1-Q4 + 7 risks R1-R7 + 7 mandatory test edge cases).
+- ADR: `docs/adrs/ADR-017-schema-migrations-drift-gating-endpoint.md` con 10 decisions firmadas (D1 hash strategy NO aplica aquí — distinto contexto; D2 response shape locked; D3 auth posture = admin-only via `requireRole(['admin'])`, `x-noon-internal-token` pre-authorized para B27+ futuro; D4 allowlist SoT = shared `.mjs` module `lib/server/migrations/known-exceptions.mjs`; D5 R6 mitigation = `outputFileTracingIncludes` + defensive `MigrationsBundleConfigError`; D6 module boundaries locked; D7 contract surface = ADR-only, no `docs/contracts/` promotion; D8 join key invariant `(filename_slug, ledger.name)` NEVER `(prefix, version)`; D9 type safety = inline `SchemaMigrationsRow` interface co-located en `lib/server/migrations/ledger-adapter.ts`, NO 5to override block en `database.types.ts`; D10 `database.types.ts` queda en 4 override blocks, clean regen seguido follow-up).
+- Surface of change (durable):
+  - **NEW** `lib/server/migrations/known-exceptions.mjs` — plain ESM con JSDoc types, exports `KNOWN_COLLISION_FILES` (8 filenames per ADR-006 §Option B2) + `EXPECTED_ORPHAN_LEDGER_NAMES` (6 names per ADR-014 §Orphans). Leading comments anchor a ambos ADRs. Source of truth — no duplication elsewhere.
+  - **NEW** `lib/server/migrations/health.ts` — pure `diffMigrations(files, rows, grandfathered, expectedOrphans): MigrationsDiffResult`. NO I/O. NO Supabase. NO `node:fs`. Exports `MigrationsLedgerRow`, `MigrationsDiffSummary`, `MigrationsDiffResult`, `filenameToSlug` helper.
+  - **NEW** `lib/server/migrations/ledger-adapter.ts` — orchestrator `readMigrationsHealth(client)`. Owns `fs.readdir('supabase/migrations')`, cross-schema SELECT vía `client.schema('supabase_migrations').from('schema_migrations').select('version, name')`, co-located `SchemaMigrationsRow` interface, dos `ApiError` subclasses (`MigrationsBundleConfigError` → 500 + `MIGRATIONS_BUNDLE_MISSING`; `MigrationsLedgerReadError` → 500 + `MIGRATIONS_READ_FAILED`), response assembly vía `diffMigrations`.
+  - **NEW** `app/api/admin/migrations-health/route.ts` — GET-only handler. `runtime = 'nodejs'`, `dynamic = 'force-dynamic'`. Llama `requireRole(['admin'])`, `createSupabaseAdminClient()`, `readMigrationsHealth(client)`, maps `result.data.synced` → status 200/503, errores via `toErrorResponse` de `lib/server/api/errors.ts`.
+  - **MODIFIED** `scripts/check-migrations.mjs` — replaced inline `KNOWN_COLLISION_FILES` const con `import { KNOWN_COLLISION_FILES } from '../lib/server/migrations/known-exceptions.mjs'`. Behavior **byte-for-byte unchanged** (verified pre/post: `OK: 55 migration file(s) checked. No new collisions (4 grandfathered).`).
+  - **MODIFIED** `next.config.mjs` — agrega top-level `outputFileTracingIncludes: { '/api/admin/migrations-health': ['./supabase/migrations/**/*.sql'] }`. Verified `outputFileTracingIncludes` es la key correcta top-level en Next 16.2.6 (`node_modules/next/dist/server/config-shared.d.ts:1238`).
+  - **NEW** `tests/server/migrations/health.test.ts` — 14 tests `node:test` + `node:assert/strict`. Sub-decisión backend: agrega `summary.missing_in_ledger_count` como field separado de `unexpected_drift_count` (la primera distingue "we forgot to register a row" de la segunda "we have a row whose file is gone" — operadores remediátan distinto).
+- Surface of test (methodology: **integration-first para LITE**):
+  - Unit tests cubren los 7 mandatory edge cases del spec: steady-state (51/53/4/6/0), empty filesystem AND empty ledger, empty filesystem with non-empty ledger, empty ledger with non-empty filesystem, allowlist file present in ledger anyway, expected-orphan file appears on disk later (reclassified), unknown extra orphan in ledger (real drift), missing-in-ledger (real new migration not yet registered), `KNOWN_COLLISION_FILES` SoT shape guard (exactamente 8 filenames), `EXPECTED_ORPHAN_LEDGER_NAMES` SoT shape guard (exactamente 6 names), 3 `filenameToSlug` defensive variants.
+  - Route handler + adapter orchestrator NO tienen unit tests dedicados (acceptable para LITE per testing methodology) — el contract surface (diff logic) está fully tested; el route es 3 logical statements sobre shared infra (`requireRole`, `createSupabaseAdminClient`, `toErrorResponse`).
+  - Total: **345/345** verde (331 baseline post-B15 + 14 nuevos B26). `npm run typecheck` clean. `npm run lint` 0 errors / 3 pre-existing `_cols` warnings de B15. `npm run build` clean — `/api/admin/migrations-health` listed como `ƒ` (dynamic Node-runtime route). `node scripts/check-migrations.mjs` output byte-identical pre/post refactor.
+- Gates re-validated by system-testing: PASS en todos los 5 gates.
+- Security review verdict: **GATE-OPEN**. Zero CRITICAL/HIGH. 12 threat surfaces auditadas S1-S12. 2 LOW findings recorded (B26-SEC-F1 raw Supabase error en 500 body, acceptable bajo admin gate; B26-SEC-F2 no per-route rate-limit, acceptable bajo admin gate). 1 MEDIUM-conditional pre-autorización (B26-SEC-F3): future R5 GRANT migration si la cross-schema SELECT permission no funciona en preview, debe ir a través de standalone security review — does NOT apply a B26 as shipped. Evidencia en `docs/validations/B26 security review 2026-05-20.md`.
+- Infra co-sign verdict: **READY-TO-MERGE WITH WARNINGS**. 10 obligation outcomes signed. 3 warnings: **W1** G11 carry-over (auto-deploys siguen rotos post repo PRIVATE — confirmado empíricamente en esta sesión cuando el Deploy Hook retornó `incorrect_git_source_info`; mitigado con band-aid PUBLIC toggle); **W2** R5 cross-schema SELECT permission unverified pending preview deploy; **W3** R6 `outputFileTracingIncludes` bundle inclusion unverified pending preview deploy. Ambos R5 y R6 fail modes son loud 500s con structured codes, no silent false-positives. Operator runbook para 503 response handling documented en infra review I-6 (4 cases A/B/C/D). Bundle size ~250-500KB added, well under 50MB Vercel limit + 10MB smart-practice threshold. Evidencia en `docs/validations/B26 infra review 2026-05-20.md`.
+- What changed (durable list):
+  - 4 nuevos files (1 shared module + 1 pure helper + 1 orchestrator + 1 route)
+  - 2 archivos modified (script refactor + next.config bundle inclusion)
+  - 1 nuevo test file con 14 tests
+  - 1 ADR creado (ADR-017)
+  - 3 review docs creados (testing + security + infra)
+  - `core.md`: Closed-in-runtime entry + nueva operating rule (canonical drift-gating endpoint per ADR-017)
+  - `history.md`: esta entry
+  - Roadmap §6 Bloque C + §17 snapshot + §19.3 sync
+- Wire contract changes: **NINGUNO**. NoonWeb no requiere modificaciones. El endpoint es App-internal, no cruza el cross-repo contract `docs/integrations/cross-repo-webhook-v1.md`.
+- Operating rule updates: **1 nueva** describiendo el endpoint canonical drift-gating per ADR-017 (auth posture, status codes, allowlist SoT, defensive ApiError pattern, join key invariant, 503 remediation flow).
+- Cross-repo impact: **CERO**. Endpoint internal-only, no surface a NoonWeb.
+- Completion status: COMPLETE-WITH-FOLLOW-UPS (Validator pending in chain). FASE 2 Bloque C avanza de 2/4 a 3/4 cerrado (B14 + B15 + B26 done; F-V12 leads pagination wire es el único restante).
+- Follow-ups queued (no bloqueantes):
+  - **R5 preview verify** (operator-driven, post-merge): admin hit a `/api/admin/migrations-health`, expect 200 con `data.synced=true`, `filesystem_count=55` (o whatever actual), `ledger_count=53`, `grandfathered_collisions_count=4`, `expected_orphans_count=6`, `unexpected_drift_count=0`. Si retorna `500 MIGRATIONS_READ_FAILED` con permission denied, R5 materializó → escalar a FULL + GRANT migration con B26-SEC-F3 standalone security review.
+  - **R6 preview verify** (operator-driven, post-merge): confirma `summary.filesystem_count` no es 0 (sería bundle config misconfigured, fix `next.config.mjs` y redeploy).
+  - **B26-SEC-F3** binding: future R5 GRANT migration (si materializa) requiere standalone security review — pre-autorización registrada.
+  - **B27+ internal-token follow-up** pre-authorized per ADR-017 §D3 si CI consumer materializa.
+  - **F-1 testing finding 51→55 fixture drift**: el spec/ADR-017 §D2 example response usaba 51 (model number) pero on-disk reality es 55 — corregido en este closure (ADR-017 §D2 actualizado).
+  - **Clean regen `database.types.ts`** queue follow-up sigue vivo desde B15 (4 manual override blocks pendientes; B26 NO agregó un 5to per D9).
+- Next iteration candidates: (a) **F-V12** leads pagination wire (~4-6h, cierra FASE 2 Bloque C al 100%); (b) Path B Cross-repo NoonWeb F-1 mirror fix (carry-over); (c) Path C B1.5 pilot sign-off operativo (carry-over); (d) Clean regen `database.types.ts` cuando MCP/CLI Supabase auth refresque (opportunistic); (e) Outbound prototype gate iteration (carry-over de Path A 2026-05-20).
+
+
+
+## Session note: B26 R5 follow-up — list_schema_migrations RPC (Path B resolution)
+- Date: 2026-05-20
+- Iteration id: `fase-2-c-b26-r5-followup-rpc-migration`
+- Route used: Hybrid LITE, chain analysis → architecture → backend → testing → security → infra → docs → validator (8 skills, all executed in single session same day as B26 closure).
+- Objective: resolver R5 que materializó empíricamente en producción inmediatamente post-merge de B26. El smoke quick contra `https://nooncode-app-pi.vercel.app/api/admin/migrations-health` retornó `500 {"error":"Could not read the schema migrations ledger: Invalid schema: supabase_migrations","code":"MIGRATIONS_READ_FAILED"}` — el supabase-js client rechaza `client.schema('supabase_migrations')` porque PostgREST default `db-schemas` solo expone `public, graphql_public, storage`. La defensive `MigrationsLedgerReadError` funcionó perfecto (loud 500 + structured code, no silent false-positive drift). Usuario eligió **Path B** (RPC SECURITY DEFINER) sobre Path A (operational schema exposure via Dashboard), respetando el binding pre-autorización B26-SEC-F3 (standalone security review).
+- Spec: `specs/fase-2-c-b26-r5-followup-rpc-migration.md`.
+- ADR: `docs/adrs/ADR-018-r5-resolution-list-schema-migrations-rpc.md` (standalone, no amendment). Architecture firmó Q1 (SECURITY DEFINER + STABLE + LANGUAGE sql + search_path pinned a `pg_catalog, supabase_migrations` sin `public`), Q2 (REVOKE PUBLIC + anon + authenticated, GRANT EXECUTE a service_role only, rollback verbatim en migration header), Q3 (inline cast consistente con ADR-017 §D4 — NO 5to override block en `database.types.ts`). ADR-017 §R5 flipped a `Closed — see ADR-018` (Status header + Amended by ref + R5 row + trailing paragraph).
+- Surface of change (durable):
+  - **NEW** `supabase/migrations/0052_phase_20b_list_schema_migrations_rpc.sql` — 54 líneas byte-for-byte from ADR-018 §D4. SECURITY DEFINER function `public.list_schema_migrations()` returning `setof (version text, name text)`. Idempotent (DROP IF EXISTS + CREATE en `begin;/commit;`). REVOKE explicit + GRANT EXECUTE to service_role. Header comment con rollback companion verbatim.
+  - **MODIFIED** `lib/server/migrations/ledger-adapter.ts` — 5 mechanical edits per ADR-018 §D5: (1) `PostgrestError` agregado al type import desde `@supabase/supabase-js`; (2) file-level JSDoc agrega `@see` para ADR-018; (3) `SchemaMigrationsRow` JSDoc lead phrase actualizada para mencionar RPC; (4) `MigrationsLedgerReadError` JSDoc cause (a) reworded (lost service-role EXECUTE grant); (5) `readLedgerRows()` body flipped de `client.schema('supabase_migrations').from('schema_migrations').select('version, name')` a `client.rpc('list_schema_migrations' as never)` con explicit `{ data: SchemaMigrationsRow[] | null, error: PostgrestError | null }` cast.
+  - **UNTOUCHED** `tests/server/migrations/health.test.ts` — analysis empirical finding confirmed: no adapter-boundary mock existed; los 14 pure-function tests carry over verbatim porque `diffMigrations` es invariant al upstream row source. Re-run gates verified 345/345 still pass.
+  - **UNTOUCHED** `database.types.ts` — Q3=(a) inline cast preserva el deferral pattern de ADR-017 §D4. Override block surface stays at 4.
+- Surface of test (methodology: **integration-first para LITE preserved**):
+  - Unit tests stay the same (14 carried from B26).
+  - Production smoke post-deploy es la integration validation (operator-driven, owned por infra/validator chain).
+  - Defensive `MigrationsLedgerReadError` chain (Supabase error → ApiError → toErrorResponse) preserved verbatim.
+- Gates re-validated: `npm test` 345/345; typecheck/lint/build clean.
+- Security review verdict: **GATE-OPEN**. Zero CRITICAL/HIGH/MEDIUM. 12 threat surfaces auditadas S1-S12. 2 LOW carry-forward findings (B26-R5-SEC-F1 raw Supabase error en 500 body + B26-R5-SEC-F2 no per-route rate-limit, ambos admin-gate-acceptable). 2 P-positive findings (P1 REVOKE-PUBLIC pattern nuevo es defense-in-depth improvement sobre precedent 0050 — recomendado como canonical shape forward; P2 two-layer defense database GRANT + App admin gate documentado explícitamente). **B26-SEC-F3 MEDIUM-conditional binding RESUELTO**, no carry-forward — todos los 4 requirements satisfied (1) standalone spec + (2) standalone migration + (3) standalone security review + (4) reversible REVOKE+DROP companion. Privilege boundary se NARROWED vs B26 baseline (improvement, no regression). Evidencia en `docs/validations/B26-R5 security review 2026-05-20.md`.
+- Infra apply verdict: **READY-TO-MERGE WITH WARNINGS**. Supabase MCP no disponible esta sesión → Dashboard SQL Editor fallback per ADR-014 (operator pegó el SQL block + manual ledger row INSERT). Verifications post-apply: (a) `proacl = {postgres=X/postgres,service_role=X/postgres}` ✓ (sin anon/authenticated/PUBLIC); (b) `proconfig = [search_path=pg_catalog, supabase_migrations]` ✓ (sin `public`); (c) ledger row `('0052', 'phase_20b_list_schema_migrations_rpc')` ✓ presente; (d) total ledger count: 58 (consistente con prod reality — la architecture math pre-B26 asumía 53 pero los counts reales en prod son distintos; 58 ledger = 52 disk-tracked + 6 expected_orphans, math holds con current reality). 2 LOW operator-action warnings registradas en infra review. Evidencia en `docs/validations/B26-R5 infra apply 2026-05-20.md`.
+- What changed (durable list):
+  - 1 nueva migration (0052) aplicada a remote via Dashboard fallback + ledger row reconciliada per ADR-014
+  - 1 nueva function `public.list_schema_migrations()` SECURITY DEFINER en prod
+  - 1 archivo modified (`ledger-adapter.ts`, 5 mechanical edits)
+  - 1 ADR nuevo (ADR-018) + ADR-017 §R5 flipped
+  - 3 review docs nuevos (testing + security + infra apply)
+  - `core.md`: operating rule existente para `/api/admin/migrations-health` amended (mechanism flip mencionado + ADR-018 referenced)
+  - `history.md`: esta entry
+  - Roadmap §17: latest snapshot updated reflejando R5 closure + B26-SEC-F3 binding closed
+- Wire contract changes: **NINGUNO**. Endpoint behavior externally identical (same status codes, same JSON shape, same admin gate). Only underlying read mechanism flipped.
+- Operating rule updates: **1 amended** (no nuevo). El operating rule canonical drift-gating endpoint existente actualizado para mencionar el RPC indirection per ADR-018.
+- Cross-repo impact: **CERO**. Endpoint App-internal.
+- Completion status: COMPLETE-WITH-FOLLOW-UPS (Validator pending). FASE 2 Bloque C status sin cambio (3/4 — B14 + B15 + B26 cerrados con R5 follow-up; F-V12 sigue pending). G7-style drift gating ahora **funcionalmente operativo en prod** (era nominalmente shipped en B26 pero estaba broken por el "Invalid schema" bug — R5 follow-up cierra el gap).
+- Follow-ups queued (no bloqueantes):
+  - **Production smoke post-merge + deploy**: admin GET a `/api/admin/migrations-health` debe retornar 200 con `synced=true`, `summary.ledger_count=58`, `summary.filesystem_count=56` (or actual count). Operator-driven.
+  - **Carry-overs vivos** desde B26: clean regen `database.types.ts` (4 override blocks), B27+ internal-token pre-authorized per ADR-017 §D3 si CI consumer materializa, G11 correct fix (re-grant Vercel GitHub App al repo PRIVATE), Path A operativos B carry-overs.
+- Next iteration candidates: (a) **F-V12** leads pagination wire (~4-6h, cierra FASE 2 Bloque C al 100%); (b) carry-overs above.

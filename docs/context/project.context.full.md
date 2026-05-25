@@ -7,7 +7,6 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
 ## Project identity
 - Project: `nooncode-app`
 - Product name in the UI: `NoonApp`
-- Repo path: `C:\Users\white\Documents\Codex\2026-04-23-quiero-que-trabajemos-sobre-este-repo`
 - Application type: Next.js App Router web application
 - Current observed stage: hybrid MVP with real Supabase auth/session, durable commercial flow into hand-off projects, multiple persisted finance/delivery foundations, and active Maxwell Lead Engine V1 consolidation
 
@@ -859,11 +858,242 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - customer portal
   - Maxwell grounding
 
+## Confirmed client-facing architecture (App / portal / MVP three-entity model)
+- Anchors:
+  - `docs/adrs/ADR-008-fase-0-commercial-and-scope.md`
+  - `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md`
+  - `docs/adrs/ADR-011-ai-mvp-pipeline-runtime.md`
+  - `docs/adrs/ADR-012-noonweb-owns-client-email.md`
+  - `docs/product/master-spec-v3.md` §2.1, §8.1
+  - `docs/integrations/cross-repo-webhook-v1.md`
+- Three distinct surfaces, each with its own owner repo, its own audience, and its own purpose:
+  - **NoonApp** (this repo, `nooncode-org/App-nooncode`) — internal workspace under `/dashboard/*`. Audience: sellers, PMs, developers, sales managers, admins. Purpose: lead/proposal management, delivery, earnings, outbound Maxwell. The client final **never enters here**.
+  - **Client portal** (sister repo, `nooncode-org/noon-web-main`, at `/portal/[projectId]`) — to be built in v3 Phase 2-6 (mes 3-7). Verified 2026-05-13: the route does not yet exist; only `/app/[locale]/maxwell/proposal/[token]/page.tsx` exists for proposal review + Stripe Checkout. Audience: the client final, authenticated via their NoonWeb account (NextAuth Google). Purpose: post-payment client experience — see project status, request changes, view/publish MVP, manage proposal and payment plan.
+  - **MVP** (independent URL per project, deployed by the project itself) — the actual product Noon built for the client (their site / app / store). Audience: the end users of the client's product. Purpose: the deliverable. Embedded into or linked from the client portal.
+- The portal is **not** the MVP. The MVP is the deliverable. The portal is where the client accesses and manages the deliverable.
+- The portal is **not** NoonApp. NoonApp is the operator workspace. The client never sees NoonApp.
+- Cross-repo coupling lives only in signed webhooks under `docs/integrations/cross-repo-webhook-v1.md`. The two Supabase projects are distinct; no shared database, no direct cross-repo SQL reads.
+- Payment flow:
+  - Client pays from inside their NoonWeb account via Stripe Checkout (NoonWeb owns the Checkout session creation).
+  - Stripe webhook lands in App at `/api/webhooks/stripe`.
+  - NoonWeb fires `payment-confirmed` to App via signed webhook at `/api/integrations/website/payment-confirmed`.
+  - App owns the activation, the seller-fee state transition (per ADR-007), the earnings credit, and the eventual AI MVP pipeline orchestration (per ADR-011).
+- Email to client:
+  - NoonWeb is the single owner (Resend already configured at `nooncode-org/noon-web-main` `lib/maxwell/proposal-email.ts:133`).
+  - App publishes domain events via the cross-repo webhook contract; NoonWeb decides whether and how each event becomes a client email.
+  - App has no email provider integration and must not gain one.
+- AI MVP pipeline (v3 Phase 5, mes 3-7):
+  - Currently only the V0 step exists in App (`lib/server/v0/client.ts`, `app/api/prototypes/[prototypeWorkspaceId]/generate/route.ts`, migration `0033_phase_5b_v0_generation_columns.sql`). Operator-triggered, synchronous Vercel Function.
+  - Full pipeline (GPT spec → V0 → Opus → validation → up to 5 auto-fix iterations) will be built in v3 Phase 5 on Vercel Functions + Vercel Cron + a queue table in App's Supabase. No external worker.
+  - LLM budget ceiling is deferred to a follow-up ADR after the FASE 4 PoC. No auto-trigger from payment-confirmed until that follow-up ADR ships.
+- Legacy debt on App-side:
+  - `/client/[token]` route in App is pre-v3 placeholder. Reclassified as legacy debt per ADR-010. No new features; removal scheduled when NoonWeb ships `/portal/[projectId]` or when an explicit cleanup iteration runs.
+- Operational mode through FASE 1-3 (per ADR-008):
+  - Internal-only. No client receives automated email or accesses a portal during FASE 1-3.
+  - Client communication is operator-mediated (out-of-band: email, phone, WhatsApp from the operator's own channels).
+  - Verified 2026-05-13: no client has an active account in NoonWeb expecting the portal today, so the gap is absorbable.
+
+## Confirmed seller-fee state machine slice
+- Anchors:
+  - `docs/contracts/seller-fee-state-machine.md` (entity contract, with `OPEN: Q4` and `OPEN: Q7` markers closed)
+  - `docs/adrs/ADR-007-seller-fee-state-machine.md` (storage = dedicated table, state enum, cancellation policy, wallet integration, activity-log integration)
+  - `specs/fase-0-b3-seller-fee-selector.md` (5-chunk iteration spec, Approved 2026-05-11)
+- Entity:
+  - new persisted table `seller_fees`
+  - one row per outbound proposal that the seller initiates with a chosen fee value
+  - inbound proposals (website hand-off) create **no** `seller_fees` row — seller-fee semantics do not apply to inbound
+  - row links to `lead_proposals.id`, `seller_user_id` (the lead's `assigned_to ?? created_by`), and optionally to `payment_events.id` once payment confirms
+  - `fee_amount` constrained to `100 | 300 | 500` USD (assertion enforced by zod + check constraint)
+- Lifecycle (5 states):
+  - `potential` — row created at proposal creation; no payment yet
+  - `confirmed` — Stripe webhook fired `payment.confirmed`; transition wired in `app/api/webhooks/stripe/route.ts`
+  - `pending_payout` — earnings consolidation moved the seller's bucket from `pending` to `available_to_withdraw` (uses existing wallet pipeline; no new bucket)
+  - `paid_out` — payout batch completed
+  - `cancelled` — only allowed from `potential` or `confirmed` per ADR-007; cancelling from `paid_out` is treated as an unrecoverable exception (PM/admin manual intervention)
+- Storage model (per ADR-007):
+  - **dedicated table** chosen over discriminating on `earnings_ledger` because role-aware RLS visibility cannot be enforced precisely enough on the ledger without leaking the fee value to developers via inference on `actor_role='developer'` rows
+  - `earnings_ledger` retains its existing shape; the fee is computed via the persisted `seller_fees` row instead of the previous hardcoded `100`
+- RLS posture:
+  - `client` never reads `seller_fees` (no portal access path)
+  - `developer` is **structurally excluded** from `SELECT` — there is no policy permitting developer role to read, by design
+  - `seller` reads own rows only (matches `auth.uid() = seller_user_id`)
+  - `pm` and `admin` read all rows
+  - mutations route only through `service_role` (the service layer in `lib/server/seller-fees/`)
+- Service surface (`lib/server/seller-fees/`):
+  - `schema.ts` — zod validation, `SellerFeeAmount` type alias (`0 | 100 | 300 | 500`), input/output shapes
+  - `repository.ts` — typed Supabase queries (insert / get-by-proposal / update-state)
+  - `activity.ts` — helpers that emit the 5 new `lead_activity_type` values (`seller_fee_selected`, `seller_fee_confirmed`, `seller_fee_pending_payout`, `seller_fee_paid_out`, `seller_fee_cancelled`) on state transitions
+  - `service.ts` — `createSellerFee`, `confirmSellerFee`, `cancelSellerFee`, `markSellerFeePendingPayout`, `markSellerFeePaidOut`
+  - 38 unit tests cover state-machine transitions, RLS visibility, validation; 5 additional tests cover the webhook integration path including failure mode
+- Integration surfaces:
+  - `lib/maxwell/pricing.ts` — `computePricing()` now accepts a `feeAmount` argument supplied by the persisted row; the previous `const FEE = 100` is removed. Type definitions (`SellerFeeAmount`) and explanatory comments still reference the literals `100 / 300 / 500`, but no functional code path reads them.
+  - `app/api/leads/[leadId]/proposals/route.ts` + `lib/server/leads/proposal-schema.ts` + `lib/server/leads/proposal-mappers.ts` — proposal creation accepts `sellerFeeAmount`, persists the `seller_fees` row in `potential`, and emits the `seller_fee_selected` activity. Inbound proposals skip this entirely.
+  - `app/api/webhooks/stripe/route.ts` — at `payment.confirmed`, the handler reads the persisted `seller_fees` row for the proposal and calls `confirmSellerFee` to move state `potential → confirmed`. The former three hardcoded `100` references at lines 154/163/179 are gone.
+  - `components/lead-detail.tsx` — proposal-creation form renders the `100 / 300 / 500 USD` selector **only** for outbound proposals; default value `100`; the row is created at save. Inbound paths do not show the selector.
+- Activity logging:
+  - 5 `lead_activity_type` enum values added by migration `0043`
+  - every state transition writes a `lead_activities` row through `lib/server/seller-fees/activity.ts`, surfaced in `/dashboard/updates` for visible actors
+- Migrations:
+  - `supabase/migrations/0043_phase_18a_seller_fees.sql` — table, indexes, triggers, enum extensions
+  - `supabase/migrations/0044_phase_18b_seller_fees_rls.sql` — RLS policies
+  - applied out-of-band consistent with the wider G7 schema↔ledger desync (not via `supabase db push`)
+- One-time legacy backfill:
+  - 4 in-flight outbound proposals predating Chunk 3a were backfilled via Supabase MCP one-time SQL on 2026-05-12
+  - 3 rows in `potential`, 1 in `confirmed` (payment_id wired retroactively)
+  - no fallback constant survives in code; backfill was the only path to bridge the gap
+- Validation evidence:
+  - `pnpm test`: **201/201 pass** (post-Chunk-5 baseline)
+  - browser validation 2026-05-12: `docs/validations/Browser validation 2026-05-12 — B3 seller-fees input side.md` (14 invariants verified end-to-end, including selector at `$300` for outbound, inbound proposals correctly creating no `seller_fees` row, webhook idempotency, and activity-log surfacing)
+- Explicitly excluded from this slice:
+  - wallet model overhaul (`wallet_accounts` / `wallet_ledger_entries` shape preserved)
+  - payout system rework (`payout_methods`, `payout_batches`, `payouts` unchanged)
+  - ~~FASE 3 proposal lifecycle automation~~ — shipped 2026-05-23 via the activation earnings auto-credit slice (see section below). The `potential → confirmed` transition still fires from the Stripe webhook only (seller-fee state machine is outbound-only by design); the new shared service handles the cross-cutting earnings allocation+credit step that previously was inline at `app/api/webhooks/stripe/route.ts:184-279`.
+  - Stripe live-card end-to-end validation (deferred to B1 cutover)
+- Known open items:
+  - **G10** — selector value does not persist between consecutive saves on the same lead; `useEffect([lead])` in `components/lead-detail.tsx:619-627` re-initializes the form when the lead object refreshes after save. UX-only, no functional or financial impact. Deferred to a UX iteration post-cutover.
+- Operating constraints carried forward (per ADR-007):
+  - the hardcoded `$100` **must never** be re-introduced for "compatibility" reasons
+  - role-aware visibility must remain enforced at the database layer (RLS), not at the application layer alone
+  - the developer role must never gain `SELECT` access to `seller_fees`, by design
+
+## Confirmed activation earnings auto-credit slice
+- Anchors:
+  - `specs/fase-3-r4-inbound-earnings-auto-credit.md` (Approved 2026-05-23)
+  - `docs/adrs/ADR-021-inbound-earnings-auto-credit-extraction.md` (5 decisions: D1 extraction shape, D2 idempotency-key namespace strategy, D3 inbound allocation policy, D4 fail-closed error semantics, D5 logging contract)
+  - prior precedent: `docs/adrs/ADR-007-seller-fee-state-machine.md` (payment-event-driven model preserved), `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md` (architectural constraint — client never touches App), `docs/adrs/ADR-015-earnings-consolidation-atomic-rpc.md` (idempotency discipline pattern), `docs/adrs/ADR-016-transport-level-webhook-ledger-pattern.md` (transport ledger upstream of business handler)
+- Problem solved:
+  - prior to this slice, only the Stripe outbound webhook (`app/api/webhooks/stripe/route.ts`) auto-credited earnings shares (seller + developer + noon) post-`activatePaidProposal`. The symmetric inbound path triggered by NoonWeb's payment-confirmed webhook (`/api/integrations/website/payment-confirmed` → `receiveWebsitePaymentConfirmed`) only activated the project record and never credited developer or noon shares — operationally a money-allocation gap invisible to UX. The allocation+credit logic was also inline at the Stripe handler (~95 LOC) with no extraction point for the inbound caller to reuse.
+- Shared service:
+  - new file `lib/server/earnings/activation-credit.ts` exports `creditActivationEarnings(client, params)` as the allocation policy holder
+  - input contract: `{ activationAmount, currency, paymentId, proposalId, leadId, seller: { actorId, amount } | null, developerUserId, channel: 'inbound' | 'outbound', idempotencyKeyBase, actorProfileId, createdAt? }`
+  - computes `base = activationAmount - (seller?.amount ?? 0)`; builds 1-3 earnings rows (seller when present + developer + noon when `base > 0`)
+  - single atomic upsert into `earnings_ledger` with `onConflict: 'idempotency_key', ignoreDuplicates: true`
+  - per-row loop calls `credit_wallet_bucket` RPC (existing migration 0036) only when `actor_id !== null` (noon always skipped — no profile_id; developer skipped when unassigned)
+  - returns `{ base, rows: Array<{ actorRole, actorId, amount, earningsLedgerIdempotencyKey, walletIdempotencyKey, walletCredited }> }` for testability
+- Allocation policy asymmetry (load-bearing — do NOT "fix" without revisiting ADR-021):
+  - **outbound** (`seller !== null`): `base = activationAmount - seller.amount`; rows = seller + developer + noon; the seller's persisted take from `seller_fees.amount` is subtracted before the 50/50 dev/noon split
+  - **inbound** (`seller === null`): `base = activationAmount` (full amount distributed); rows = developer + noon only; no seller share by design because inbound has no `seller_fees` row per ADR-007
+  - signature requires `channel` as discriminator so the asymmetry is impossible to "accidentally fix" via a refactor
+- `developerUserId === null` handling (policy decision per ADR-021 D3 + R2):
+  - earnings_ledger audit row IS inserted with `actor_id = null` and notes `Developer not yet assigned - pending resolution` (audit invariant: "every payment activation has 2 or 3 earnings_ledger rows depending on channel")
+  - wallet credit loop short-circuits per row via `if (!actor_id) continue`
+  - net effect: developer share documented in `earnings_ledger` for future reconciliation, no `wallet_ledger_entries` row exists, money effectively unallocated until either (a) developer assigned + admin runs `POST /api/admin/earnings/credit` to reconcile, or (b) a future iteration introduces auto-reconcile
+  - matches the existing Stripe handler semantic for outbound projects with delayed developer assignment
+- Idempotency-key strategy (per ADR-021 D2):
+  - **two distinct keys per row** — defense-in-depth across two SQL surfaces
+  - `earnings_ledger.idempotency_key` column UNIQUE: `{idempotencyKeyBase}:earning:{actorRole}:{actorId ?? 'unassigned'}`
+  - `wallet_ledger_entries` partial unique index on `(metadata->>'idempotencyKey')`: `{idempotencyKeyBase}:wallet:{actorRole}:{actorId}` (no `unassigned` fallback because wallet credits only attempted for non-null actors)
+  - namespace separation: outbound callers pass `idempotencyKeyBase = 'stripe:${session.id}'`; inbound callers pass `'website:${external_payment_id}'`
+  - service rejects with `IDEMPOTENCY_KEY_BASE_NAMESPACE_MISMATCH` at entry if `channel` and base prefix disagree (defense against caller copy-paste bugs)
+  - Stripe handler always passes `channel: 'outbound'` regardless of `lead_origin` because the transport is Stripe; the rare defensive inbound-via-Stripe path (impossible per ADR-010 — `/api/payments/checkout/route.ts` rejects with `INBOUND_PAYMENT_LINK_OWNED_BY_WEBSITE`) still works correctly because `sellerInput` resolves to null → service computes `base = activationAmount` cleanly
+- Caller deltas:
+  - `app/api/webhooks/stripe/route.ts` — inline 95-LOC allocation+credit block at old lines 184-279 replaced by a single service call. Route file dropped from 607 to 504 LOC (-103 net). Kept in the handler (outbound-specific): `getSellerFeeByProposalId` lookup, sellerInput construction, `confirmSellerFee` transition with its existing fail-open try/catch, 50-points award to seller.
+  - `lib/server/website-integration.ts::receiveWebsitePaymentConfirmed` — gains a project lookup for `developer_user_id` immediately after `activatePaidProposal` (same pattern as Stripe handler) plus a service call with `seller: null`, `channel: 'inbound'`, `idempotencyKeyBase: \`website:${external_payment_id}\``, `currency: 'USD'` (hard-pinned per F-S-R4-1). Function signature gains optional `clientOverride?: SupabaseAdminClient` parameter for test DI (same pattern as `handleCheckoutSessionCompleted`).
+  - the `confirmSellerFee` state transition is NOT invoked from the inbound path — inbound has no `seller_fees` row by design (ADR-007)
+  - no points awarded in inbound — `sellerId === null` naturally skips the existing points path, and operator-confirmed no developer-points-in-inbound at scoping time
+- Error semantics (per ADR-021 D4):
+  - service is fail-closed: any error in `earnings_ledger.upsert` or `credit_wallet_bucket` RPC throws, the webhook returns 5xx, transport (Stripe/NoonWeb) retries
+  - idempotency at the SQL constraint level is the retry safety net — re-running the service after a partial failure dedupes per row
+  - the `confirmSellerFee` fail-open try/catch stays in the Stripe handler (outbound only) — ADR-007 keeps that audit-secondary semantic
+- Logging contract (per ADR-021 D5):
+  - one INFO log per call (`earnings.activation_credit.allocated`) with `channel`, `paymentId`, `proposalId`, `leadId`, `activationAmount`, `base`, `sellerAmount`, `developerUserId`, `rowCount`, `rowsCreditedToWallet`
+  - WARN/ERROR on failure paths with `stage: 'earnings_ledger_upsert' | 'wallet_credit'` and failed-actor details
+  - no PII (no customer name/email/phone); amounts are internal-workspace money data and are logged consistent with existing earnings logging precedent
+- Defense-in-depth (4 layers):
+  - L1: HMAC signature verification (`lib/server/website-webhook-auth.ts`, unchanged) gates inbound at the transport
+  - L2: transport-level `website_webhook_events` ledger (`lib/server/website/webhook-events.ts`, unchanged) catches duplicate webhooks at the route handler (per ADR-016)
+  - L3 (NEW): service-level fail-closed + namespace guard
+  - L4: SQL-level UNIQUE constraints — `earnings_ledger_idempotency_key_unique` (column) + `wallet_ledger_entries_idempotency_key_unique` (partial index on metadata JSON, both from migration 0036)
+- Tests:
+  - 12 new unit at `tests/server/earnings/activation-credit.test.ts` — outbound full / inbound seller-null / developer-null / RPC dedup / seller-takes-100% / activationAmount=0 / both namespace mismatches / upsert error / wallet RPC error / odd-base rounding / outbound + developer-null
+  - 4 new integration at `tests/server/api/integrations/website/payment-confirmed-earnings.test.ts` — happy-path inbound (full assertion on rows + RPC args + metadata channel + amounts + notes + idempotency keys), `developerUserId=null` boundary (audit-only row + zero RPC), table-touch discipline (asserts `seller_fees` / `points_ledger` / `lead_activities` never touched in inbound), replay idempotency (RPC returns false = deduped)
+  - existing 7 Stripe webhook regression tests (`tests/server/api/webhooks/stripe-checkout-completed.test.ts`) pass unchanged
+  - total 487 → 503/503 pass; typecheck on in-scope files clean; lint on modified files clean
+- Security posture (GATE-OPEN per security review 2026-05-23):
+  - zero CRITICAL/HIGH/MEDIUM findings
+  - F-S-R4-1 LOW (currency hard-pin USD) resolved in-iteration — the inbound credit call now passes `currency: 'USD'` literal mirroring the Stripe handler hardcoded value
+  - F-S-R4-2 LOW (NoonWeb-supplied `payment.amount` trust boundary inflation) deferred to `D:\Pedro\archivos-pedro\noon-app\potentials.md` as inherited pre-existing risk requiring future cross-repo coordination
+  - F-S-R4-3 INFO (theoretical race between `activate_paid_proposal` RPC commit and developer lookup) acknowledged, not exploitable, no action
+- Explicitly excluded from this slice (out-of-scope locks held):
+  - admin manual endpoint `POST /api/admin/earnings/credit` stays untouched as operator escape hatch for off-platform payments
+  - refund logic (`debit_wallet_for_refund` RPC + Stripe `charge.refunded` handler) unchanged
+  - consolidation cron (`/api/cron/consolidate-earnings`) unchanged
+  - `seller_fees` state machine — `confirmSellerFee` / `cancelSellerFee` semantics unchanged
+  - `lead/proposal status → won` without payment is NOT a trigger (ADR-007 payment-event-driven model preserved; status-only mutations never move money)
+  - cross-repo wire contract `websitePaymentConfirmedPayloadSchema` FROZEN (only what App does post-receipt changes)
+  - no schema change, no new migration, no new RPC, no UI surface modified
+  - no client-facing surface touched (ADR-010 anchor — client pays in NoonWeb, App credits internal colaborador wallets only)
+- Carry-forward documentation debt:
+  - `D:\Pedro\archivos-pedro\noon-app\potentials.md` records: F-S-R4-2 amount trust-boundary, T-R4-T2 silenced project-lookup error (inherited pattern from Stripe handler), informal future cleanup notes
+
+## Confirmed dashboard summary aggregates slice
+- Anchors:
+  - `docs/adrs/ADR-020-dashboard-summary-aggregates-and-invalidation.md` (10 decisions D1-D10 covering RLS posture, SQL parity, CTE composition, wire shape, cache TTL, invalidation, hook location, module boundaries, HTTP semantics, contract location)
+  - `docs/contracts/dashboard-summary.md` (entity skeleton; SQL bodies live in the ADR §D2 + §D3)
+  - `specs/fase-3-r3-lazy-load-with-aggregates.md` (Analysis output 2026-05-22; supersedes R3 deferral from F-V12 closure)
+- Problem solved:
+  - prior to this iteration, `DataProvider` in `lib/data-context.tsx:640-760` eager-loaded `leads` page 1 plus **all** projects (capped at 100 server-side) plus **all** tasks (capped at 100) on every authenticated mount, and the dashboard home computed 12 KPIs + 3 derived counters entirely client-side via `selectDashboardSummary(leads, projects, tasks)` in `lib/dashboard-selectors.ts:484-523` — KPIs silently lied past 100 projects / 100 tasks
+- Surface change:
+  - new `GET /api/dashboard/summary` route at `app/api/dashboard/summary/route.ts` (Next runtime `nodejs`, `dynamic = 'force-dynamic'`, auth via `requireRole(['admin','sales_manager','sales','pm','developer'])`)
+  - new Postgres function `public.get_dashboard_summary()` (migration `0058_phase_22b_dashboard_summary_rpc.sql`) — `LANGUAGE sql STABLE SECURITY INVOKER` with `search_path = public, pg_catalog` pinned; GRANT EXECUTE to `authenticated` only, anon and public revoked
+  - new service layer `lib/server/dashboard/{summary-repository,summary-service,serialization}.ts`
+  - `lib/data-context.tsx` refactored: removed eager loads of leads / projects / tasks in `supabase` mode on mount; added `dashboardSummary` state + `isDashboardSummaryLoading` + `dashboardSummaryError` + `refreshDashboardSummary({ force?: boolean })` method + `useDashboardSummary()` hook
+  - new pure-helpers module `lib/dashboard/summary-cache.ts` (`isDashboardSummaryFresh`, `createDashboardSummaryDebouncer`) extracted for testability
+  - per-page lazy loaders added to `/dashboard/{leads,pipeline,projects,tasks,reports}/page.tsx` via `useRef`-guarded `useEffect` on mount in `supabase` mode
+  - dashboard home (`app/dashboard/page.tsx`) reads KPIs from `useDashboardSummary()` in `supabase` (mock mode keeps legacy `selectDashboardSummary(...)` path)
+- Wire shape (canonical):
+  - `{ data: { sales: { openLeads, wonLeads, pipelineValue, totalRevenue, closedLeads, overdueFollowUps, leadsByStatus }, delivery: { activeProjects, projectsInReview, completedProjects, pendingTasks, inProgressTasks, reviewTasks, actionableTasks }, checkedAt } }`
+  - `delivery.{pendingTasks,inProgressTasks,reviewTasks,actionableTasks}` are explicitly `null` (not `0`, not omitted) for `sales` and `sales_manager` roles — defense-in-depth null masking in `summary-service.ts` `TASK_RLS_DENIED_ROLES`
+  - `sales.leadsByStatus` is a jsonb object map (e.g. `{ "new": 2, "won": 8, "proposal": 14 }`) coerced from `null → {}` server-side in `serialization.ts` (`jsonb_object_agg` over zero rows returns NULL)
+  - `sales.closedLeads` is wire-only (not exposed in mock `SalesSummary`); consumer derives `conversionRate` as `closedLeads === 0 ? null : Math.round((wonLeads / closedLeads) * 100)`
+  - `actionableTasks = pendingTasks + inProgressTasks` when both are non-null; null when either is null
+  - `checkedAt` uses `now()` (transaction start, MVCC snapshot)
+- SQL parity (the load-bearing detail):
+  - the RPC reproduces `deriveProjectDisplayStatus` from `lib/projects/progress.ts:19-46` verbatim via a CTE with four per-project booleans (`has_any_tasks`, `all_tasks_done`, `any_review`, `any_in_progress_or_done`) plus a 7-branch ordered `CASE`
+  - **branch order is locked**: branch 1 `NOT has_any_tasks` MUST evaluate before branch 3 `persisted = delivered AND all_tasks_done` so an empty-task project returns persisted status (`delivered`), not the vacuous-truth `delivered` via branch 3's `all_tasks_done = true` on the empty set
+  - projects are filtered by `payment_activated = true` matching `lib/server/projects/repository.ts:83` and the `/api/projects` list endpoint precedent
+  - the JS-side rule and the SQL-side rule are tested for parity at fixture volume ≥10 leads / ≥5 projects / ≥10 tasks (23 chunk-1 server-side tests in `tests/server/api/dashboard/summary.test.ts`)
+- Caching model:
+  - 60-second stale-while-revalidate TTL in-memory only (no localStorage, no IndexedDB, no service worker)
+  - boundary is exclusive at exactly `fetchedAt + 60_000ms` (60001ms is stale)
+  - `refresh()` exposed by `useDashboardSummary()` always bypasses the TTL via `{ force: true }`
+- Invalidation model:
+  - debounced 250ms refetch-on-mutate, wired to 13 supabase-mode mutation surfaces in `lib/data-context.tsx`: `addLead`, `updateLead`, `deleteLead`, `updateLeadStatus`, `claimLead`, `releaseLeadAsNoResponse`, `addLeadProposal`, `updateLeadProposalStatus`, `createProjectFromProposal`, `updateProject`, `updateProjectStatus`, `addTask`, `updateTask`, `updateTaskStatus` (note: ADR-020 §D6 names 15 surfaces; mock-only paths `addProject` / `deleteProject` / `deleteTask` do NOT wire because they never reach the supabase branch)
+  - multiple rapid mutations within 250ms coalesce into a single refetch (the pipeline drag-drop scenario)
+  - `updateLead` invalidation fires on every successful mutation regardless of which field changed (no filter by `nextFollowUpAt`) — simple > clever; the next refetch is cheap
+  - `scheduleDashboardSummaryRefetch` and `refreshDashboardSummary` both short-circuit when `authMode !== 'supabase'` BEFORE the debouncer or the fetch — mock mode never touches the summary endpoint
+  - the debouncer is one-per-provider-instance and clears its pending timeout on unmount via `useEffect(() => () => debouncer.cancel(), [])`
+- RLS posture (validated):
+  - the RPC is `SECURITY INVOKER` (NOT `DEFINER`); runs under the calling user's `auth.uid()`
+  - existing RLS policies on `public.leads` (migration 0002), `public.projects` (0005), and `public.tasks` (0006 + 0009 recursion fix) filter rows BEFORE `COUNT(*)` / `SUM()` aggregates fire
+  - tasks RLS denies SELECT for `sales` and `sales_manager` roles — the wire payload returns `null` for the four task counters under those roles even if RLS regressed (defense-in-depth null masking in the service layer)
+  - developer role sees tasks scoped to own assignments — the per-project `display_status` derivation under the developer's RLS legitimately produces different values than admin/pm see (this is the existing client-side behavior, not a regression)
+  - `payment_activated = true` is NOT enforced by RLS; the SQL aggregate MUST apply this filter explicitly
+- Mutation-surface-out-of-band:
+  - 2 server-side mutations DO NOT trigger client-side invalidation: Stripe `POST /api/integrations/website/payment-confirmed` (flips `projects.payment_activated`) and the PM webhook `POST /api/inbound/pm-queue/[proposalId]/review-webhook` (PM approve / reject) — these run server-side without the client knowing
+  - stale window is bounded by the 60s SWR TTL plus next page-load picks them up; documented as acceptable for the pilot scope per spec §4
+  - pre-authorized future iteration: Supabase Realtime channel pushing summary invalidations to the client if pilot feedback indicates the window is uncomfortable
+- Validation evidence:
+  - 23 chunk-1 server-side parity tests at fixture volume (all 7 `deriveProjectDisplayStatus` branches exercised by 13 leads / 8 projects / 11 tasks); 17 chunk-2 client-side tests covering TTL boundaries / debounce coalescing / mode-agnostic short-circuit / wire-contract sanity; 26 chunk-3 testing-audit tests covering mutation→invalidation wiring + per-page lazy-load mount guards + provider unmount cleanup + em-dash rendering for null task counters
+  - total 486/486 tests pass at iteration close
+  - operator-validated 2026-05-22 on Vercel preview deploy: 21 open leads / 8 won / $103,969 pipeline / 100% conversion / leadsByStatus histogram matching SQL smoke
+  - security review GATE-OPEN in `docs/validations/r3-security-review-2026-05-22.md` (zero CRITICAL/HIGH/MEDIUM/LOW; 11 informational verifications)
+  - testing audit in `docs/validations/r3-testing-audit-2026-05-22.md`
+- Explicitly excluded from this slice:
+  - users pagination (`/api/users/admin`, `/api/users/delivery`) — operator-deferred; still uses `limit` parameter, no full `OffsetMeta` envelope
+  - pipeline / reports filter rewrite (R1 carry-over from F-V12)
+  - deep-link pagination state in URL (R2 carry-over)
+  - Maxwell counters and any AI-MVP pipeline KPI
+  - mock-mode behavior changes
+- Known open items:
+  - the cast `as unknown as { rpc: 'get_dashboard_summary' ... }` in `lib/server/dashboard/summary-repository.ts:40-47` is a deferral pattern pending `database.types.ts` regen including the new RPC — remove the cast once the regen ships
+  - pre-existing 6 lint warnings in `tests/server/website/webhook-events.test.ts` (unchanged by this iteration)
+
 ## Active risks
 - High:
   - mixed real/mock state can mislead future implementation if context files are not updated
   - auth is real enough to create expectations that business data is also durable when it is not
-  - `lib/data-context.tsx` still centralizes multiple domains in a way that will complicate partial migration
+  - `lib/data-context.tsx` still centralizes multiple domains in a way that complicates partial migration; the 2026-05-22 R3 iteration shifted dashboard KPIs to a server-side aggregate endpoint and made lists lazy-loaded per page, reducing — but not eliminating — the centralization risk (mutations + per-domain state still flow through the same provider; sidebar badges are decoupled by design)
 - Medium:
   - `switchRole()` remains a mock-only utility; the current settings UI is now honest in `supabase`, but future reuse elsewhere could still reintroduce confusion
   - page-level features outside the validated delivery surfaces may still rely on mock assumptions even with real auth active

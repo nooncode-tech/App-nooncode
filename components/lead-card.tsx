@@ -136,10 +136,21 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
 
   return (
     <Card
-      className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20"
+      data-lead-trigger={lead.id}
+      className="p-4 cursor-pointer transition-colors duration-150 hover:bg-muted/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Abrir detalle del lead ${lead.name}`}
     >
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-3 md:gap-4">
         {/* Score Badge */}
         <div
           className={cn(
@@ -152,22 +163,22 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
 
         {/* Main Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div>
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0">
               <h3 className="font-semibold truncate">{lead.name}</h3>
               {lead.company && (
-                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Building2 className="size-3" />
-                  {lead.company}
+                <p className="text-sm text-muted-foreground flex items-center gap-1 min-w-0">
+                  <Building2 className="size-3 shrink-0" />
+                  <span className="truncate">{lead.company}</span>
                 </p>
               )}
               {lead.source === 'maxwell' && lead.maxwellSnapshot && (
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground truncate">
                   {lead.maxwellSnapshot.business.industry}
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 md:shrink-0">
               {lead.assignmentStatus !== 'owned' && (
                 <Badge variant="outline" className={assignmentInfo.color}>
                   {assignmentInfo.label}
@@ -183,11 +194,11 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
           </div>
 
           {/* Contact Info */}
-          <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground min-w-0">
             {lead.email && (
-              <span className="flex items-center gap-1">
-                <Mail className="size-3" />
-                {lead.email}
+              <span className="flex items-center gap-1 min-w-0 max-w-full">
+                <Mail className="size-3 shrink-0" />
+                <span className="truncate">{lead.email}</span>
               </span>
             )}
             {lead.phone && (
@@ -211,11 +222,11 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
           </div>
 
           {lead.source === 'maxwell' && lead.maxwellSnapshot && (
-            <div className="mt-3 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm">
-              <p className="font-medium text-foreground">
+            <div className="mt-3 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm min-w-0">
+              <p className="font-medium text-foreground break-words">
                 {lead.maxwellSnapshot.audit.mainPain}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground break-words">
                 {lead.maxwellSnapshot.opportunity.noonOpportunity}
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
@@ -268,7 +279,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
             <Button
               size="sm"
               variant="ghost"
-              className="text-xs"
+              className="hidden md:inline-flex text-xs"
               disabled={isReleasedLeadPendingClaim}
               onClick={(e) => {
                 e.stopPropagation()
@@ -281,7 +292,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="size-8">
+              <Button size="icon" variant="ghost" className="size-8" aria-label="Acciones del lead">
                 <MoreVertical className="size-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -297,10 +308,6 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }
               </DropdownMenuItem>
               {isSupabaseMode ? (
                 <>
-                  <DropdownMenuItem disabled>
-                    <Phone className="size-4 mr-2" />
-                    Llamar no disponible
-                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={(event) => handleOpenLeadDetail(event)}>
                     <FileText className="size-4 mr-2" />
                     Abrir detalle para propuesta

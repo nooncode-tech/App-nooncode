@@ -30,8 +30,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LeadPrototypeCard } from '@/components/lead-prototype-card'
-import { MaxwellChat } from '@/components/maxwell-chat'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import {
   Select,
@@ -40,6 +38,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  COMPLEXITY_LABELS,
+  PROJECT_TYPE_LABELS,
+  computePricing,
+  type Complexity,
+  type ProjectType,
+  type SellerFeeAmount,
+} from '@/lib/maxwell/pricing'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
@@ -77,6 +83,23 @@ import {
 interface LeadDetailProps {
   lead: Lead
   onStatusChange: (leadId: string, newStatus: LeadStatus) => Promise<Lead> | void
+}
+
+function formatCheckoutLinkExpiry(expiresAt: Date, now: Date = new Date()): string {
+  const deltaMs = expiresAt.getTime() - now.getTime()
+  const twelveHoursMs = 12 * 60 * 60 * 1000
+  if (deltaMs > 0 && deltaMs < twelveHoursMs) {
+    const totalMinutes = Math.floor(deltaMs / (60 * 1000))
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+    if (hours > 0) {
+      return `Vence en ${hours}h ${minutes}m`
+    }
+    return `Vence en ${minutes}m`
+  }
+  const day = expiresAt.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit' })
+  const time = expiresAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return `Vence el ${day} ${time}`
 }
 
 const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
@@ -392,25 +415,32 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const [proposals, setProposals] = useState<LeadProposal[]>([])
   const [isActivityLoading, setIsActivityLoading] = useState(true)
   const [isProposalsLoading, setIsProposalsLoading] = useState(true)
-  const [showMaxwellDialog, setShowMaxwellDialog] = useState(false)
   const [isSavingNote, setIsSavingNote] = useState(false)
   const [isSavingProposal, setIsSavingProposal] = useState(false)
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false)
   const [isMutatingAssignment, setIsMutatingAssignment] = useState(false)
   const [creatingProjectProposalId, setCreatingProjectProposalId] = useState<string | null>(null)
   const [checkoutLoadingProposalId, setCheckoutLoadingProposalId] = useState<string | null>(null)
-  const [checkoutLinksByProposalId, setCheckoutLinksByProposalId] = useState<Record<string, string>>({})
   const [prototypeRefreshKey, setPrototypeRefreshKey] = useState(0)
   const [activeTab, setActiveTab] = useState('activity')
   const [speechVariant, setSpeechVariant] = useState<SpeechVariant>('inPerson')
   const [isSpeechPlaying, setIsSpeechPlaying] = useState(false)
   const [isSavingMaxwellFeedback, setIsSavingMaxwellFeedback] = useState(false)
   const [followUpInput, setFollowUpInput] = useState(toDateTimeLocalValue(lead.nextFollowUpAt))
-  const [proposalForm, setProposalForm] = useState({
+  const [proposalForm, setProposalForm] = useState<{
+    title: string
+    amount: string
+    body: string
+    sellerFeeAmount: string
+    projectType: ProjectType | ''
+    complexity: Complexity | ''
+  }>({
     title: buildDefaultProposalTitle(lead),
     amount: lead.value.toString(),
     body: '',
     sellerFeeAmount: '100',
+    projectType: '',
+    complexity: '',
   })
   const isSupabaseMode = authMode === 'supabase'
   const hasValidEmail = isValidLeadEmail(lead.email)
@@ -642,6 +672,8 @@ Total: 8 semanas
         amount: prev.amount || lead.value.toString(),
         body: prev.body,
         sellerFeeAmount: prev.sellerFeeAmount || '100',
+        projectType: prev.projectType,
+        complexity: prev.complexity,
       }))
     })
   }, [lead])
@@ -731,10 +763,40 @@ Total: 8 semanas
   const handleSaveProposal = async () => {
     const title = proposalForm.title.trim()
     const body = proposalForm.body.trim()
-    const amount = Number.parseFloat(proposalForm.amount)
 
     if (!title || !body) {
       return
+    }
+
+    const isOutbound = lead.leadOrigin === 'outbound'
+    const sellerFeeAmount = resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount)
+
+    // For outbound, the amount is derived from the canonical pricing
+    // matrix per ADR-013. The seller cannot hand-edit it — the server
+    // would reject any mismatch with PROPOSAL_AMOUNT_PRICING_MISMATCH.
+    // For inbound, fall back to the lead value (no matrix coordinates
+    // are collected for inbound flows).
+    let computedAmount: number
+    let projectType: ProjectType | undefined
+    let complexity: Complexity | undefined
+
+    if (isOutbound) {
+      if (!proposalForm.projectType || !proposalForm.complexity) {
+        toast.error('Selecciona el tipo de proyecto y la complejidad antes de guardar.')
+        return
+      }
+      projectType = proposalForm.projectType as ProjectType
+      complexity = proposalForm.complexity as Complexity
+      const pricing = computePricing(
+        projectType,
+        complexity,
+        'outbound',
+        (sellerFeeAmount ?? 100) as SellerFeeAmount,
+      )
+      computedAmount = pricing.activationFinal
+    } else {
+      const parsed = Number.parseFloat(proposalForm.amount)
+      computedAmount = Number.isFinite(parsed) ? parsed : lead.value
     }
 
     setIsSavingProposal(true)
@@ -743,10 +805,12 @@ Total: 8 semanas
       const proposal = await addLeadProposal(lead.id, {
         title,
         body,
-        amount: Number.isFinite(amount) ? amount : 0,
+        amount: computedAmount,
         currency: 'USD',
         status: 'draft',
-        sellerFeeAmount: resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount),
+        sellerFeeAmount,
+        projectType,
+        complexity,
       })
       setProposals((prev) => [proposal, ...prev])
       toast.success('Propuesta guardada')
@@ -755,6 +819,8 @@ Total: 8 semanas
         amount: lead.value.toString(),
         body: '',
         sellerFeeAmount: prev.sellerFeeAmount,
+        projectType: prev.projectType,
+        complexity: prev.complexity,
       }))
       void getLeadActivity(lead.id).then(setActivities).catch(() => {})
     } catch (error) {
@@ -769,16 +835,43 @@ Total: 8 semanas
       return
     }
 
+    const isOutbound = lead.leadOrigin === 'outbound'
+    const sellerFeeAmount = resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount)
+
+    let computedAmount: number
+    let projectType: ProjectType | undefined
+    let complexity: Complexity | undefined
+
+    if (isOutbound) {
+      if (!proposalForm.projectType || !proposalForm.complexity) {
+        toast.error('Selecciona el tipo de proyecto y la complejidad antes de guardar la propuesta generada.')
+        return
+      }
+      projectType = proposalForm.projectType as ProjectType
+      complexity = proposalForm.complexity as Complexity
+      const pricing = computePricing(
+        projectType,
+        complexity,
+        'outbound',
+        (sellerFeeAmount ?? 100) as SellerFeeAmount,
+      )
+      computedAmount = pricing.activationFinal
+    } else {
+      computedAmount = lead.value
+    }
+
     setIsSavingProposal(true)
 
     try {
       const proposal = await addLeadProposal(lead.id, {
         title: buildDefaultProposalTitle(lead),
         body: generatedContent,
-        amount: lead.value,
+        amount: computedAmount,
         currency: 'USD',
         status: 'draft',
-        sellerFeeAmount: resolveSellerFeeAmountForOutbound(lead, proposalForm.sellerFeeAmount),
+        sellerFeeAmount,
+        projectType,
+        complexity,
       })
       setProposals((prev) => [proposal, ...prev])
       toast.success('Propuesta guardada desde IA')
@@ -896,14 +989,29 @@ Total: 8 semanas
       }
 
       const checkoutUrl = json.data?.url as string | undefined
-      if (!checkoutUrl) {
+      const sessionId = json.data?.checkoutSessionId as string | undefined
+      const expiresAtIso = json.data?.expiresAt as string | undefined
+
+      if (!checkoutUrl || !sessionId || !expiresAtIso) {
         throw new Error('La sesion de pago no regreso un link.')
       }
 
-      setCheckoutLinksByProposalId((current) => ({
-        ...current,
-        [proposal.id]: checkoutUrl,
-      }))
+      const expiresAt = new Date(expiresAtIso)
+      setProposals((current) =>
+        current.map((entry) =>
+          entry.id === proposal.id
+            ? {
+                ...entry,
+                activeCheckoutLink: {
+                  url: checkoutUrl,
+                  sessionId,
+                  expiresAt,
+                  isExpired: false,
+                },
+              }
+            : entry,
+        ),
+      )
 
       try {
         await navigator.clipboard.writeText(checkoutUrl)
@@ -919,29 +1027,29 @@ Total: 8 semanas
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-4 min-w-0">
           <div
             className={cn(
-              'size-16 rounded-md flex items-center justify-center text-2xl font-semibold',
+              'size-16 rounded-md flex items-center justify-center text-2xl font-semibold shrink-0',
               getScoreColor(lead.score)
             )}
           >
             {lead.score}
           </div>
-          <div>
-            <h2 className="text-lg font-semibold">{lead.name}</h2>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold truncate">{lead.name}</h2>
             {lead.company && (
-              <p className="text-muted-foreground flex items-center gap-1">
-                <Building2 className="size-4" />
-                {lead.company}
+              <p className="text-muted-foreground flex items-center gap-1 min-w-0">
+                <Building2 className="size-4 shrink-0" />
+                <span className="truncate">{lead.company}</span>
               </p>
             )}
           </div>
         </div>
-        <div className="text-right">
+        <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-end sm:gap-1 sm:text-right">
           <p className="metric-value text-primary">${lead.value.toLocaleString()}</p>
           <Badge variant="outline" className={statusConfig[lead.status].color}>
             {statusConfig[lead.status].label}
@@ -951,15 +1059,15 @@ Total: 8 semanas
 
       <div className="rounded-lg border bg-muted/15 p-4 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <LockKeyhole className="size-4 text-muted-foreground" />
+              <LockKeyhole className="size-4 shrink-0 text-muted-foreground" />
               <span className="text-sm font-medium">Asignacion comercial</span>
             </div>
             <Badge variant="outline" className={assignmentInfo.color}>
               {assignmentInfo.label}
             </Badge>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground break-words">
               {lead.assignmentStatus === 'proposal_locked'
                 ? lockedProposalTitle
                   ? `La propuesta "${lockedProposalTitle}" ya fue enviada y este lead quedo bloqueado hasta respuesta o liberacion manual.`
@@ -1006,9 +1114,9 @@ Total: 8 semanas
 
       <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <Calendar className="size-4 text-muted-foreground" />
+              <Calendar className="size-4 shrink-0 text-muted-foreground" />
               <span className="text-sm font-medium">Proximo seguimiento</span>
             </div>
             {followUpInfo && lead.nextFollowUpAt ? (
@@ -1016,15 +1124,15 @@ Total: 8 semanas
                 <Badge variant="outline" className={followUpInfo.color}>
                   {followUpInfo.label}
                 </Badge>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground break-words">
                   {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground break-words">
                   {followUpInfo.helper}
                 </p>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground break-words">
                 Aun no hay un seguimiento programado para este lead.
               </p>
             )}
@@ -1042,64 +1150,64 @@ Total: 8 semanas
       </div>
 
       {/* Contact Info */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
         {lead.email && (
-          <div className="flex items-center gap-2 text-sm">
-            <Mail className="size-4 text-muted-foreground" />
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <Mail className="size-4 shrink-0 text-muted-foreground" />
             {gmailComposeUrl ? (
               <a
                 href={gmailComposeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="text-primary hover:underline truncate"
               >
                 {lead.email}
               </a>
             ) : (
-              <span>{lead.email}</span>
+              <span className="truncate">{lead.email}</span>
             )}
           </div>
         )}
         {lead.phone && (
-          <div className="flex items-center gap-2 text-sm">
-            <Phone className="size-4 text-muted-foreground" />
-            <a href={buildPhoneCallUrl(lead.phone)} className="text-primary hover:underline">
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <Phone className="size-4 shrink-0 text-muted-foreground" />
+            <a href={buildPhoneCallUrl(lead.phone)} className="text-primary hover:underline truncate">
               {lead.phone}
             </a>
           </div>
         )}
         {lead.whatsapp && (
-          <div className="flex items-center gap-2 text-sm">
-            <MessageSquare className="size-4 text-green-600" />
-            <a href={buildWhatsAppUrl(lead.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <MessageSquare className="size-4 shrink-0 text-green-600" />
+            <a href={buildWhatsAppUrl(lead.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline truncate">
               {lead.whatsapp}
             </a>
           </div>
         )}
-        <div className="flex items-center gap-2 text-sm">
-          <Tag className="size-4 text-muted-foreground" />
-          <span>{sourceLabels[lead.source]}</span>
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <Tag className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">{sourceLabels[lead.source]}</span>
         </div>
         {lead.locationText && (
-          <div className="flex items-center gap-2 text-sm">
-            <MapPin className="size-4 text-muted-foreground" />
-            <span>{lead.locationText}</span>
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <MapPin className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{lead.locationText}</span>
           </div>
         )}
-        <div className="flex items-center gap-2 text-sm">
-          <Calendar className="size-4 text-muted-foreground" />
-          <span>Creado: {lead.createdAt.toLocaleDateString('es-MX')}</span>
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <Calendar className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">Creado: {lead.createdAt.toLocaleDateString('es-MX')}</span>
         </div>
         {lead.lastContactedAt && (
-          <div className="flex items-center gap-2 text-sm col-span-2">
-            <Clock className="size-4 text-muted-foreground" />
-            <span>Ultimo contacto: {lead.lastContactedAt.toLocaleDateString('es-MX')}</span>
+          <div className="flex items-center gap-2 text-sm min-w-0 sm:col-span-2">
+            <Clock className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">Ultimo contacto: {lead.lastContactedAt.toLocaleDateString('es-MX')}</span>
           </div>
         )}
         {lead.nextFollowUpAt && (
-          <div className="flex items-center gap-2 text-sm col-span-2">
-            <Calendar className="size-4 text-muted-foreground" />
-            <span>Proximo seguimiento: {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}</span>
+          <div className="flex items-center gap-2 text-sm min-w-0 sm:col-span-2">
+            <Calendar className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">Proximo seguimiento: {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}</span>
           </div>
         )}
       </div>
@@ -1119,7 +1227,7 @@ Total: 8 semanas
       {lead.notes && (
         <div className="p-3 bg-muted/50 rounded-lg">
           <p className="text-sm font-medium mb-1">Notas</p>
-          <p className="text-sm text-muted-foreground">{lead.notes}</p>
+          <p className="text-sm text-muted-foreground break-words whitespace-pre-wrap">{lead.notes}</p>
         </div>
       )}
 
@@ -1127,14 +1235,14 @@ Total: 8 semanas
 
       {/* Actions Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full">
+        <TabsList className="w-full max-w-full overflow-x-auto flex-nowrap justify-start md:justify-center">
           {maxwellSnapshot && (
-            <TabsTrigger value="maxwell" className="flex-1">Maxwell</TabsTrigger>
+            <TabsTrigger value="maxwell" className="shrink-0 md:flex-1">Maxwell</TabsTrigger>
           )}
-          <TabsTrigger value="activity" className="flex-1">Seguimiento</TabsTrigger>
-          <TabsTrigger value="proposal" className="flex-1">Propuesta</TabsTrigger>
-          <TabsTrigger value="status" className="flex-1">Estado</TabsTrigger>
-          <TabsTrigger value="ai" className="flex-1">IA Asistente</TabsTrigger>
+          <TabsTrigger value="activity" className="shrink-0 md:flex-1">Seguimiento</TabsTrigger>
+          <TabsTrigger value="proposal" className="shrink-0 md:flex-1">Propuesta</TabsTrigger>
+          <TabsTrigger value="status" className="shrink-0 md:flex-1">Estado</TabsTrigger>
+          <TabsTrigger value="ai" className="shrink-0 md:flex-1">IA Asistente</TabsTrigger>
         </TabsList>
 
         {maxwellSnapshot && (
@@ -1145,9 +1253,9 @@ Total: 8 semanas
               </CardHeader>
               <CardContent className="px-4 space-y-4">
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="rounded-md border bg-muted/20 p-3 min-w-0">
                     <p className="text-xs text-muted-foreground">Industria</p>
-                    <p className="text-sm font-medium">{maxwellSnapshot.business.industry}</p>
+                    <p className="text-sm font-medium break-words">{maxwellSnapshot.business.industry}</p>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
                     <p className="text-xs text-muted-foreground">Prioridad</p>
@@ -1163,7 +1271,7 @@ Total: 8 semanas
 
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Dolor principal</p>
-                  <p className="text-sm text-muted-foreground">{maxwellSnapshot.audit.mainPain}</p>
+                  <p className="text-sm text-muted-foreground break-words">{maxwellSnapshot.audit.mainPain}</p>
                 </div>
 
                 <div className="space-y-2">
@@ -1172,40 +1280,40 @@ Total: 8 semanas
                     {maxwellSnapshot.audit.pains.map((pain) => (
                       <div key={`${pain.title}-${pain.evidence}`} className="rounded-md border p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-medium">{pain.title}</p>
-                          <Badge variant="outline" className="capitalize">
+                          <p className="text-sm font-medium break-words min-w-0 flex-1">{pain.title}</p>
+                          <Badge variant="outline" className="capitalize shrink-0">
                             {pain.confidence}
                           </Badge>
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">{pain.evidence}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{pain.impact}</p>
+                        <p className="mt-1 text-sm text-muted-foreground break-words">{pain.evidence}</p>
+                        <p className="mt-1 text-xs text-muted-foreground break-words">{pain.impact}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border p-3 min-w-0">
                     <p className="text-sm font-medium">Oportunidad Noon</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="mt-1 text-sm text-muted-foreground break-words">
                       {maxwellSnapshot.opportunity.noonOpportunity}
                     </p>
                   </div>
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border p-3 min-w-0">
                     <p className="text-sm font-medium">Idea de prototipo</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="mt-1 text-sm text-muted-foreground break-words">
                       {maxwellSnapshot.opportunity.prototypeIdea}
                     </p>
                   </div>
                 </div>
 
-                <div className="rounded-md border p-3">
+                <div className="rounded-md border p-3 min-w-0">
                   <p className="text-sm font-medium">Objeciones probables</p>
                   <div className="mt-2 space-y-2">
                     {maxwellSnapshot.objections.map((item) => (
-                      <div key={`${item.objection}-${item.response}`}>
-                        <p className="text-sm">{item.objection}</p>
-                        <p className="text-xs text-muted-foreground">{item.response}</p>
+                      <div key={`${item.objection}-${item.response}`} className="min-w-0">
+                        <p className="text-sm break-words">{item.objection}</p>
+                        <p className="text-xs text-muted-foreground break-words">{item.response}</p>
                       </div>
                     ))}
                   </div>
@@ -1235,8 +1343,8 @@ Total: 8 semanas
                   ))}
                 </div>
 
-                <div className="rounded-md border bg-muted/20 p-3">
-                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{currentSpeech}</p>
+                <div className="rounded-md border bg-muted/20 p-3 min-w-0">
+                  <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{currentSpeech}</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -1347,8 +1455,8 @@ Total: 8 semanas
           </Card>
 
           {isSupabaseMode && (
-            <div className="flex items-center justify-between border-t pt-3">
-              <div>
+            <div className="flex items-center justify-between gap-3 border-t pt-3">
+              <div className="min-w-0">
                 <p className="text-sm font-medium">Seguimiento automático</p>
                 <p className="text-xs text-muted-foreground">
                   Maxwell genera un mensaje cuando vence el seguimiento
@@ -1412,9 +1520,9 @@ Total: 8 semanas
                 {activities.map((activity) => (
                   <div key={activity.id} className="py-3 space-y-1.5">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium">{formatActivityTitle(activity)}</p>
-                        <p className="text-xs text-muted-foreground">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium break-words">{formatActivityTitle(activity)}</p>
+                        <p className="text-xs text-muted-foreground break-words">
                           {activity.actorName} · {activity.createdAt.toLocaleString('es-MX')}
                         </p>
                       </div>
@@ -1422,7 +1530,7 @@ Total: 8 semanas
                         {activity.type === 'note_added' ? 'Nota' : activity.type.replaceAll('_', ' ')}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
                       {formatActivityBody(activity)}
                     </p>
                   </div>
@@ -1452,15 +1560,15 @@ Total: 8 semanas
                     className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-medium">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium break-words">
                           Proyecto derivado: {proposal.linkedProject?.name}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground break-words">
                           Originado desde la propuesta &quot;{proposal.title}&quot;.
                         </p>
                       </div>
-                      <Badge variant="outline">
+                      <Badge variant="outline" className="shrink-0">
                         {proposal.linkedProject
                           ? projectStatusLabels[proposal.linkedProject.status]
                           : 'Proyecto'}
@@ -1505,19 +1613,127 @@ Total: 8 semanas
               <CardTitle className="text-base">Registrar propuesta comercial</CardTitle>
             </CardHeader>
             <CardContent className="px-4 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="proposal-title">Titulo</Label>
-                  <Input
-                    id="proposal-title"
-                    value={proposalForm.title}
-                    onChange={(event) =>
-                      setProposalForm((prev) => ({ ...prev, title: event.target.value }))
-                    }
-                    disabled={isReleasedLeadPendingClaim}
-                    placeholder="Propuesta - Cliente"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="proposal-title">Titulo</Label>
+                <Input
+                  id="proposal-title"
+                  value={proposalForm.title}
+                  onChange={(event) =>
+                    setProposalForm((prev) => ({ ...prev, title: event.target.value }))
+                  }
+                  disabled={isReleasedLeadPendingClaim}
+                  placeholder="Propuesta - Cliente"
+                />
+              </div>
+
+              {lead.leadOrigin === 'outbound' ? (
+                <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="proposal-project-type">Tipo de proyecto</Label>
+                      <Select
+                        value={proposalForm.projectType}
+                        onValueChange={(value) =>
+                          setProposalForm((prev) => ({ ...prev, projectType: value as ProjectType }))
+                        }
+                        disabled={isReleasedLeadPendingClaim}
+                      >
+                        <SelectTrigger id="proposal-project-type">
+                          <SelectValue placeholder="Seleccionar tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(PROJECT_TYPE_LABELS) as ProjectType[]).map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {PROJECT_TYPE_LABELS[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="proposal-complexity">Complejidad</Label>
+                      <Select
+                        value={proposalForm.complexity}
+                        onValueChange={(value) =>
+                          setProposalForm((prev) => ({ ...prev, complexity: value as Complexity }))
+                        }
+                        disabled={isReleasedLeadPendingClaim}
+                      >
+                        <SelectTrigger id="proposal-complexity">
+                          <SelectValue placeholder="Seleccionar complejidad" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(COMPLEXITY_LABELS) as Complexity[]).map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {COMPLEXITY_LABELS[level]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="proposal-seller-fee">Tu comision (seller fee)</Label>
+                    <Select
+                      value={proposalForm.sellerFeeAmount}
+                      onValueChange={(value) =>
+                        setProposalForm((prev) => ({ ...prev, sellerFeeAmount: value }))
+                      }
+                      disabled={isReleasedLeadPendingClaim}
+                    >
+                      <SelectTrigger id="proposal-seller-fee">
+                        <SelectValue placeholder="Seleccionar fee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="100">$100 USD</SelectItem>
+                        <SelectItem value="300">$300 USD</SelectItem>
+                        <SelectItem value="500">$500 USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Se agrega al monto que paga el cliente y se acredita a tu wallet al confirmar el pago. El cliente no ve el desglose.
+                    </p>
+                  </div>
+
+                  {proposalForm.projectType && proposalForm.complexity ? (() => {
+                    const sellerFeeNum = Number.parseInt(proposalForm.sellerFeeAmount, 10)
+                    const sellerFeeForPricing = (sellerFeeNum === 100 || sellerFeeNum === 300 || sellerFeeNum === 500
+                      ? sellerFeeNum
+                      : 100) as SellerFeeAmount
+                    const pricing = computePricing(
+                      proposalForm.projectType as ProjectType,
+                      proposalForm.complexity as Complexity,
+                      'outbound',
+                      sellerFeeForPricing,
+                    )
+                    return (
+                      <div className="rounded-lg border bg-muted/40 p-3 text-sm space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Base de activacion</span>
+                          <span className="font-medium tabular-nums">${pricing.activationBase} USD</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Tu comision</span>
+                          <span className="font-medium tabular-nums">${pricing.sellerFee} USD</span>
+                        </div>
+                        <Separator />
+                        <div className="flex items-center justify-between text-foreground font-semibold">
+                          <span>Total al cliente</span>
+                          <span className="tabular-nums">${pricing.activationFinal} USD</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground pt-1">
+                          El monto se calcula automaticamente desde la tabla oficial. No editable.
+                        </p>
+                      </div>
+                    )
+                  })() : (
+                    <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                      Selecciona tipo de proyecto y complejidad para calcular el monto final.
+                    </div>
+                  )}
+                </>
+              ) : (
                 <div className="space-y-2">
                   <Label htmlFor="proposal-amount">Monto estimado</Label>
                   <Input
@@ -1531,30 +1747,8 @@ Total: 8 semanas
                     disabled={isReleasedLeadPendingClaim}
                     placeholder="0"
                   />
-                </div>
-              </div>
-
-              {lead.leadOrigin === 'outbound' && (
-                <div className="space-y-2">
-                  <Label htmlFor="proposal-seller-fee">Tu comision (seller fee)</Label>
-                  <Select
-                    value={proposalForm.sellerFeeAmount}
-                    onValueChange={(value) =>
-                      setProposalForm((prev) => ({ ...prev, sellerFeeAmount: value }))
-                    }
-                    disabled={isReleasedLeadPendingClaim}
-                  >
-                    <SelectTrigger id="proposal-seller-fee">
-                      <SelectValue placeholder="Seleccionar fee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="100">$100 USD</SelectItem>
-                      <SelectItem value="300">$300 USD</SelectItem>
-                      <SelectItem value="500">$500 USD</SelectItem>
-                    </SelectContent>
-                  </Select>
                   <p className="text-xs text-muted-foreground">
-                    Se agrega al monto que paga el cliente y se acredita a tu wallet al confirmar el pago. El cliente no ve el desglose.
+                    Para leads inbound el monto lo define el flujo del website. Este campo queda como referencia interna.
                   </p>
                 </div>
               )}
@@ -1598,7 +1792,9 @@ Total: 8 semanas
                   !proposalForm.title.trim() ||
                   !proposalForm.body.trim() ||
                   isSavingProposal ||
-                  isReleasedLeadPendingClaim
+                  isReleasedLeadPendingClaim ||
+                  (lead.leadOrigin === 'outbound' &&
+                    (!proposalForm.projectType || !proposalForm.complexity))
                 }
               >
                 {isSavingProposal ? (
@@ -1615,19 +1811,8 @@ Total: 8 semanas
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft className="size-4 text-muted-foreground" />
-                <p className="text-sm font-medium">Hand-off comercial</p>
+                <p className="text-sm font-medium">Propuestas</p>
               </div>
-              {isSupabaseMode && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowMaxwellDialog(true)}
-                >
-                  <Sparkles className="size-3.5 mr-1.5" />
-                  Generar con Maxwell
-                </Button>
-              )}
             </div>
 
             {isProposalsLoading ? (
@@ -1637,7 +1822,7 @@ Total: 8 semanas
               </div>
             ) : proposals.length === 0 ? (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                Aun no hay propuestas persistidas para este lead.
+                Todavia no creaste una propuesta para este lead. Usa el formulario de arriba para guardar la primera.
               </div>
             ) : (
               <div className="space-y-3">
@@ -1650,14 +1835,14 @@ Total: 8 semanas
                   const reviewCfg = reviewStatusConfig[proposal.reviewStatus ?? 'pending_review']
                   return (
                   <div key={proposal.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{proposal.title}</p>
-                        <p className="text-xs text-muted-foreground">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                      <div className="min-w-0 sm:flex-1">
+                        <p className="font-medium break-words">{proposal.title}</p>
+                        <p className="text-xs text-muted-foreground break-words">
                           {proposal.currency} ${proposal.amount.toLocaleString()} · v{proposal.versionNumber} · {proposal.createdAt.toLocaleDateString('es-MX')}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-1 justify-end">
+                      <div className="flex flex-wrap gap-1 sm:justify-end shrink-0">
                         {proposal.linkedProject ? (
                           <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700">
                             Convertida
@@ -1695,14 +1880,14 @@ Total: 8 semanas
                       </div>
                     )}
 
-                    <p className="text-sm whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                    <p className="text-sm whitespace-pre-wrap break-words text-muted-foreground max-h-40 overflow-y-auto">
                       {proposal.body}
                     </p>
 
                     {proposal.linkedProject && (
-                      <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
-                        <FolderKanban className="size-4" />
-                        Proyecto creado: {proposal.linkedProject.name}
+                      <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary min-w-0">
+                        <FolderKanban className="size-4 shrink-0" />
+                        <span className="break-words min-w-0">Proyecto creado: {proposal.linkedProject.name}</span>
                       </div>
                     )}
 
@@ -1801,13 +1986,109 @@ Total: 8 semanas
                       </div>
                     )}
 
+                    {isSupabaseMode && proposal.paymentStatus === 'succeeded' && (
+                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                        <CheckCircle2 className="size-3.5 mr-1.5" />
+                        Pago confirmado
+                      </Badge>
+                    )}
+
                     {isSupabaseMode &&
                       proposal.reviewStatus === 'approved' &&
                       ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
-                      proposal.paymentStatus !== 'succeeded' && (
+                      proposal.paymentStatus !== 'succeeded' &&
+                      proposal.activeCheckoutLink &&
+                      !proposal.activeCheckoutLink.isExpired && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          onClick={() => {
+                            const url = proposal.activeCheckoutLink?.url
+                            if (!url) return
+                            navigator.clipboard
+                              .writeText(url)
+                              .then(() => toast.success('Link de pago copiado al portapapeles'))
+                              .catch(() => toast.error('No se pudo copiar el link'))
+                          }}
+                          disabled={isReleasedLeadPendingClaim}
+                        >
+                          <Copy className="size-4 mr-2" />
+                          Copiar link
+                        </Button>
+                        <Button asChild type="button" variant="ghost" size="sm">
+                          <a
+                            href={proposal.activeCheckoutLink.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <ExternalLink className="size-3.5 mr-1.5" />
+                            Abrir link
+                          </a>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          onClick={() => handleRequestPayment(proposal)}
+                          disabled={
+                            isReleasedLeadPendingClaim ||
+                            checkoutLoadingProposalId === proposal.id
+                          }
+                        >
+                          {checkoutLoadingProposalId === proposal.id ? (
+                            <Loader2 className="size-4 mr-2 animate-spin" />
+                          ) : null}
+                          Crear link nuevo
+                        </Button>
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Timer className="size-3.5" />
+                          {formatCheckoutLinkExpiry(proposal.activeCheckoutLink.expiresAt)}
+                        </span>
+                      </>
+                    )}
+
+                    {isSupabaseMode &&
+                      proposal.reviewStatus === 'approved' &&
+                      ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
+                      proposal.paymentStatus !== 'succeeded' &&
+                      proposal.activeCheckoutLink &&
+                      proposal.activeCheckoutLink.isExpired && (
+                      <>
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Timer className="size-3.5" />
+                          Link expirado
+                        </span>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleRequestPayment(proposal)}
+                          disabled={
+                            isReleasedLeadPendingClaim ||
+                            checkoutLoadingProposalId === proposal.id
+                          }
+                        >
+                          {checkoutLoadingProposalId === proposal.id ? (
+                            <Loader2 className="size-4 mr-2 animate-spin" />
+                          ) : (
+                            <CreditCard className="size-4 mr-2" />
+                          )}
+                          Crear link nuevo
+                        </Button>
+                      </>
+                    )}
+
+                    {isSupabaseMode &&
+                      proposal.reviewStatus === 'approved' &&
+                      ['sent', 'accepted', 'handoff_ready'].includes(proposal.status) &&
+                      proposal.paymentStatus !== 'succeeded' &&
+                      !proposal.activeCheckoutLink && (
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="default"
+                        size="sm"
                         onClick={() => handleRequestPayment(proposal)}
                         disabled={
                           isReleasedLeadPendingClaim ||
@@ -1819,19 +2100,7 @@ Total: 8 semanas
                         ) : (
                           <CreditCard className="size-4 mr-2" />
                         )}
-                        Crear/copiar link de pago
-                      </Button>
-                    )}
-                    {checkoutLinksByProposalId[proposal.id] && (
-                      <Button asChild type="button" variant="ghost" size="sm">
-                        <a
-                          href={checkoutLinksByProposalId[proposal.id]}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <ExternalLink className="size-3.5 mr-1.5" />
-                          Abrir link
-                        </a>
+                        Crear link de pago
                       </Button>
                     )}
                   </div>
@@ -1970,7 +2239,7 @@ Total: 8 semanas
                     </Button>
                   </div>
                   <div className="p-4 bg-muted/50 rounded-lg max-h-64 overflow-y-auto">
-                    <pre className="text-sm whitespace-pre-wrap font-sans">{generatedContent}</pre>
+                    <pre className="text-sm whitespace-pre-wrap break-words font-sans">{generatedContent}</pre>
                   </div>
                   <div className="flex gap-2">
                     <Button className="flex-1" disabled={isReleasedLeadPendingClaim}>
@@ -1997,19 +2266,6 @@ Total: 8 semanas
           )}
         </TabsContent>
       </Tabs>
-
-      {/* Maxwell dialog — con contexto del lead */}
-      <Dialog open={showMaxwellDialog} onOpenChange={setShowMaxwellDialog}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden h-[600px] flex flex-col">
-          <MaxwellChat
-              className="size-full border-0 rounded-none"
-            onClose={() => setShowMaxwellDialog(false)}
-            leadId={lead.id}
-            leadName={lead.name}
-            channel={lead.leadOrigin ?? undefined}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

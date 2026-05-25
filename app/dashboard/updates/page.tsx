@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { startTransition, useEffect, useState } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import { Activity, BellOff, Briefcase, ChevronRight, ListTodo } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import type { UpdateFeedItem } from '@/lib/types'
@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 import { deserializeUpdateFeedItem, type UpdateFeedItemWire } from '@/lib/updates/serialization'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Spinner } from '@/components/ui/spinner'
+
+type DomainFilter = 'all' | 'sales' | 'delivery'
 
 interface UpdateFeedResponse {
   data: UpdateFeedItemWire[]
@@ -38,6 +40,17 @@ export default function UpdatesPage() {
   const [items, setItems] = useState<UpdateFeedItem[]>([])
   const [isLoading, setIsLoading] = useState(authMode === 'supabase')
   const [error, setError] = useState<string | null>(null)
+  const [domainFilter, setDomainFilter] = useState<DomainFilter>('all')
+
+  const hasMultipleDomains = useMemo(() => {
+    const domains = new Set(items.map((item) => item.domain))
+    return domains.size > 1
+  }, [items])
+
+  const filteredItems = useMemo(() => {
+    if (domainFilter === 'all') return items
+    return items.filter((item) => item.domain === domainFilter)
+  }, [items, domainFilter])
 
   useEffect(() => {
     let isActive = true
@@ -74,6 +87,30 @@ export default function UpdatesPage() {
         <h1 className="app-page-title">Actualizaciones</h1>
         <p className="app-page-subtitle">Feed interno de eventos visibles para tu alcance actual.</p>
         </div>
+        {authMode === 'supabase' && hasMultipleDomains && (
+          <div className="inline-flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
+            {(['all', 'sales', 'delivery'] as const).map((value) => {
+              const label = value === 'all' ? 'Todos' : value === 'sales' ? 'Ventas' : 'Delivery'
+              const isActive = domainFilter === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setDomainFilter(value)}
+                  className={cn(
+                    'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  aria-pressed={isActive}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="app-feed">
@@ -105,9 +142,17 @@ export default function UpdatesPage() {
               <EmptyDescription>No hay eventos visibles para tu rol en este momento.</EmptyDescription>
             </EmptyHeader>
           </Empty>
+        ) : filteredItems.length === 0 ? (
+          <Empty className="py-16">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Activity className="size-5" /></EmptyMedia>
+              <EmptyTitle>Sin eventos para este filtro</EmptyTitle>
+              <EmptyDescription>Probá seleccionando otro dominio.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div className="overflow-hidden rounded-md bg-card divide-y divide-border/80">
-            {items.map((item) => {
+            {filteredItems.map((item) => {
               const DomainIcon = domainIcon(item.domain)
               return (
                 <Link

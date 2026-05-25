@@ -23,7 +23,7 @@ export async function POST(
   const requestId = getRequestId(request)
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'proposal-review',
       limit: 30,
       windowMs: 60_000,

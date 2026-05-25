@@ -19,6 +19,10 @@ export interface PrototypeWorkspaceListItemWire extends PrototypeWorkspaceWire {
   leadName: string
   projectName: string | null
   requestedByName: string
+  generatedAt: string | null
+  generatedContent: string | null
+  demoUrl: string | null
+  chatUrl: string | null
 }
 
 export function deserializePrototypeWorkspace(workspace: PrototypeWorkspaceWire): PrototypeWorkspace {
@@ -46,5 +50,9 @@ export function deserializePrototypeWorkspaceListItem(
     leadName: workspace.leadName,
     projectName: workspace.projectName ?? undefined,
     requestedByName: workspace.requestedByName,
+    generatedAt: workspace.generatedAt ? new Date(workspace.generatedAt) : undefined,
+    generatedContent: workspace.generatedContent ?? undefined,
+    demoUrl: workspace.demoUrl ?? undefined,
+    chatUrl: workspace.chatUrl ?? undefined,
   }
 }

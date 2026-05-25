@@ -29,6 +29,7 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import {
   DropdownMenu,
@@ -47,6 +48,7 @@ import {
   getRoleLabel,
 } from '@/lib/auth-context'
 import { selectPersonalStatsAvailability } from '@/lib/dashboard-selectors'
+import { useWalletContext } from '@/lib/wallet/context'
 import { NOTIFICATIONS_UPDATED_EVENT } from '@/lib/notifications/client-events'
 import { useRouter } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
@@ -69,13 +71,13 @@ const workspaceNavItems = [
   { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { title: 'Actualizaciones', href: '/dashboard/updates', icon: Activity },
   { title: 'Notificaciones', href: '/dashboard/notifications', icon: Bell },
+  { title: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
 ]
 
 const financeNavItems = [
   { title: 'Creditos', href: '/dashboard/credits', icon: Wallet },
   { title: 'Earnings', href: '/dashboard/earnings', icon: DollarSign },
   { title: 'Recompensas', href: '/dashboard/rewards', icon: Gift },
-  { title: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
 ]
 
 type NavItem = { title: string; href: string; icon: LucideIcon; badge?: number }
@@ -98,7 +100,7 @@ function NavGroup({
       {label && (
         <div className="flex items-center gap-2 mb-1 px-2 py-1.5 group-data-[collapsible=icon]:hidden">
           {color && <span className="size-1.5 rounded-full shrink-0" style={{ background: color }} />}
-          <span className="text-[10px] font-semibold text-white/30">
+          <span className="text-[10px] font-semibold text-white/55">
             {label}
           </span>
         </div>
@@ -115,6 +117,7 @@ function NavGroup({
               key={item.href}
               href={item.href}
               title={item.title}
+              scroll={false}
               className={[
                 'group/link flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative',
                 'group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:justify-center',
@@ -149,13 +152,23 @@ function NavGroup({
 export function AppSidebar() {
   const pathname = usePathname()
   const { authMode, user, logout } = useAuth()
+  const walletState = useWalletContext()
   const router = useRouter()
+  const { isMobile, openMobile, setOpenMobile } = useSidebar()
   const [unreadNotifications, setUnreadNotifications] = useState(0)
 
-  // Reset sidebar scroll to top on every route change so top items are always visible
+  // Auto-close the mobile drawer on navigation. The Sheet primitive does
+  // not close itself when a link inside it is clicked, so a tap on any
+  // NavGroup Link would land on the new route with the drawer still open
+  // over the content (G21 acceptance #1 requires drawer auto-closes).
   useEffect(() => {
-    const el = document.querySelector('[data-sidebar="content"]') as HTMLElement | null
-    if (el) el.scrollTop = 0
+    if (isMobile && openMobile) {
+      setOpenMobile(false)
+    }
+    // We intentionally watch `pathname` only: when the route changes we
+    // close the drawer. Re-running on `openMobile` toggling would cause
+    // the drawer to close itself the instant the user opens it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
   useEffect(() => {
@@ -186,7 +199,7 @@ export function AppSidebar() {
 
   if (!user) return null
 
-  const personalStats = selectPersonalStatsAvailability(authMode, user)
+  const personalStats = selectPersonalStatsAvailability(authMode, user, walletState)
   const deliveryItems = deliveryNavItems
     .filter((item) => canAccessDashboardPath(user.role, item.href))
     .map((item) => {
@@ -194,6 +207,8 @@ export function AppSidebar() {
       const shouldShowTeam = authMode === 'supabase' && user.role !== 'developer'
       return { ...item, title: shouldShowTeam ? 'Tareas del equipo' : item.title }
     })
+
+  const financeItems = financeNavItems.filter((item) => canAccessDashboardPath(user.role, item.href))
 
   const handleLogout = async () => {
     await logout()
@@ -213,23 +228,23 @@ export function AppSidebar() {
       <SidebarHeader className="px-4 pt-4 pb-3 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:items-center">
         {/* Expanded: logo left + trigger right */}
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
-          <Link href="/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
+          <Link href="/dashboard" scroll={false} className="flex items-center gap-3 flex-1 min-w-0">
             <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
               <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
             </div>
             <div className="flex flex-col leading-none">
               <span className="text-[17px] font-black tracking-[-0.04em] text-white">noon</span>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/25 mt-0.5">platform</span>
+              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/50 mt-0.5">platform</span>
             </div>
           </Link>
-          <SidebarTrigger className="shrink-0 text-white/20 hover:text-white/50 hover:bg-white/[0.05] size-7 [&>svg]:size-3.5" />
+          <SidebarTrigger className="shrink-0 text-white/50 hover:text-white/80 hover:bg-white/[0.05] size-7 [&>svg]:size-3.5" />
         </div>
         {/* Collapsed: logo + trigger stacked */}
         <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-2">
-          <Link href="/dashboard" className="size-8 rounded-lg bg-primary flex items-center justify-center">
+          <Link href="/dashboard" scroll={false} className="size-8 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-[13px] font-black text-white tracking-tighter leading-none">N</span>
           </Link>
-          <SidebarTrigger className="text-white/25 hover:text-white/60 hover:bg-white/[0.07] size-7 [&>svg]:size-3.5" />
+          <SidebarTrigger className="text-white/50 hover:text-white/60 hover:bg-white/[0.07] size-7 [&>svg]:size-3.5" />
         </div>
       </SidebarHeader>
 
@@ -245,7 +260,9 @@ export function AppSidebar() {
           <NavGroup label="Delivery" color="oklch(0.50 0.26 264)" items={deliveryItems} pathname={pathname} />
         )}
 
-        <NavGroup label="Finanzas" color="#22c55e" items={financeNavItems} pathname={pathname} />
+        {financeItems.length > 0 && (
+          <NavGroup label="Finanzas" color="#22c55e" items={financeItems} pathname={pathname} />
+        )}
 
         {canAccessAdmin(user.role) && (
           <NavGroup
@@ -261,11 +278,11 @@ export function AppSidebar() {
       <SidebarFooter className="p-3 border-t border-white/[0.06]">
         {/* Balance strip — hidden when collapsed */}
         <div className="flex items-center gap-2 px-2 py-2 mb-1 group-data-[collapsible=icon]:hidden">
-          <Zap className="size-3.5 text-white/20 shrink-0" />
-          <span className="text-[11px] text-white/30 flex-1 tabular-nums truncate">
+          <Zap className="size-3.5 text-white/50 shrink-0" />
+          <span className="text-[11px] text-white/55 flex-1 tabular-nums truncate">
             {personalStats.balanceValueLabel}
           </span>
-          <span className="text-[10px] text-white/25 font-medium">balance</span>
+          <span className="text-[10px] text-white/50 font-medium">balance</span>
         </div>
 
         <DropdownMenu>
@@ -278,9 +295,9 @@ export function AppSidebar() {
               </Avatar>
               <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                 <p className="text-[13px] font-medium text-white/90 truncate leading-tight">{user.name}</p>
-                <p className="text-[10px] text-white/30 truncate mt-0.5">{getRoleLabel(user.role)}</p>
+                <p className="text-[10px] text-white/55 truncate mt-0.5">{getRoleLabel(user.role)}</p>
               </div>
-              <ChevronDown className="size-3.5 text-white/20 group-hover:text-white/40 transition-colors shrink-0 group-data-[collapsible=icon]:hidden" />
+              <ChevronDown className="size-3.5 text-white/50 group-hover:text-white/80 transition-colors shrink-0 group-data-[collapsible=icon]:hidden" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -292,13 +309,13 @@ export function AppSidebar() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/dashboard/earnings">
+              <Link href="/dashboard/earnings" scroll={false}>
                 <DollarSign className="size-4 mr-2" />
                 {personalStats.sidebarBalanceLabel}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/dashboard/rewards">
+              <Link href="/dashboard/rewards" scroll={false}>
                 <Gift className="size-4 mr-2" />
                 {personalStats.sidebarPointsLabel}
               </Link>

@@ -140,7 +140,31 @@ export default function PrototypesPage() {
       })
       .then((payload) => {
         if (isActive) {
-          setItems(payload.data.map(deserializePrototypeWorkspaceListItem))
+          const deserialized = payload.data.map(deserializePrototypeWorkspaceListItem)
+          setItems(deserialized)
+          // Hydrate state from server so the iframe + source survive page reloads
+          // without re-calling /generate. Only populates entries that have data.
+          setGeneratedContent((prev) => {
+            const next = { ...prev }
+            for (const item of deserialized) {
+              if (item.generatedContent) next[item.id] = item.generatedContent
+            }
+            return next
+          })
+          setDemoUrls((prev) => {
+            const next = { ...prev }
+            for (const item of deserialized) {
+              if (item.demoUrl) next[item.id] = item.demoUrl
+            }
+            return next
+          })
+          setChatUrls((prev) => {
+            const next = { ...prev }
+            for (const item of deserialized) {
+              if (item.chatUrl) next[item.id] = item.chatUrl
+            }
+            return next
+          })
         }
       })
       .catch((error) => {
@@ -286,27 +310,50 @@ export default function PrototypesPage() {
                   </p>
                 </div>
 
-                {item.generatedContent ? (
+                {generatedContent[item.id] || demoUrls[item.id] ? (
                   <div className="app-panel-muted space-y-3">
                     <p className="metric-label">Prototipo generado por v0</p>
-                    {isHttpUrl(item.generatedContent) ? (
-                      <a
-                        href={item.generatedContent}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-sm font-medium text-primary underline underline-offset-2"
-                      >
-                        Ver resultado generado →
-                      </a>
-                    ) : (
-                      <pre className="text-xs overflow-auto max-h-64 whitespace-pre-wrap font-mono leading-relaxed">
-                        {item.generatedContent}
-                      </pre>
-                    )}
-                    {item.generatedAt ? (
-                      <p className="text-xs text-muted-foreground">
-                        Generado el {formatDate(item.generatedAt)}
-                      </p>
+                    {demoUrls[item.id] ? (
+                      <iframe
+                        src={demoUrls[item.id]}
+                        title={`Prototipo ${item.leadName}`}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                        className="w-full h-[480px] rounded-md border border-border bg-background"
+                      />
+                    ) : null}
+                    <div className="flex flex-wrap gap-3">
+                      {demoUrls[item.id] ? (
+                        <a
+                          href={demoUrls[item.id]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm font-medium text-primary underline underline-offset-2"
+                        >
+                          Abrir demo en pestaña nueva →
+                        </a>
+                      ) : null}
+                      {chatUrls[item.id] ? (
+                        <a
+                          href={chatUrls[item.id]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-xs text-muted-foreground underline"
+                        >
+                          Ver en v0.dev →
+                        </a>
+                      ) : null}
+                    </div>
+                    {generatedContent[item.id] ? (
+                      <details className="group">
+                        <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                          Ver código fuente generado
+                        </summary>
+                        <pre className="mt-2 text-xs overflow-auto max-h-64 whitespace-pre-wrap font-mono leading-relaxed">
+                          {generatedContent[item.id]}
+                        </pre>
+                      </details>
                     ) : null}
                   </div>
                 ) : null}

@@ -32,7 +32,7 @@ export interface LoginResult {
 const AuthContext = createContext<AuthContextType | null>(null)
 const MOCK_AUTH_STORAGE_KEY = 'noon.mockUserEmail'
 
-type DashboardAccessLevel = 'authenticated' | 'sales' | 'prototypes' | 'projects' | 'delivery' | 'pm' | 'admin'
+type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'pm' | 'admin' | 'finance'
 
 interface DashboardRouteAccessRule {
   prefix: string
@@ -48,6 +48,7 @@ const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
   { prefix: '/dashboard/pm-queue', access: 'pm' },
   { prefix: '/dashboard/projects', access: 'projects' },
   { prefix: '/dashboard/tasks', access: 'delivery' },
+  { prefix: '/dashboard/earnings', access: 'finance' },
 ]
 
 function normalizeDashboardPath(pathname: string): string {
@@ -76,7 +77,18 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
   useEffect(() => {
     if (authMode === 'supabase') {
       startTransition(() => {
-        setUser(initialUser)
+        // Bail out when the user is logically the same (G19). The server
+        // layout may re-emit a fresh initialUser object on focus-triggered
+        // re-renders even though identity hasn't changed; without this
+        // dedup the new reference would cascade through every consumer
+        // that has `user` in its useEffect deps (notably data-context),
+        // re-fetching all slices and erasing local UI state.
+        setUser((current) => {
+          if (current?.id === initialUser?.id) {
+            return current
+          }
+          return initialUser
+        })
       })
       return
     }
@@ -106,12 +118,19 @@ export function AuthProvider({ authMode, initialUser, children }: AuthProviderPr
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
+      setIsLoading(false)
+
+      // Only SIGNED_OUT must sync the server-rendered state — to redirect
+      // away from gated routes when the session expires in the background.
+      // Every other event (INITIAL_SESSION on first mount, TOKEN_REFRESHED
+      // on tab focus, SIGNED_IN on session recovery from storage,
+      // USER_UPDATED, PASSWORD_RECOVERY) leaves the existing UI valid;
+      // the explicit login/logout callbacks below already call
+      // router.refresh() when there is a real auth-identity change.
+      // Refreshing on the other events caused the "se recarga todo" UX
+      // regression on tab focus (G19).
       if (event === 'SIGNED_OUT') {
         setUser(null)
-      }
-
-      if (event !== 'INITIAL_SESSION') {
-        setIsLoading(false)
         startTransition(() => {
           router.refresh()
         })
@@ -243,6 +262,10 @@ export function canAccessAdmin(role: UserRole): boolean {
   return role === 'admin'
 }
 
+export function canReceiveEarnings(role: UserRole): boolean {
+  return ['admin', 'sales_manager', 'sales'].includes(role)
+}
+
 export function canManageTeam(role: UserRole): boolean {
   return ['admin', 'sales_manager', 'pm'].includes(role)
 }
@@ -269,6 +292,7 @@ export function canAccessDashboardPath(role: UserRole, pathname: string): boolea
   if (accessLevel === 'delivery') return canAccessDelivery(role)
   if (accessLevel === 'pm') return canAccessPmQueue(role)
   if (accessLevel === 'admin') return canAccessAdmin(role)
+  if (accessLevel === 'finance') return canReceiveEarnings(role)
 
   return true
 }

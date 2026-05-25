@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { canAccessDashboardPath, canGeneratePrototypes, useAuth } from '@/lib/auth-context'
 import {
@@ -283,18 +283,55 @@ export default function ProjectsPage() {
   const { user, authMode } = useAuth()
   const {
     projectBoardProjects,
+    persistedProjects,
+    isProjectsLoading,
     deliveryUsers,
     getTasksByProject,
     getProjectActivity,
     updateProjectStatus,
     refreshProjects,
   } = useData()
+
+  // Post R3 chunk 2: provider no longer eager-loads projects in
+  // supabase mode. Trigger refreshProjects() on first mount; the ref
+  // guard prevents re-firing on subsequent renders.
+  const hasTriggeredInitialLoadRef = useRef(false)
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredInitialLoadRef.current) {
+      return
+    }
+    if (persistedProjects.length > 0) {
+      hasTriggeredInitialLoadRef.current = true
+      return
+    }
+    if (isProjectsLoading) {
+      return
+    }
+    hasTriggeredInitialLoadRef.current = true
+    void refreshProjects()
+  }, [authMode, isProjectsLoading, persistedProjects.length, refreshProjects])
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban')
   const requestedProjectId = searchParams.get('projectId')
+  // G18 mirror fix: blocks reopen race while router.replace propagates the cleared param.
+  const justClosedProjectIdRef = useRef<string | null>(null)
+  // G18 follow-up: carries the project on-screen at close time so the
+  // dialog body stays mounted through Radix's ~200ms close animation.
+  // Only captured by the close handler (X / ESC / backdrop).
+  const [lingeringProject, setLingeringProject] = useState<Project | null>(null)
+  const lingeringClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+  }, [])
 
   const userRole = user?.role
   const canManageProjects = userRole ? ['admin', 'pm'].includes(userRole) : false
@@ -346,9 +383,19 @@ export default function ProjectsPage() {
     () => visibleProjects.find((project) => project.id === selectedProjectId) ?? null,
     [visibleProjects, selectedProjectId]
   )
+  const displayProject = selectedProject ?? lingeringProject
 
   useEffect(() => {
     if (!requestedProjectId) {
+      justClosedProjectIdRef.current = null
+      return
+    }
+
+    if (justClosedProjectIdRef.current && justClosedProjectIdRef.current !== requestedProjectId) {
+      justClosedProjectIdRef.current = null
+    }
+
+    if (justClosedProjectIdRef.current === requestedProjectId) {
       return
     }
 
@@ -413,6 +460,23 @@ export default function ProjectsPage() {
     if (open) {
       return
     }
+
+    const closedId = selectedProjectId ?? requestedProjectId
+    if (closedId) {
+      justClosedProjectIdRef.current = closedId
+    }
+
+    if (selectedProject) {
+      setLingeringProject(selectedProject)
+    }
+
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+    lingeringClearTimerRef.current = setTimeout(() => {
+      setLingeringProject(null)
+      lingeringClearTimerRef.current = null
+    }, 200)
 
     setSelectedProjectId(null)
 
@@ -592,10 +656,10 @@ export default function ProjectsPage() {
               Informacion completa y tareas del proyecto
             </DialogDescription>
           </DialogHeader>
-          {selectedProject && (
+          {displayProject && (
             <ProjectDetail
-              project={selectedProject}
-              tasks={getVisibleProjectTasks(selectedProject.id)}
+              project={displayProject}
+              tasks={getVisibleProjectTasks(displayProject.id)}
               deliveryUsers={deliveryUsers}
               getProjectActivity={getProjectActivity}
               onStatusChange={handleStatusChange}

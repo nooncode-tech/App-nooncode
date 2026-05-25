@@ -5,10 +5,11 @@ import { errorToLogContext, logger } from '@/lib/server/api/logger'
 import { getRequestId, jsonWithRequestId } from '@/lib/server/api/request'
 import { getStripeClient } from '@/lib/server/stripe/client'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
-import type { Database, Json } from '@/lib/server/supabase/database.types'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
-import { getSellerFeeByProposalId } from '@/lib/server/seller-fees/repository'
-import { confirmSellerFee } from '@/lib/server/seller-fees/service'
+import { getSellerFeeByPaymentId, getSellerFeeByProposalId } from '@/lib/server/seller-fees/repository'
+import { cancelSellerFee, confirmSellerFee } from '@/lib/server/seller-fees/service'
+import { creditActivationEarnings } from '@/lib/server/earnings/activation-credit'
+import { debitWalletForRefund } from '@/lib/server/earnings/refund-service'
 import {
   beginStripeWebhookEvent,
   markStripeWebhookEventFailed,
@@ -16,50 +17,24 @@ import {
 } from '@/lib/server/stripe/webhook-events'
 
 type SupabaseAdminClient = Awaited<ReturnType<typeof createSupabaseAdminClient>>
-type MonetaryEntryType = Database['public']['Enums']['monetary_entry_type']
-type WalletBalanceBucket = 'available_to_spend' | 'available_to_withdraw' | 'pending' | 'locked'
-
-async function creditWalletBucket(
-  client: SupabaseAdminClient,
-  input: {
-    profileId: string
-    amount: number
-    currency: string
-    entryType: MonetaryEntryType
-    balanceBucket: WalletBalanceBucket
-    referenceType: string
-    referenceId: string
-    actorProfileId?: string | null
-    metadata?: Json
-    idempotencyKey: string
-    createdAt?: string
-  }
-) {
-  const { error } = await client.rpc('credit_wallet_bucket', {
-    p_profile_id: input.profileId,
-    p_amount: input.amount,
-    p_currency: input.currency,
-    p_entry_type: input.entryType,
-    p_balance_bucket: input.balanceBucket,
-    p_reference_type: input.referenceType,
-    p_reference_id: input.referenceId,
-    p_actor_profile_id: input.actorProfileId ?? null,
-    p_metadata: input.metadata ?? {},
-    p_idempotency_key: input.idempotencyKey,
-    p_created_at: input.createdAt,
-  })
-
-  if (error) {
-    throw new Error(`Failed to credit wallet: ${error.message}`)
-  }
-}
 
 // Exported for unit testing in tests/server/api/webhooks/stripe-checkout-completed.test.ts.
 // Next.js route runtime only treats the named exports POST / GET / etc. as
 // route handlers, so an additional export here is safe.
+//
+// `eventCreatedAt` is `event.created` (Unix seconds) for the Stripe event
+// that triggered this handler — i.e. when Stripe fired
+// `checkout.session.completed`, which approximates the moment of payment.
+// We use it instead of `session.created` (when the checkout session was
+// originally created) because the session can be created days before the
+// customer actually pays; using session.created made `paid_at` /
+// `handoff_ready_at` reflect link-creation time instead of payment time
+// (B1.3a observation §1, 2026-05-17). Falls back to server `now()` if the
+// caller cannot supply a numeric event timestamp.
 export async function handleCheckoutSessionCompleted(
   client: SupabaseAdminClient,
   session: Stripe.Checkout.Session,
+  eventCreatedAt?: number,
 ) {
   const proposalId = session.metadata?.noon_proposal_id
   const paymentIdFromMetadata = session.metadata?.noon_payment_id
@@ -87,8 +62,8 @@ export async function handleCheckoutSessionCompleted(
   }
 
   const paidAt =
-    typeof session.created === 'number'
-      ? new Date(session.created * 1000).toISOString()
+    typeof eventCreatedAt === 'number'
+      ? new Date(eventCreatedAt * 1000).toISOString()
       : new Date().toISOString()
   const paymentIntentId =
     typeof session.payment_intent === 'string'
@@ -169,102 +144,36 @@ export async function handleCheckoutSessionCompleted(
     developerUserId = project?.developer_user_id ?? null
   }
 
-  const earningRows: Array<{
-    actor_id: string | null
-    actor_role: 'seller' | 'developer' | 'noon'
-    earning_type: 'activation'
-    amount: number
-    currency: string
-    lead_id: string
-    proposal_id: string
-    payment_id: string
-    idempotency_key: string
-    notes: string
-  }> = []
+  // Earnings allocation + per-actor wallet credit. Extracted to the shared
+  // service so the symmetric inbound path (`receiveWebsitePaymentConfirmed`)
+  // can reuse the same allocation policy. See ADR-021 (decision D1).
+  //
+  // `channel: 'outbound'` is hard-coded because the TRANSPORT for this handler
+  // is always Stripe (the webhook source). The namespace guard inside the
+  // service requires `stripe:` prefix when channel='outbound'. The rare
+  // defensive case where `leadOrigin === 'inbound'` reaches this handler
+  // (impossible per ADR-010 — `/api/payments/checkout/route.ts` rejects
+  // inbound with INBOUND_PAYMENT_LINK_OWNED_BY_WEBSITE) still works because
+  // `sellerInput` is null in that path → service computes `base =
+  // activationAmount` (no seller subtraction). The only cosmetic regression
+  // is the audit field `metadata.channel` reads `'outbound'` instead of
+  // `'inbound'`/`'unknown'` for that impossible case.
+  const sellerInput = leadOrigin === 'outbound' && sellerFeeRow
+    ? { actorId: sellerId, amount: sellerFeeAmount }
+    : null
 
-  const base = leadOrigin === 'outbound'
-    ? Math.max(activationAmount - sellerFeeAmount, 0)
-    : activationAmount
-
-  // Seller commission - outbound only, persisted value from seller_fees.
-  if (leadOrigin === 'outbound') {
-    earningRows.push({
-      actor_id: sellerId,
-      actor_role: 'seller',
-      earning_type: 'activation',
-      amount: sellerFeeAmount,
-      currency: 'USD',
-      lead_id: proposal.lead_id,
-      proposal_id: activation.proposal_id,
-      payment_id: activation.payment_id,
-      idempotency_key: `stripe:${session.id}:earning:seller:${sellerId}`,
-      notes: `Outbound activation - $${sellerFeeAmount} (seller-selected)`,
-    })
-  }
-
-  // Developer commission - 50% of base
-  if (base > 0) {
-    earningRows.push({
-      actor_id: developerUserId,
-      actor_role: 'developer',
-      earning_type: 'activation',
-      amount: parseFloat((base * 0.5).toFixed(2)),
-      currency: 'USD',
-      lead_id: proposal.lead_id,
-      proposal_id: activation.proposal_id,
-      payment_id: activation.payment_id,
-      idempotency_key: `stripe:${session.id}:earning:developer:${developerUserId ?? 'unassigned'}`,
-      notes: developerUserId
-        ? `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation - 50% of base $${base}`
-        : 'Developer not yet assigned - pending resolution',
-    })
-
-    // Noon share - 50% of base
-    earningRows.push({
-      actor_id: null,
-      actor_role: 'noon',
-      earning_type: 'activation',
-      amount: parseFloat((base * 0.5).toFixed(2)),
-      currency: 'USD',
-      lead_id: proposal.lead_id,
-      proposal_id: activation.proposal_id,
-      payment_id: activation.payment_id,
-      idempotency_key: `stripe:${session.id}:earning:noon`,
-      notes: `${leadOrigin === 'outbound' ? 'Outbound' : 'Inbound'} activation - 50% of base $${base}`,
-    })
-  }
-
-  if (earningRows.length > 0) {
-    const { error: earningsError } = await client
-      .from('earnings_ledger')
-      .upsert(earningRows, { onConflict: 'idempotency_key', ignoreDuplicates: true })
-    if (earningsError) throw new Error(`Failed to insert earnings: ${earningsError.message}`)
-
-    // Credit each real actor's pending wallet balance through a transactional RPC.
-    const creditedAt = new Date().toISOString()
-    for (const row of earningRows) {
-      if (!row.actor_id) continue
-
-      await creditWalletBucket(client, {
-        profileId: row.actor_id,
-        amount: row.amount,
-        currency: row.currency,
-        entryType: 'earnings_distribution',
-        balanceBucket: 'pending',
-          referenceType: 'payment',
-          referenceId: activation.payment_id,
-          metadata: {
-            earningType: 'activation',
-            actorRole: row.actor_role,
-            channel: leadOrigin ?? 'unknown',
-            notes: row.notes,
-            paymentId: activation.payment_id,
-          },
-        idempotencyKey: `stripe:${session.id}:wallet:${row.actor_role}:${row.actor_id}`,
-        createdAt: creditedAt,
-      })
-    }
-  }
+  await creditActivationEarnings(client, {
+    activationAmount,
+    currency: 'USD',
+    paymentId: activation.payment_id,
+    proposalId: activation.proposal_id,
+    leadId: proposal.lead_id,
+    seller: sellerInput,
+    developerUserId,
+    channel: 'outbound',
+    idempotencyKeyBase: `stripe:${session.id}`,
+    actorProfileId: null,
+  })
 
   // Transition seller_fees state potential → confirmed. Idempotent for
   // webhook retries per ADR-007 §rule 11; the service short-circuits if
@@ -366,23 +275,133 @@ async function handleChargeRefunded(
   const paymentIntentId = charge.payment_intent as string
   if (!paymentIntentId) return
 
-  await client
-    .from('payments')
-    .update({ status: 'refunded', refunded_at: new Date().toISOString() })
-    .eq('stripe_payment_intent_id', paymentIntentId)
-
-  // Find and pause related project
+  // Load payment row first so we have the full context for downstream
+  // reversal (seller_fees, earnings_ledger).
   const { data: payment } = await client
     .from('payments')
-    .select('project_id')
+    .select('id, project_id, proposal_id, status')
     .eq('stripe_payment_intent_id', paymentIntentId)
     .maybeSingle()
 
-  if (payment?.project_id) {
+  if (!payment) {
+    logger.warn('stripe.charge_refunded.payment_not_found', {
+      paymentIntentId,
+      chargeId: charge.id,
+    })
+    return
+  }
+
+  // 1. Mark payment refunded (idempotent — repeats just rewrite the timestamp)
+  await client
+    .from('payments')
+    .update({ status: 'refunded', refunded_at: new Date().toISOString() })
+    .eq('id', payment.id)
+
+  // 2. Pause related project (existing behavior)
+  if (payment.project_id) {
     await client
       .from('projects')
       .update({ payment_activated: false, status: 'backlog' })
       .eq('id', payment.project_id)
+  }
+
+  // 3. Cancel seller_fees row if present (B3 state machine reversal).
+  //    Uses cancelSellerFee service which is idempotent (returns early if
+  //    already cancelled) and enforces ADR-007 §Hard rule 3 (forbids
+  //    auto-cancel from paid_out) + Hard rule 4 (rejects pending_payout
+  //    pending future implementation). Either of those guards will throw,
+  //    which we catch and log — refund payment + project reversal stay
+  //    committed, and the operator gets an actionable error to escalate.
+  const sellerFee = await getSellerFeeByPaymentId(client, payment.id)
+  if (sellerFee && sellerFee.state !== 'cancelled') {
+    try {
+      await cancelSellerFee(client, {
+        sellerFeeId: sellerFee.id,
+        reason: `refund:${charge.id}`,
+        actorProfileId: null,
+      })
+    } catch (error) {
+      logger.error('stripe.charge_refunded.seller_fee_cancel_failed', {
+        ...errorToLogContext(error),
+        sellerFeeId: sellerFee.id,
+        priorState: sellerFee.state,
+        paymentId: payment.id,
+        chargeId: charge.id,
+      })
+    }
+  }
+
+  // 4. Reverse earnings_ledger entries by marking them status='cancelled'.
+  //    The original DB-level CHECK constraint forbids negative amounts on
+  //    earnings_ledger (earnings_ledger_amount_check), so we cannot insert
+  //    mirror rows. Using the existing 'cancelled' enum value is the
+  //    semantically correct reversal — it matches how seller_fees handles
+  //    refund-driven cancellation and keeps amounts positive. The update
+  //    is idempotent: rows already cancelled (e.g., from a previous
+  //    invocation of this handler) are filtered out via .neq('status',
+  //    'cancelled'), so Stripe webhook retries do not double-process.
+  //
+  //    Notes column captures the refund linkage for audit (charge id +
+  //    timestamp). The original credited_at timestamp stays untouched —
+  //    we only flip status and append a refund-note.
+  const { error: cancellationError } = await client
+    .from('earnings_ledger')
+    .update({
+      status: 'cancelled',
+      notes: `Cancelled by refund (charge ${charge.id})`,
+    })
+    .eq('payment_id', payment.id)
+    .neq('status', 'cancelled')
+
+  if (cancellationError) {
+    throw new Error(
+      `Failed to cancel earnings_ledger rows on refund: ${cancellationError.message}`
+    )
+  }
+
+  // 5. Wallet bucket reversal (Path G, ADR-015 §Amendment closure of G14).
+  //    Invokes the `debit_wallet_for_refund` RPC (migration 0050) which
+  //    atomically debits the bucket that currently holds the credit
+  //    (`pending` if pre-consolidation, `available_to_withdraw` if
+  //    post-consolidation). Idempotent on Stripe webhook retries.
+  //    Defensive bucket-balance check inside the RPC handles the case
+  //    where funds were already moved to `locked` (payout initiated)
+  //    or paid out — those actors are surfaced in
+  //    `actorsSkippedAlreadyPaidOut` for downstream alerting.
+  //
+  //    Failures here do NOT fail the webhook: payment + project +
+  //    seller_fees + earnings_ledger reversal already committed. The
+  //    error is logged for operator follow-up.
+  try {
+    const result = await debitWalletForRefund(client, {
+      paymentId: payment.id,
+      actorProfileId: null,
+    })
+
+    if (result.actorsSkippedAlreadyPaidOut > 0) {
+      logger.warn('stripe.charge_refunded.actors_already_paid_out', {
+        paymentId: payment.id,
+        chargeId: charge.id,
+        actorsDebited: result.actorsDebited,
+        actorsSkippedAlreadyPaidOut: result.actorsSkippedAlreadyPaidOut,
+        amountDebited: result.amountDebited,
+        bucketUsed: result.bucketUsed,
+      })
+    } else {
+      logger.info('stripe.charge_refunded.wallet_debited', {
+        paymentId: payment.id,
+        chargeId: charge.id,
+        actorsDebited: result.actorsDebited,
+        amountDebited: result.amountDebited,
+        bucketUsed: result.bucketUsed,
+      })
+    }
+  } catch (error) {
+    logger.error('stripe.charge_refunded.wallet_debit_failed', {
+      ...errorToLogContext(error),
+      paymentId: payment.id,
+      chargeId: charge.id,
+    })
   }
 }
 
@@ -392,7 +411,7 @@ export async function POST(request: Request) {
   let event: Stripe.Event | null = null
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'stripe-webhook',
       limit: 600,
       windowMs: 60_000,
@@ -437,7 +456,11 @@ export async function POST(request: Request) {
     try {
       switch (eventType) {
         case 'checkout.session.completed':
-          await handleCheckoutSessionCompleted(client, event.data.object as Stripe.Checkout.Session)
+          await handleCheckoutSessionCompleted(
+            client,
+            event.data.object as Stripe.Checkout.Session,
+            event.created,
+          )
           break
         case 'payment_intent.payment_failed':
           await handlePaymentIntentFailed(client, event.data.object as Stripe.PaymentIntent)

@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { startTransition, useCallback, useEffect, useState } from 'react'
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { buildLeadDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
@@ -87,8 +87,40 @@ interface MaxwellSearchResponse {
 }
 
 export default function LeadsPage() {
-  const { user } = useAuth()
-  const { leads, isLeadsLoading, refreshLeads, updateLeadStatus, deleteLead } = useData()
+  const { authMode, user } = useAuth()
+  const {
+    leads,
+    isLeadsLoading,
+    leadsPagination,
+    setLeadsPage,
+    refreshLeads,
+    updateLeadStatus,
+    deleteLead,
+  } = useData()
+  // Post R3 chunk 2 (ADR-020 §D8): the provider no longer eager-loads
+  // leads on mount in supabase mode. The page triggers its own first
+  // page on mount via setLeadsPage(1). The ref guard ensures the call
+  // fires exactly once per mount even though leads/isLeadsLoading
+  // change during the load.
+  const hasTriggeredInitialLoadRef = useRef(false)
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredInitialLoadRef.current) {
+      return
+    }
+    if (leadsPagination !== null) {
+      // Already loaded by a previous navigation; nothing to do.
+      hasTriggeredInitialLoadRef.current = true
+      return
+    }
+    if (isLeadsLoading) {
+      return
+    }
+    hasTriggeredInitialLoadRef.current = true
+    void setLeadsPage(1)
+  }, [authMode, isLeadsLoading, leadsPagination, setLeadsPage])
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -107,6 +139,26 @@ export default function LeadsPage() {
   const [manualZoneText, setManualZoneText] = useState('')
   const [lastMaxwellResult, setLastMaxwellResult] = useState<MaxwellSearchResponse['data'] | null>(null)
   const requestedLeadId = searchParams.get('leadId')
+  // Tracks a leadId we just closed so the open-from-URL effect does not
+  // race-reopen the dialog while router.replace propagates the cleared
+  // searchParam (G18). Cleared once requestedLeadId becomes null or moves
+  // to a different id.
+  const justClosedLeadIdRef = useRef<string | null>(null)
+  // Carries the lead that was on-screen at close time so the dialog body
+  // stays mounted through Radix's ~200ms close animation. Only captured
+  // by the close handler (user click on X / ESC / backdrop). Avoids the
+  // header-only flash that happens when conditional body content unmounts
+  // mid-animation (G18 follow-up).
+  const [lingeringLead, setLingeringLead] = useState<Lead | null>(null)
+  const lingeringClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+  }, [])
+
+  const displayLead = selectedLead ?? lingeringLead
 
   const replaceLeadHref = useCallback((leadId: string | null) => {
     const nextHref = leadId
@@ -143,7 +195,20 @@ export default function LeadsPage() {
   }, [leads, replaceLeadHref, requestedLeadId, selectedLead])
 
   useEffect(() => {
-    if (!requestedLeadId || isLeadsLoading) {
+    if (!requestedLeadId) {
+      justClosedLeadIdRef.current = null
+      return
+    }
+
+    if (justClosedLeadIdRef.current && justClosedLeadIdRef.current !== requestedLeadId) {
+      justClosedLeadIdRef.current = null
+    }
+
+    if (isLeadsLoading) {
+      return
+    }
+
+    if (justClosedLeadIdRef.current === requestedLeadId) {
       return
     }
 
@@ -345,6 +410,21 @@ export default function LeadsPage() {
       return
     }
 
+    if (selectedLead) {
+      justClosedLeadIdRef.current = selectedLead.id
+      setLingeringLead(selectedLead)
+    } else if (requestedLeadId) {
+      justClosedLeadIdRef.current = requestedLeadId
+    }
+
+    if (lingeringClearTimerRef.current !== null) {
+      clearTimeout(lingeringClearTimerRef.current)
+    }
+    lingeringClearTimerRef.current = setTimeout(() => {
+      setLingeringLead(null)
+      lingeringClearTimerRef.current = null
+    }, 200)
+
     setSelectedLead(null)
 
     if (requestedLeadId) {
@@ -359,7 +439,7 @@ export default function LeadsPage() {
           <h1 className="app-page-title">Leads</h1>
           <p className="app-page-subtitle">Cola comercial, prioridad por score y seguimiento activo.</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="default"
             onClick={handleMaxwellCurrentLocationSearch}
@@ -531,18 +611,52 @@ export default function LeadsPage() {
         )}
       </div>
 
+      {/* Pagination controls — visible only when the server reports more than one page */}
+      {leadsPagination && leadsPagination.pageCount > 1 && (
+        <div
+          className="flex items-center justify-between gap-3 pt-2"
+          role="navigation"
+          aria-label="Paginación de leads"
+        >
+          <p className="text-sm text-muted-foreground">
+            Página {leadsPagination.page} de {leadsPagination.pageCount} · {leadsPagination.total} leads
+          </p>
+          <div className="flex items-center gap-2">
+            {isLeadsLoading && (
+              <Spinner className="size-4" aria-label="Cargando página" />
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void setLeadsPage(leadsPagination.page - 1)}
+              disabled={isLeadsLoading || leadsPagination.page <= 1}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void setLeadsPage(leadsPagination.page + 1)}
+              disabled={isLeadsLoading || leadsPagination.page >= leadsPagination.pageCount}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Lead Detail Dialog */}
       <Dialog open={!!selectedLead} onOpenChange={handleLeadDialogChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Detalle del Lead</DialogTitle>
             <DialogDescription>
               Informacion completa y acciones disponibles
             </DialogDescription>
           </DialogHeader>
-          {selectedLead && (
+          {displayLead && (
             <LeadDetail
-              lead={selectedLead}
+              lead={displayLead}
               onStatusChange={handleStatusChange}
             />
           )}

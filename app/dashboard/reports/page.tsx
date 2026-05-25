@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useAuth, canViewAllStats, canAccessDelivery, canAccessSales } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
 import {
@@ -52,11 +52,78 @@ export default function ReportsPage() {
   const { authMode, user } = useAuth()
   const {
     leads,
+    isLeadsLoading,
+    leadsPagination,
+    setLeadsPage,
     projectBoardProjects,
     persistedProjects,
+    isProjectsLoading,
+    refreshProjects,
     taskBoardTasks,
     persistedTasks,
+    isTasksLoading,
+    refreshTasks,
   } = useData()
+
+  // Post R3 chunk 2: reports consumes leads + projects + tasks; the
+  // provider no longer eager-loads any of them in supabase mode, so
+  // reports triggers all three loaders on first mount. Same caveat as
+  // pipeline: the leads slice is paginated, so reports operates on a
+  // first-page subset (F-V12 R1 carry-over — out of scope here).
+  const hasTriggeredLeadsLoadRef = useRef(false)
+  const hasTriggeredProjectsLoadRef = useRef(false)
+  const hasTriggeredTasksLoadRef = useRef(false)
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredLeadsLoadRef.current) {
+      return
+    }
+    if (leadsPagination !== null) {
+      hasTriggeredLeadsLoadRef.current = true
+      return
+    }
+    if (isLeadsLoading) {
+      return
+    }
+    hasTriggeredLeadsLoadRef.current = true
+    void setLeadsPage(1)
+  }, [authMode, isLeadsLoading, leadsPagination, setLeadsPage])
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredProjectsLoadRef.current) {
+      return
+    }
+    if (persistedProjects.length > 0) {
+      hasTriggeredProjectsLoadRef.current = true
+      return
+    }
+    if (isProjectsLoading) {
+      return
+    }
+    hasTriggeredProjectsLoadRef.current = true
+    void refreshProjects()
+  }, [authMode, isProjectsLoading, persistedProjects.length, refreshProjects])
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    if (hasTriggeredTasksLoadRef.current) {
+      return
+    }
+    if (persistedTasks.length > 0) {
+      hasTriggeredTasksLoadRef.current = true
+      return
+    }
+    if (isTasksLoading) {
+      return
+    }
+    hasTriggeredTasksLoadRef.current = true
+    void refreshTasks()
+  }, [authMode, isTasksLoading, persistedTasks.length, refreshTasks])
 
   const canViewAll = user ? canViewAllStats(user.role) : false
   const deliveryProjects =

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { startTransition, useEffect, useState } from 'react'
-import { Bell, BellOff, Briefcase, Check, ExternalLink, ListTodo } from 'lucide-react'
+import { Bell, BellOff, Briefcase, Check, CheckCheck, ExternalLink, ListTodo } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import type { UserNotification } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -48,6 +48,7 @@ export default function NotificationsPage() {
   const [isLoading, setIsLoading] = useState(authMode === 'supabase')
   const [error, setError] = useState<string | null>(null)
   const [markingId, setMarkingId] = useState<string | null>(null)
+  const [isMarkingAll, setIsMarkingAll] = useState(false)
 
   useEffect(() => {
     let isActive = true
@@ -89,6 +90,19 @@ export default function NotificationsPage() {
     } catch { /* swallow */ } finally { setMarkingId(null) }
   }
 
+  const handleMarkAllAsRead = async () => {
+    setIsMarkingAll(true)
+    const readAt = new Date()
+    try {
+      const res = await fetch('/api/notifications/read-all', { method: 'POST' })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error ?? 'Error')
+      setItems((prev) => prev.map((n) => n.isRead ? n : { ...n, isRead: true, readAt }))
+      setUnreadCount(0)
+      window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT))
+    } catch { /* swallow */ } finally { setIsMarkingAll(false) }
+  }
+
   if (!user) return null
 
   return (
@@ -105,6 +119,17 @@ export default function NotificationsPage() {
         </div>
         <p className="app-page-subtitle">Inbox interno de notificaciones por usuario.</p>
         </div>
+        {authMode === 'supabase' && unreadCount > 0 && (
+          <button
+            type="button"
+            onClick={handleMarkAllAsRead}
+            disabled={isMarkingAll}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <CheckCheck className="size-3.5" />
+            {isMarkingAll ? 'Marcando...' : 'Marcar todas como leídas'}
+          </button>
+        )}
       </div>
 
       <div className="app-feed">
@@ -186,9 +211,10 @@ export default function NotificationsPage() {
                         <button
                           onClick={() => handleMarkAsRead(item.id)}
                           disabled={markingId === item.id}
-                          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 ml-auto transition-colors disabled:opacity-40"
+                          aria-label={`Marcar como leída: ${item.title}`}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 ml-auto px-2 py-1 rounded transition-colors disabled:opacity-40 hover:bg-muted/40"
                         >
-                          <Check className="size-2.5" />
+                          <Check className="size-3" />
                           {markingId === item.id ? 'Marcando...' : 'Leída'}
                         </button>
                       )}

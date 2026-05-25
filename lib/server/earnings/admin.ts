@@ -15,12 +15,6 @@ export interface CreditEarningsInput {
   actorName: string
 }
 
-export interface ConsolidateEarningsInput {
-  targetProfileId: string
-  amount: number
-  actorProfileId: string
-}
-
 // Uses admin (service_role) client — bypasses RLS
 export async function creditEarnings(
   adminClient: SupabaseClient,
@@ -81,47 +75,4 @@ export async function creditEarnings(
   if (insertError || !entry) throw new Error(`Failed to record ledger entry: ${(insertError as Error)?.message ?? 'No data'}`)
 
   return entry as unknown as WalletLedgerEntryRow
-}
-
-export async function consolidateEarnings(
-  adminClient: SupabaseClient,
-  input: ConsolidateEarningsInput,
-): Promise<void> {
-  if (input.amount <= 0) throw new Error('INVALID_AMOUNT')
-
-  const { data: wallet, error: readError } = await adminClient
-    .from('wallet_accounts' as never)
-    .select('pending, available_to_withdraw')
-    .eq('profile_id', input.targetProfileId)
-    .single() as { data: { pending: number; available_to_withdraw: number } | null; error: unknown }
-
-  if (readError || !wallet) throw new Error('WALLET_NOT_FOUND')
-
-  const currentPending = Number(wallet.pending)
-  if (currentPending < input.amount) throw new Error('INSUFFICIENT_PENDING')
-
-  const { error: updateError } = await adminClient
-    .from('wallet_accounts' as never)
-    .update({
-      pending: currentPending - input.amount,
-      available_to_withdraw: Number(wallet.available_to_withdraw) + input.amount,
-      updated_at: new Date().toISOString(),
-    } as never)
-    .eq('profile_id', input.targetProfileId)
-
-  if (updateError) throw new Error(`Failed to consolidate: ${(updateError as Error).message}`)
-
-  await adminClient
-    .from('wallet_ledger_entries' as never)
-    .insert({
-      profile_id: input.targetProfileId,
-      amount: input.amount,
-      currency: 'USD',
-      entry_type: 'earnings_distribution',
-      balance_bucket: 'available_to_withdraw',
-      status: 'confirmed',
-      reference_type: 'consolidation',
-      actor_profile_id: input.actorProfileId,
-      metadata: { consolidatedFrom: 'pending' },
-    } as never)
 }

@@ -64,6 +64,7 @@ function makeHandler({
 
   const listProjectsByProposalIdsStub = async () => []
   const listLeadActivitiesStub = async () => []
+  const listActiveCheckoutLinksByProposalIdsStub = async () => new Map()
   const createClientStub = async () => ({}) as DatabaseClient
 
   return createGetLeadProposalsHandler({
@@ -72,6 +73,7 @@ function makeHandler({
     listLeadProposals: listLeadProposalsStub,
     listProjectsByProposalIds: listProjectsByProposalIdsStub,
     listLeadActivities: listLeadActivitiesStub,
+    listActiveCheckoutLinksByProposalIds: listActiveCheckoutLinksByProposalIdsStub,
     createSupabaseServerClient: createClientStub,
   })
 }

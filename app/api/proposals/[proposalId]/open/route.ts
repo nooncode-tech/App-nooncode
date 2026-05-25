@@ -16,7 +16,7 @@ export async function POST(
   const requestId = getRequestId(request)
 
   try {
-    assertRateLimit(request, {
+    await assertRateLimit(request, {
       namespace: 'proposal-open',
       limit: 60,
       windowMs: 60_000,

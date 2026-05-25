@@ -3,24 +3,14 @@ import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+// Single source of truth for the grandfathered prefix-collision set. Pinned
+// to ADR-006 §Option B2 and shared with the migrations-health endpoint per
+// ADR-017 §D1.
+import { KNOWN_COLLISION_FILES } from '../lib/server/migrations/known-exceptions.mjs';
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const MIGRATIONS_DIR = join(ROOT, 'supabase', 'migrations');
 const PREFIX_RE = /^(\d{4})_/;
-
-// Files involved in known historical prefix collisions (0024-0027).
-// Tracked in docs/context/project.context.core.md and resolved by R1.1
-// (Sprint 2). Until R1.1 lands, the check grandfathers these exact files
-// so CI stays green; any *new* file colliding at any prefix still fails.
-const KNOWN_COLLISION_FILES = new Set([
-  '0024_phase_3a_monetary_wallet_foundation.sql',
-  '0024_phase_5a_prototype_settings_admin_write.sql',
-  '0025_phase_3a_bridge_wallet_compatibility.sql',
-  '0025_phase_3a_leads_geo_location.sql',
-  '0026_phase_3b_earnings_backend.sql',
-  '0026_phase_9a_stripe_payments.sql',
-  '0027_phase_10a_commissions.sql',
-  '0027_phase_3_proposal_lifecycle.sql',
-]);
 
 const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql'));
 
@@ -52,7 +42,7 @@ for (const [prefix, group] of byPrefix) {
 }
 
 if (grandfathered.length > 0) {
-  console.log(`Known historical collisions (grandfathered, pending R1.1):`);
+  console.log(`Known historical collisions (grandfathered per ADR-006):`);
   for (const { prefix, group } of grandfathered.sort((a, b) => a.prefix.localeCompare(b.prefix))) {
     console.log(`  ${prefix}_*  ->  ${group.sort().join(', ')}`);
   }

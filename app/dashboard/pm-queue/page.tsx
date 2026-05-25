@@ -133,7 +133,7 @@ function QueueCard({
     (item.review_webhook_status === 'failed' || item.review_webhook_status === 'skipped')
 
   return (
-    <article className="border-t border-border/70 first:border-t-0">
+    <article className="border-t border-border/70 first:border-t-0 [overflow-wrap:anywhere]">
       <div className="grid gap-5 px-1 py-5 lg:grid-cols-[minmax(0,1fr)_260px]">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -151,13 +151,13 @@ function QueueCard({
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{proposal.body}</p>
 
           <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-            <span>
+            <span className="min-w-0">
               Cliente <strong className="font-medium text-foreground">{lead.company ?? lead.name}</strong>
             </span>
-            <span>
+            <span className="min-w-0">
               Contacto <strong className="font-medium text-foreground">{lead.email}</strong>
             </span>
-            <span>
+            <span className="min-w-0">
               Monto <strong className="font-medium text-foreground">{formatMoney(proposal.amount, proposal.currency)}</strong>
             </span>
           </div>

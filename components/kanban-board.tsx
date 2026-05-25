@@ -6,11 +6,14 @@ import { useState } from 'react'
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
+  rectIntersection,
+  useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
@@ -22,7 +25,15 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { Inbox } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 
 export interface KanbanColumn<T> {
   id: string
@@ -59,6 +70,15 @@ export function KanbanBoard<T extends { id: string }>({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   )
+
+  // Pointer-first collision so empty columns become valid drop targets when the
+  // cursor is inside them; fall back to rectIntersection when the pointer is
+  // outside every droppable (mid-air / between columns) so card-to-card drags
+  // still resolve to the nearest column.
+  const collisionDetection: CollisionDetection = (args) => {
+    const pointerCollisions = pointerWithin(args)
+    return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args)
+  }
 
   const findColumn = (id: string) => {
     for (const column of columns) {
@@ -117,7 +137,7 @@ export function KanbanBoard<T extends { id: string }>({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -163,8 +183,10 @@ function KanbanColumnComponent<T extends { id: string }>({
   getStats,
   isOver,
 }: KanbanColumnProps<T>) {
+  const { setNodeRef } = useDroppable({ id: column.id })
+
   return (
-    <div className="flex-1 min-w-[170px] max-w-[240px]">
+    <div ref={setNodeRef} className="flex-1 min-w-[170px] max-w-[240px]">
       <div className={cn(
         "h-full flex flex-col rounded-xl border bg-muted/20 transition-colors",
         isOver && "ring-1 ring-primary/40 bg-primary/[0.05]"
@@ -201,12 +223,23 @@ function KanbanColumnComponent<T extends { id: string }>({
                 </SortableCard>
               ))}
               {column.items.length === 0 && (
-                <div className={cn(
-                  "h-[80px] border-2 border-dashed rounded-lg flex items-center justify-center text-muted-foreground/50 text-xs transition-colors",
-                  isOver && "border-primary/50 bg-primary/5 text-primary"
-                )}>
-                  {isOver ? 'Suelta aquí' : 'Vacío'}
-                </div>
+                isOver ? (
+                  <div className="h-[80px] border-2 border-dashed rounded-lg flex items-center justify-center text-xs transition-colors border-primary/50 bg-primary/5 text-primary">
+                    Suelta aquí
+                  </div>
+                ) : (
+                  <Empty className="min-h-[120px] gap-3 rounded-lg border-2 border-dashed p-4">
+                    <EmptyHeader className="gap-1">
+                      <EmptyMedia variant="icon">
+                        <Inbox className="size-5" />
+                      </EmptyMedia>
+                      <EmptyTitle className="text-sm">Sin leads</EmptyTitle>
+                      <EmptyDescription className="text-xs">
+                        Arrastra un lead a esta etapa.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )
               )}
             </div>
           </SortableContext>

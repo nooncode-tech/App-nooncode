@@ -184,6 +184,11 @@ export type LeadActivityType = 'created' | 'updated' | 'status_changed' | 'note_
   | 'project_created'
   | 'released_no_response'
   | 'claimed'
+  | 'seller_fee_selected'
+  | 'seller_fee_confirmed'
+  | 'seller_fee_pending_payout'
+  | 'seller_fee_paid_out'
+  | 'seller_fee_cancelled'
 
 export interface LeadActivity {
   id: string
@@ -235,6 +240,12 @@ export interface LeadProposal {
     status: ProjectStatus
     createdAt: Date
   }
+  activeCheckoutLink: {
+    url: string
+    sessionId: string
+    expiresAt: Date
+    isExpired: boolean
+  } | null
 }
 
 // Project Types
@@ -454,6 +465,10 @@ export interface PrototypeWorkspaceListItem extends PrototypeWorkspace {
   leadName: string
   projectName?: string
   requestedByName: string
+  generatedAt?: Date
+  generatedContent?: string
+  demoUrl?: string
+  chatUrl?: string
 }
 
 // Payment Types

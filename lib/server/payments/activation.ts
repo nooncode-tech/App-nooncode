@@ -36,11 +36,11 @@ export async function activatePaidProposal(
 ): Promise<PaymentActivationResult> {
   const { data, error } = await client.rpc('activate_paid_proposal', {
     p_payment_id: input.paymentId,
-    p_provider_payment_intent_id: input.providerPaymentIntentId ?? null,
+    p_provider_payment_intent_id: input.providerPaymentIntentId ?? undefined,
     p_paid_at: input.paidAt ?? new Date().toISOString(),
-    p_actor_profile_id: input.actorProfileId ?? null,
+    p_actor_profile_id: input.actorProfileId ?? undefined,
     p_payment_metadata: input.metadata ?? {},
-    p_project_description: input.projectDescription ?? null,
+    p_project_description: input.projectDescription ?? undefined,
   })
 
   if (error) {

@@ -22,6 +22,7 @@ This directory is the canonical home for entity-level contract documents in this
 | [`project-versions.md`](./project-versions.md) | Defines the per-project version entity that owns the Private Preview / Published / Previous Published / Rolled Back / Delivered Version lifecycle the client portal exposes. |
 | [`ai-mvp-pipeline-state.md`](./ai-mvp-pipeline-state.md) | Defines the post-payment Maxwell AI MVP pipeline run as a stateful entity (GPT specification → V0 base → Opus improvement → minimum validation, with bounded auto-fix and escalation). |
 | [`seller-fee-state-machine.md`](./seller-fee-state-machine.md) | Defines the seller-fee entity for outbound activation payments and its state transitions (Potential → Confirmed → Pending payout → Paid out / Cancelled). |
+| [`dashboard-summary.md`](./dashboard-summary.md) | Defines the dashboard-summary entity — the role-aware, server-aggregated view of an authenticated principal's currently-visible sales and delivery KPIs, its freshness lifecycle, and its invalidation triggers. |
 
 ## Cross-cutting OPEN markers (decided at index level, not per-contract)
 

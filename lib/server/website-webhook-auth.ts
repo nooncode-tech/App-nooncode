@@ -27,8 +27,10 @@ function normalizeSignature(signature: string) {
   return signature.trim().replace(/^sha256=/i, '')
 }
 
-function assertRecentTimestamp(timestamp: string | null) {
-  if (!timestamp) return
+function assertRecentTimestamp(timestamp: string | null): asserts timestamp is string {
+  if (!timestamp) {
+    throw new WebsiteWebhookError('Missing webhook timestamp.')
+  }
 
   const parsed = Number(timestamp)
   if (!Number.isFinite(parsed)) {
@@ -62,7 +64,7 @@ export function verifyWebsiteWebhookSignature(headers: Headers, bodyText: string
 
   assertRecentTimestamp(timestamp)
 
-  const signedPayload = timestamp ? `${timestamp}.${bodyText}` : bodyText
+  const signedPayload = `${timestamp}.${bodyText}`
   const expected = crypto.createHmac('sha256', readSharedSecret()).update(signedPayload).digest('hex')
 
   if (!timingSafeEquals(normalizeSignature(signature), expected)) {
@@ -70,15 +72,26 @@ export function verifyWebsiteWebhookSignature(headers: Headers, bodyText: string
   }
 }
 
-export async function readSignedWebsiteJson<TSchema extends ZodTypeAny>(
+export interface SignedWebsiteJsonResult<T> {
+  payload: T
+  bodyText: string
+  signatureHeader: string
+  timestamp: string
+}
+
+export async function readSignedWebsiteJsonWithRawBody<TSchema extends ZodTypeAny>(
   request: Request,
   schema: TSchema
-): Promise<z.infer<TSchema>> {
+): Promise<SignedWebsiteJsonResult<z.infer<TSchema>>> {
   const bodyText = await request.text()
   verifyWebsiteWebhookSignature(request.headers, bodyText)
 
+  const signatureHeader = request.headers.get(SIGNATURE_HEADER) ?? ''
+  const timestamp = request.headers.get(TIMESTAMP_HEADER) ?? ''
+
   try {
-    return schema.parse(JSON.parse(bodyText))
+    const payload = schema.parse(JSON.parse(bodyText)) as z.infer<TSchema>
+    return { payload, bodyText, signatureHeader, timestamp }
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new WebsiteWebhookError('Invalid JSON payload.', 400)
@@ -88,6 +101,14 @@ export async function readSignedWebsiteJson<TSchema extends ZodTypeAny>(
     }
     throw error
   }
+}
+
+export async function readSignedWebsiteJson<TSchema extends ZodTypeAny>(
+  request: Request,
+  schema: TSchema
+): Promise<z.infer<TSchema>> {
+  const result = await readSignedWebsiteJsonWithRawBody(request, schema)
+  return result.payload
 }
 
 export function getProposalReviewDecisionWebhookUrl() {
