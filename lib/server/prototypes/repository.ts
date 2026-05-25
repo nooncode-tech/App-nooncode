@@ -18,6 +18,9 @@ const prototypeWorkspaceSelect = `
   current_stage,
   status,
   last_operation_id,
+  generation_prompt,
+  generated_content,
+  generated_at,
   created_at,
   updated_at
 `
@@ -30,6 +33,9 @@ const prototypeWorkspaceListSelect = `
   current_stage,
   status,
   last_operation_id,
+  generation_prompt,
+  generated_content,
+  generated_at,
   created_at,
   updated_at,
   lead:leads!prototype_workspaces_lead_id_fkey(id, name),

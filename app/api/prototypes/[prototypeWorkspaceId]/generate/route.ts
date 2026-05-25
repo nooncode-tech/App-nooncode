@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ prototypeWorkspaceId: string }> }
 ) {
   try {
-    await requireRole(['admin', 'pm', 'sales_manager', 'sales'])
+    await requireRole(['admin', 'pm'])
 
     const { prototypeWorkspaceId } = await params
     const client = await createSupabaseAdminClient()

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { startTransition, useEffect, useState } from 'react'
 import { Blocks, CircleOff, FolderKanban, Link2, Sparkles, UserRound, Wand2 } from 'lucide-react'
-import { useAuth, canAccessDashboardPath } from '@/lib/auth-context'
+import { useAuth, canAccessDashboardPath, canGeneratePrototypes } from '@/lib/auth-context'
 import type { PrototypeWorkspaceListItem } from '@/lib/types'
 import {
   deserializePrototypeWorkspaceListItem,
@@ -52,6 +52,10 @@ interface PrototypeListResponse {
   data: PrototypeWorkspaceListItemWire[]
 }
 
+function isHttpUrl(value: string): boolean {
+  return value.startsWith('http://') || value.startsWith('https://')
+}
+
 export default function PrototypesPage() {
   const { authMode, user } = useAuth()
   const searchParams = useSearchParams()
@@ -60,9 +64,8 @@ export default function PrototypesPage() {
   const [isLoading, setIsLoading] = useState(authMode === 'supabase')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
-  const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({})
-  const [demoUrls, setDemoUrls] = useState<Record<string, string>>({})
-  const [chatUrls, setChatUrls] = useState<Record<string, string>>({})
+
+  const canGeneratePrototype = user ? canGeneratePrototypes(user.role) : false
 
   const handleGenerate = async (workspaceId: string) => {
     setGeneratingId(workspaceId)
@@ -73,12 +76,16 @@ export default function PrototypesPage() {
         toast.error(json.error ?? 'Error al generar prototipo')
         return
       }
-      setGeneratedContent((prev) => ({ ...prev, [workspaceId]: json.data.generatedContent }))
-      if (json.data.demoUrl) setDemoUrls((prev) => ({ ...prev, [workspaceId]: json.data.demoUrl }))
-      if (json.data.chatUrl) setChatUrls((prev) => ({ ...prev, [workspaceId]: json.data.chatUrl }))
       setItems((prev) =>
         prev.map((item) =>
-          item.id === workspaceId ? { ...item, status: 'ready' as const } : item
+          item.id === workspaceId
+            ? {
+                ...item,
+                status: 'ready' as const,
+                generatedContent: json.data.generatedContent ?? item.generatedContent,
+                generatedAt: json.data.generatedAt ? new Date(json.data.generatedAt) : item.generatedAt,
+              }
+            : item
         )
       )
       toast.success('Prototipo generado correctamente')
@@ -279,37 +286,33 @@ export default function PrototypesPage() {
                   </p>
                 </div>
 
-                {generatedContent[item.id] ? (
+                {item.generatedContent ? (
                   <div className="app-panel-muted space-y-3">
                     <p className="metric-label">Prototipo generado por v0</p>
-                    {demoUrls[item.id] ? (
+                    {isHttpUrl(item.generatedContent) ? (
                       <a
-                        href={demoUrls[item.id]}
+                        href={item.generatedContent}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 text-sm font-medium text-primary underline underline-offset-2"
                       >
-                        Ver demo en vivo →
+                        Ver resultado generado →
                       </a>
+                    ) : (
+                      <pre className="text-xs overflow-auto max-h-64 whitespace-pre-wrap font-mono leading-relaxed">
+                        {item.generatedContent}
+                      </pre>
+                    )}
+                    {item.generatedAt ? (
+                      <p className="text-xs text-muted-foreground">
+                        Generado el {formatDate(item.generatedAt)}
+                      </p>
                     ) : null}
-                    {chatUrls[item.id] ? (
-                      <a
-                        href={chatUrls[item.id]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-xs text-muted-foreground underline"
-                      >
-                        Ver en v0.dev →
-                      </a>
-                    ) : null}
-                    <pre className="text-xs overflow-auto max-h-64 whitespace-pre-wrap font-mono leading-relaxed">
-                      {generatedContent[item.id]}
-                    </pre>
                   </div>
                 ) : null}
 
                 <div className="flex flex-wrap gap-2">
-                  {item.status === 'pending_generation' && (
+                  {item.status === 'pending_generation' && canGeneratePrototype ? (
                     <Button
                       size="sm"
                       onClick={() => handleGenerate(item.id)}
@@ -322,7 +325,7 @@ export default function PrototypesPage() {
                       )}
                       {generatingId === item.id ? 'Generando...' : 'Generar con v0'}
                     </Button>
-                  )}
+                  ) : null}
                   {canOpenLeads ? (
                     <Button asChild variant="outline" size="sm">
                       <Link href={buildLeadDetailHref(item.leadId)}>

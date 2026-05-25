@@ -20,6 +20,8 @@ import {
   linkLeadPrototypeWorkspaceToProject,
   listPrototypeWorkspaces,
 } from '@/lib/server/prototypes/repository'
+import { bootstrapPrototypeDeliveryFollowUp } from '@/lib/server/prototypes/handoff-follow-up'
+import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import {
   getWalletByProfileId,
   getPrototypeCreditSettings,
@@ -82,7 +84,7 @@ function mapPrototypeHandoffRpcError(error: unknown): never {
   }
 
   if (message.includes('INVALID_PROTOTYPE_HANDOFF_STATE')) {
-    throw new ConflictApiError('Only sales-stage workspaces pending generation can be handed off to delivery.', 'INVALID_PROTOTYPE_HANDOFF_STATE')
+    throw new ConflictApiError('Only sales-stage workspaces pending generation or ready can be handed off to delivery.', 'INVALID_PROTOTYPE_HANDOFF_STATE')
   }
 
   if (message.includes('FORBIDDEN')) {
@@ -144,6 +146,7 @@ export async function listVisiblePrototypeWorkspaces(
     principal.role !== 'admin'
     && principal.role !== 'sales_manager'
     && principal.role !== 'sales'
+    && principal.role !== 'pm'
   ) {
     throw new ApiError(
       'FORBIDDEN',
@@ -263,9 +266,12 @@ export async function handoffVisiblePrototypeWorkspaceToDelivery(
     )
   }
 
-  if (workspace.current_stage !== 'sales' || workspace.status !== 'pending_generation') {
+  if (
+    workspace.current_stage !== 'sales'
+    || (workspace.status !== 'pending_generation' && workspace.status !== 'ready')
+  ) {
     throw new ConflictApiError(
-      'Only sales-stage workspaces pending generation can be handed off to delivery.',
+      'Only sales-stage workspaces pending generation or ready can be handed off to delivery.',
       'INVALID_PROTOTYPE_HANDOFF_STATE'
     )
   }
@@ -275,7 +281,41 @@ export async function handoffVisiblePrototypeWorkspaceToDelivery(
   try {
     updatedWorkspace = await handoffPrototypeWorkspaceToDelivery(client, prototypeWorkspaceId)
   } catch (error) {
-    mapPrototypeHandoffRpcError(error)
+    const message = error instanceof Error ? error.message : ''
+
+    if (
+      workspace.status === 'ready'
+      && message.includes('INVALID_PROTOTYPE_HANDOFF_STATE')
+    ) {
+      const adminClient = createSupabaseAdminClient()
+      const { data, error: updateError } = await adminClient
+        .from('prototype_workspaces')
+        .update({
+          current_stage: 'delivery',
+          status: 'delivery_active',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', prototypeWorkspaceId)
+        .select('*')
+        .single()
+
+      if (updateError || !data) {
+        mapPrototypeHandoffRpcError(error)
+      }
+
+      updatedWorkspace = data
+    } else {
+      mapPrototypeHandoffRpcError(error)
+    }
+  }
+
+  if (updatedWorkspace.project_id) {
+    const adminClient = createSupabaseAdminClient()
+    await bootstrapPrototypeDeliveryFollowUp(adminClient, {
+      prototypeWorkspaceId: updatedWorkspace.id,
+      projectId: updatedWorkspace.project_id,
+      actorProfileId: principal.profile.id,
+    })
   }
 
   return mapPrototypeWorkspaceRowToWire(updatedWorkspace)
