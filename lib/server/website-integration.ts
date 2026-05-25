@@ -8,6 +8,8 @@ import {
 } from '@/lib/server/website-webhook-auth'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
 import { creditActivationEarnings } from '@/lib/server/earnings/activation-credit'
+import { getPrototypeWorkspaceByLeadId } from '@/lib/server/prototypes/repository'
+import { ensureWebsiteInboundPrototypeWorkspace } from '@/lib/server/prototypes/website-inbound'
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>
 

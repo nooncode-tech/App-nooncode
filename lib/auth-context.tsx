@@ -32,7 +32,7 @@ export interface LoginResult {
 const AuthContext = createContext<AuthContextType | null>(null)
 const MOCK_AUTH_STORAGE_KEY = 'noon.mockUserEmail'
 
-type DashboardAccessLevel = 'authenticated' | 'sales' | 'projects' | 'delivery' | 'pm' | 'admin' | 'finance'
+type DashboardAccessLevel = 'authenticated' | 'sales' | 'prototypes' | 'projects' | 'delivery' | 'pm' | 'admin' | 'finance'
 
 interface DashboardRouteAccessRule {
   prefix: string
