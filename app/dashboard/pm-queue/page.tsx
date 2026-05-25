@@ -99,6 +99,12 @@ function getStatusCopy(item: InboundQueueItem, proposal: InboundProposal | null)
   if (item.current_status === 'project_activated') return 'Proyecto activado'
   if (item.current_status === 'review_webhook_sent') return 'Decision enviada'
   if (item.current_status === 'review_webhook_failed') return 'Webhook fallido'
+  if (proposal?.review_status === 'approved') {
+    if (item.review_webhook_status === 'skipped') return 'Aprobada (website sin webhook)'
+    if (item.review_webhook_status === 'pending') return 'Aprobada (envio pendiente)'
+    if (item.review_webhook_status === 'failed') return 'Aprobada (webhook fallido)'
+    return 'Aprobada'
+  }
   if (proposal?.review_status === 'changes_requested') return 'Ajustes solicitados'
   if (proposal?.review_status === 'rejected') return 'Rechazada'
   if (proposal?.review_status === 'cancelled') return 'Cancelada'
@@ -130,7 +136,9 @@ function QueueCard({
   const canRetryApproval =
     !isPending &&
     ['approved', 'rejected', 'changes_requested', 'cancelled'].includes(proposal.review_status) &&
-    (item.review_webhook_status === 'failed' || item.review_webhook_status === 'skipped')
+    (item.review_webhook_status === 'failed' ||
+      item.review_webhook_status === 'skipped' ||
+      item.review_webhook_status === 'pending')
 
   return (
     <article className="border-t border-border/70 first:border-t-0 [overflow-wrap:anywhere]">
