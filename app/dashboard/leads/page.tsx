@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { buildLeadDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
 import { useData } from '@/lib/data-context'
+import { deserializeLead } from '@/lib/leads/serialization'
 import type { Lead, LeadStatus } from '@/lib/types'
 import {
   leadStatusLabels,
@@ -48,6 +49,7 @@ import { LeadCard } from '@/components/lead-card'
 import { LeadDetail } from '@/components/lead-detail'
 import { LeadFormDialog } from '@/components/lead-form-dialog'
 import { LeadImportDialog } from '@/components/lead-import-dialog'
+import { NicheSelector } from '@/components/maxwell/niche-selector'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Search,
@@ -74,6 +76,11 @@ interface MaxwellSearchResponse {
     runId: string
     status: 'completed' | 'insufficient' | 'needs_review' | 'failed'
     leads: LeadWire[]
+    leadsByNiche?: Array<{
+      nicheId: string
+      nicheLabel: string
+      leads: LeadWire[]
+    }>
     counts: {
       candidatesFound: number
       candidatesAudited: number
@@ -138,6 +145,35 @@ export default function LeadsPage() {
   const [manualZoneOpen, setManualZoneOpen] = useState(false)
   const [manualZoneText, setManualZoneText] = useState('')
   const [lastMaxwellResult, setLastMaxwellResult] = useState<MaxwellSearchResponse['data'] | null>(null)
+  const [selectedNicheIds, setSelectedNicheIds] = useState<string[]>([])
+  // Hydrate selectedNicheIds from user's saved preferences on mount. If the
+  // endpoint isn't live yet or returns nothing, we keep the empty array —
+  // the user can still pick niches manually for this search.
+  // TODO(backend-integration): verify endpoint contract once Backend ships
+  //   `/api/maxwell/niche-preferences` (frozen in Architecture C4).
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    let cancelled = false
+    fetch('/api/maxwell/niche-preferences')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.data?.preferredNicheIds) return
+        const ids = Array.isArray(json.data.preferredNicheIds)
+          ? (json.data.preferredNicheIds as string[])
+          : []
+        if (ids.length > 0) {
+          setSelectedNicheIds(ids)
+        }
+      })
+      .catch(() => {
+        // Silent: preferences are optional. User can still pick manually.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authMode])
   const requestedLeadId = searchParams.get('leadId')
   // Tracks a leadId we just closed so the open-from-URL effect does not
   // race-reopen the dialog while router.replace propagates the cleared
@@ -268,11 +304,18 @@ export default function LeadsPage() {
       setMaxwellStageIndex((current) => Math.min(current + 1, maxwellStages.length - 1))
     }, 1600)
 
+    // Architecture C5: pass nicheIds only when populated. Backend silently
+    // drops unknown ids and tolerates the field being absent.
+    const bodyPayload =
+      selectedNicheIds.length > 0
+        ? { ...payload, nicheIds: selectedNicheIds }
+        : payload
+
     try {
       const response = await fetch('/api/maxwell/lead-searches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(bodyPayload),
       })
       const json = await response.json().catch(() => null)
 
