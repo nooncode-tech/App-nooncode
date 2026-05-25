@@ -150,7 +150,7 @@ async function validateHandoffReadyMigration(admin: ReturnType<typeof createClie
       'handoff-ready-migration',
       false,
       needsMigration
-        ? 'La migracion 0045 no esta aplicada. Ejecuta supabase/migrations/0045_phase_18c_prototype_handoff_ready_status.sql en Supabase.'
+        ? 'La migracion 0059 no esta aplicada. Ejecuta supabase/migrations/0059_phase_18c_prototype_handoff_ready_status.sql en Supabase.'
         : handoffRpcError.message
     )
     return
