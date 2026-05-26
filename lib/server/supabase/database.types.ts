@@ -636,6 +636,93 @@ export type Database = {
           },
         ]
       }
+      // Manual override block #5 — G23 / ADR-027 / migration 0062.
+      // Added pending the next clean `database.types.ts` regen.
+      // Mirrors the inbound `website_webhook_events` shape style.
+      outbound_webhook_events: {
+        Row: {
+          actor_id: string | null
+          alerted_at: string | null
+          attempt_count: number
+          created_at: string
+          dead_lettered_at: string | null
+          decision: string
+          delivered_at: string | null
+          endpoint: string
+          external_proposal_id: string
+          id: string
+          idempotency_key: string
+          last_attempted_at: string | null
+          last_error: string | null
+          last_http_status: number | null
+          link_id: string | null
+          max_attempts: number
+          next_retry_at: string | null
+          payload_hash: string
+          proposal_id: string | null
+          replayed_at: string | null
+          replayed_by_event_id: string | null
+          request_id: string | null
+          signature_header: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          actor_id?: string | null
+          alerted_at?: string | null
+          attempt_count?: number
+          created_at?: string
+          dead_lettered_at?: string | null
+          decision: string
+          delivered_at?: string | null
+          endpoint: string
+          external_proposal_id: string
+          id?: string
+          idempotency_key: string
+          last_attempted_at?: string | null
+          last_error?: string | null
+          last_http_status?: number | null
+          link_id?: string | null
+          max_attempts?: number
+          next_retry_at?: string | null
+          payload_hash: string
+          proposal_id?: string | null
+          replayed_at?: string | null
+          replayed_by_event_id?: string | null
+          request_id?: string | null
+          signature_header?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          actor_id?: string | null
+          alerted_at?: string | null
+          attempt_count?: number
+          created_at?: string
+          dead_lettered_at?: string | null
+          decision?: string
+          delivered_at?: string | null
+          endpoint?: string
+          external_proposal_id?: string
+          id?: string
+          idempotency_key?: string
+          last_attempted_at?: string | null
+          last_error?: string | null
+          last_http_status?: number | null
+          link_id?: string | null
+          max_attempts?: number
+          next_retry_at?: string | null
+          payload_hash?: string
+          proposal_id?: string | null
+          replayed_at?: string | null
+          replayed_by_event_id?: string | null
+          request_id?: string | null
+          signature_header?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number

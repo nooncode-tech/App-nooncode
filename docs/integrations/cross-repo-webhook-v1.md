@@ -669,7 +669,7 @@ Web SHOULD return `2xx` to acknowledge receipt. App treats:
 - non-2xx → `review_webhook_status = 'failed'` with the response text saved in `review_webhook_error`
 - network error → `review_webhook_status = 'failed'` with the error message saved
 
-App does NOT currently retry failed outbound webhooks automatically. This is tracked as audit finding B9 (Web side) and will be addressed by either side adding a retry queue. Recommended: Go-side rewrite implements exponential backoff retry (3-5 attempts).
+As of G23 / ADR-027 the App retries failed outbound POSTs automatically (3 attempts inline with exponential backoff 2s/4s/8s ±25% jitter), persists every attempt to the `outbound_webhook_events` ledger, and runs a 5-minute cron sweeper (`/api/cron/outbound-webhook-retry`) that drives stuck `pending` rows. Terminal failures land in `dead_letter` and become operator-replayable via `POST /api/admin/outbound-webhooks/[eventId]/replay`. See §7.6 below for the receiver-side contract NoonWeb MUST implement to remain safe under retries.
 
 ### 7.4 Idempotency on Web side
 
@@ -683,6 +683,49 @@ Web SHOULD treat the combination `(external_source, external_proposal_id, decisi
 | `rejected` | Show "Proposal declined" with optional message. No payment path |
 | `changes_requested` | Show "PM requested changes" with the changes summary if provided. Allow resubmission |
 | `cancelled` | Show "Proposal cancelled" terminal state. No further action |
+
+### 7.6 Retry semantics + idempotency-key header (App-side ready since G23 / ADR-027)
+
+Starting with the G23 iteration the App actively retries failed `proposal_review_decision` deliveries. Because the same logical decision may now reach NoonWeb more than once (e.g., when the App times out client-side while the receiver actually processed the request, or when an admin triggers a replay against a dead-letter ledger row), the receiver MUST de-duplicate.
+
+**Wire-level header (NEW, additive — does NOT modify §2.2 required headers):**
+
+| Header | Value | Emitted on |
+|---|---|---|
+| `X-Noon-Idempotency-Key` | `<external_proposal_id>:<decision>` (UTF-8 plain text) | EVERY POST: first attempt, inline retries, cron-driven retries, and admin replays |
+
+Example: `X-Noon-Idempotency-Key: prop_abc123:approved`.
+
+**Receiver-side contract (NoonWeb MUST implement):**
+
+1. Read `X-Noon-Idempotency-Key` on every POST to the review-decision endpoint.
+2. Persist it as a UNIQUE constraint key on the receiver's own ledger (e.g., a `proposal_review_decisions_received` table with `unique(idempotency_key)`).
+3. On a duplicate key, return **200 with the same response body** as the first successful processing — DO NOT re-emit notifications, DO NOT re-transition portal state.
+4. On a fresh key, process the decision normally and record the key alongside the response so step 3 can replay it.
+
+**Why `<external_proposal_id>:<decision>` (and not a hash):**
+
+- Human-readable in NoonWeb logs (operator triage).
+- Stable: `external_proposal_id` is the cross-repo identity and `decision` is from a 4-value enum; a single proposal can only transition once into each terminal state, so the pair is uniquely meaningful.
+- Cheaper than `sha256(...)` to debug; cryptographic strength is already provided by the existing HMAC envelope (§2.1).
+
+**App-side retry envelope (informational for receiver-side timeout tuning):**
+
+- Inline attempts: up to 3, with `2s → 4s → 8s` base delays (±25% uniform jitter), capped per-attempt at 10s.
+- Cron sweeper: runs `*/5 * * * *`; picks up stuck `pending` rows and drives them through the remaining budget.
+- Admin replay: spawns a NEW ledger row carrying the SAME `X-Noon-Idempotency-Key` value — receiver dedupe MUST keep portal state intact.
+
+**Per-attempt re-signing:** every retry calls `signWebsitePayload` again, producing a fresh `x-noon-timestamp` and `x-noon-signature`. The receiver's `±5min` HMAC window check (§2.3) keeps working unchanged.
+
+**Terminal classifications (App-side, informational):**
+
+| Receiver response | App treatment |
+|---|---|
+| 2xx | `delivered` (terminal happy path) |
+| 429 | Retryable; counts as a normal attempt; `Retry-After` header is NOT parsed in G23 |
+| 4xx (non-429) | Immediate `dead_letter`; NO retry (receiver-side contract violation; retrying does not heal it) |
+| 5xx | Retryable; counts as a normal attempt |
+| Network throw / timeout | Retryable; counts as a normal attempt |
 
 ---
 
