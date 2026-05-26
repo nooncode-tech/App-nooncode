@@ -10,13 +10,17 @@ import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 // active admin profile per failed event (idempotent via the
 // (profile_id, source_kind, source_event_id) unique constraint).
 //
-// Watches two ledgers:
+// Watches three ledgers:
 //   - public.stripe_webhook_events       (PK: text event_id, e.g.
 //     'evt_1TY6tZRC5LvlmWeuMjR5KzXv'). Stripe event_ids are not UUIDs,
 //     so the notification's `source_event_id` is derived
 //     deterministically from md5(event_id) — same id → same dedup key.
 //   - public.website_webhook_events      (PK: uuid id). UUID is used
 //     directly as source_event_id.
+//   - public.outbound_webhook_events     (PK: uuid id). UUID is used
+//     directly as source_event_id. ADR-027 D6 — alerts on rows that
+//     reached `dead_letter` within the lookback window and have not yet
+//     been notified (`alerted_at IS NULL`).
 //
 // Idempotency: re-runs do not duplicate notifications. Operators
 // mark them read from /dashboard/notifications.
@@ -49,12 +53,20 @@ function md5UuidFor(text: string): string {
 }
 
 interface FailureOutcome {
-  source: 'stripe' | 'website'
+  source: 'stripe' | 'website' | 'outbound'
   identifier: string
   sourceEventId: string
   enqueuedToProfiles: string[]
   status: 'enqueued' | 'no-admins' | 'error'
   error?: string
+}
+
+// Untyped boundary: the outbound ledger table was introduced after the last
+// `database.types.ts` regen. Constraining the from() target here keeps the
+// rest of the file fully typed. ADR-027 D6.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function outboundTable(client: ReturnType<typeof createSupabaseAdminClient>): any {
+  return client.from('outbound_webhook_events' as never)
 }
 
 export async function POST(request: Request) {
@@ -78,7 +90,7 @@ async function handleCronRequest(request: Request) {
     const client = createSupabaseAdminClient()
     const cutoff = new Date(Date.now() - lookbackHours * 60 * 60 * 1000).toISOString()
 
-    const [stripeRes, websiteRes, adminRes] = await Promise.all([
+    const [stripeRes, websiteRes, outboundRes, adminRes] = await Promise.all([
       client
         .from('stripe_webhook_events')
         .select('event_id, event_type, failed_at, last_error, received_at')
@@ -89,6 +101,14 @@ async function handleCronRequest(request: Request) {
         .select('id, endpoint, failed_at, last_error, received_at')
         .eq('status', 'failed')
         .gte('received_at', cutoff),
+      // ADR-027 D6 — third ledger scan: outbound dead-letter rows.
+      outboundTable(client)
+        .select(
+          'id, endpoint, external_proposal_id, decision, dead_lettered_at, last_error',
+        )
+        .eq('status', 'dead_letter')
+        .is('alerted_at', null)
+        .gte('dead_lettered_at', cutoff),
       client
         .from('user_profiles')
         .select('id')
@@ -102,12 +122,26 @@ async function handleCronRequest(request: Request) {
     if (websiteRes.error) {
       throw new Error(`Failed to enumerate website failures: ${websiteRes.error.message}`)
     }
+    if (outboundRes.error) {
+      throw new Error(
+        `Failed to enumerate outbound dead-letters: ${outboundRes.error.message}`,
+      )
+    }
     if (adminRes.error) {
       throw new Error(`Failed to enumerate admin profiles: ${adminRes.error.message}`)
     }
 
     const stripeFailures = stripeRes.data ?? []
     const websiteFailures = websiteRes.data ?? []
+    interface OutboundFailureRow {
+      id: string
+      endpoint: string
+      external_proposal_id: string
+      decision: string
+      dead_lettered_at: string | null
+      last_error: string | null
+    }
+    const outboundFailures: OutboundFailureRow[] = outboundRes.data ?? []
     const adminIds = (adminRes.data ?? []).map((row) => row.id)
 
     if (dryRun) {
@@ -116,6 +150,7 @@ async function handleCronRequest(request: Request) {
         cutoff,
         stripeFailureCount: stripeFailures.length,
         websiteFailureCount: websiteFailures.length,
+        outboundFailureCount: outboundFailures.length,
         adminCount: adminIds.length,
       })
       return NextResponse.json({
@@ -124,9 +159,11 @@ async function handleCronRequest(request: Request) {
         cutoff,
         stripeFailureCount: stripeFailures.length,
         websiteFailureCount: websiteFailures.length,
+        outboundFailureCount: outboundFailures.length,
         adminCount: adminIds.length,
         stripeEventIds: stripeFailures.map((row) => row.event_id),
         websiteEventIds: websiteFailures.map((row) => row.id),
+        outboundEventIds: outboundFailures.map((row) => row.id),
       })
     }
 
@@ -136,7 +173,7 @@ async function handleCronRequest(request: Request) {
     let errorCount = 0
 
     async function enqueueOne(
-      source: 'stripe' | 'website',
+      source: 'stripe' | 'website' | 'outbound',
       identifier: string,
       sourceEventId: string,
       title: string,
@@ -208,11 +245,41 @@ async function handleCronRequest(request: Request) {
       )
     }
 
+    // ADR-027 D6 — third loop: outbound dead-letter rows. UUID flows
+    // directly to `next_source_event_id` (no md5 hashing needed).
+    for (const row of outboundFailures) {
+      const errSummary = (row.last_error ?? '').slice(0, 200)
+      const beforeEnqueueErrorCount = errorCount
+      await enqueueOne(
+        'outbound',
+        row.id,
+        row.id,
+        'Outbound webhook fallido',
+        `${row.endpoint} (${row.external_proposal_id}/${row.decision}) dead-letter. ${errSummary}`.trim(),
+        '/dashboard/settings'
+      )
+      // Mark the ledger row as alerted so subsequent cron runs skip it
+      // (the RPC dedupe already prevents duplicate notifications, but
+      // skipping the RPC entirely keeps the cron cheap).
+      if (errorCount === beforeEnqueueErrorCount) {
+        const { error: markError } = await outboundTable(client)
+          .update({ alerted_at: new Date().toISOString() })
+          .eq('id', row.id)
+        if (markError) {
+          logger.error('cron.webhook_failure_alert.outbound_mark_alerted_failed', {
+            eventId: row.id,
+            ...errorToLogContext(markError),
+          })
+        }
+      }
+    }
+
     logger.info('cron.webhook_failure_alert.done', {
       lookbackHours,
       cutoff,
       stripeFailureCount: stripeFailures.length,
       websiteFailureCount: websiteFailures.length,
+      outboundFailureCount: outboundFailures.length,
       adminCount: adminIds.length,
       enqueuedCount,
       noAdminCount,
@@ -225,6 +292,7 @@ async function handleCronRequest(request: Request) {
       cutoff,
       stripeFailureCount: stripeFailures.length,
       websiteFailureCount: websiteFailures.length,
+      outboundFailureCount: outboundFailures.length,
       adminCount: adminIds.length,
       enqueuedCount,
       noAdminCount,

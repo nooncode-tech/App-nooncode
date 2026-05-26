@@ -19,6 +19,10 @@
     {
       "path": "/api/cron/webhook-failure-alert",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/outbound-webhook-retry",
+      "schedule": "0 8 * * *"
     }
   ]
 }

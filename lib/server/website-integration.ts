@@ -1,3 +1,5 @@
+import { createHash, randomUUID } from 'node:crypto'
+
 import { z } from 'zod'
 
 import { ApiError, ConflictApiError, NotFoundApiError } from '@/lib/server/api/errors'
@@ -17,6 +19,19 @@ import {
 import { ensureWebsiteInboundPrototypeWorkspace } from '@/lib/server/prototypes/website-inbound'
 import { errorToLogContext, logger } from '@/lib/server/api/logger'
 import { createPrototypeDecisionDraft } from '@/lib/server/maxwell/prototype-decision-draft'
+import {
+  beginOutboundAttempt,
+  claimOutboundPendingDue,
+  createOutboundWebhookEvent,
+  getOutboundWebhookEvent,
+  markOutboundDeadLetter,
+  markOutboundDelivered,
+  outboundWebhookInlineRetryEnabled,
+  recordOutboundSignatureHeader,
+  scheduleOutboundRetry,
+  spawnOutboundReplay,
+  type OutboundWebhookEventRecord,
+} from '@/lib/server/website/outbound-webhook-events'
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>
 
@@ -680,12 +695,382 @@ export async function recordInboundReviewOutcome(
   return { applicable: true as const, linkId: link.id, status: statusByAction[action] }
 }
 
+// ---------------------------------------------------------------------------
+// proposal-review-decision OUTBOUND (App → Web)
+// ADR-027: retry-with-backoff + dead-letter ledger.
+// ---------------------------------------------------------------------------
+//
+// The dispatcher below wraps the original single-shot fetch with the full
+// retry + ledger lifecycle introduced by ADR-027. Hard invariants honored:
+//
+//   - Wire envelope frozen — the JSON body shape is byte-identical to the
+//     pre-G23 version. The only wire-level addition is the
+//     `X-Noon-Idempotency-Key` HTTP header (D3).
+//   - Library signature frozen — both call sites
+//     (`app/api/proposals/[proposalId]/review/route.ts:65` and
+//      `app/api/inbound/pm-queue/[proposalId]/review-webhook/route.ts:46`)
+//     observe a clean 3-arg call. A 4th optional `deps` parameter implements
+//     ADR-027 D12 test seam without breaking the call sites.
+//   - HMAC re-signs per attempt — each retry calls `signWebsitePayload` again
+//     to produce a fresh `x-noon-timestamp`, satisfying NoonWeb's ±5min
+//     window. Cached signature bytes are NEVER reused.
+//   - Snapshot writes on `website_inbound_links` preserved verbatim (D8
+//     dual-track).
+//   - Kill-switch (D5) is durability-preserving: when the env flag is
+//     `'false'`, the ledger row is still written; only inline retries are
+//     skipped. The cron + admin replay paths remain active regardless.
+
+const OUTBOUND_RETRY_BASE_DELAY_MS = 2000 // ADR-027 D1
+const OUTBOUND_RETRY_GROWTH_FACTOR = 2
+const OUTBOUND_RETRY_MAX_DELAY_MS = 10_000
+const OUTBOUND_RETRY_JITTER_FRACTION = 0.25
+const OUTBOUND_RETRY_MAX_ATTEMPTS = 3
+
+export interface OutboundDispatchDeps {
+  fetchImpl?: typeof fetch
+  now?: () => Date
+  randomFn?: () => number
+  client?: SupabaseAdminClient
+  sleepImpl?: (ms: number) => Promise<void>
+}
+
+/**
+ * Pure helper: compute the next backoff delay in milliseconds for the given
+ * just-completed attempt number (1-indexed). Capped at
+ * OUTBOUND_RETRY_MAX_DELAY_MS. Jitter is ±OUTBOUND_RETRY_JITTER_FRACTION
+ * uniform around the base delay.
+ *
+ * Exported only for unit tests (ADR-027 D12 + D1).
+ */
+export function computeOutboundBackoffMs(
+  attempt: number,
+  randomFn: () => number = Math.random,
+): number {
+  // attempt 1 finished -> growth^0 = 1 * base = 2000 ms
+  // attempt 2 finished -> growth^1 = 2 * base = 4000 ms
+  // attempt 3 finished -> growth^2 = 4 * base = 8000 ms (but caller stops here)
+  const safeAttempt = Math.max(1, attempt)
+  const exponent = safeAttempt - 1
+  const raw =
+    OUTBOUND_RETRY_BASE_DELAY_MS * Math.pow(OUTBOUND_RETRY_GROWTH_FACTOR, exponent)
+  const jitterMultiplier =
+    1 - OUTBOUND_RETRY_JITTER_FRACTION +
+    OUTBOUND_RETRY_JITTER_FRACTION * 2 * randomFn()
+  const withJitter = raw * jitterMultiplier
+  return Math.min(OUTBOUND_RETRY_MAX_DELAY_MS, Math.max(0, Math.round(withJitter)))
+}
+
+/**
+ * Pure helper: classify an HTTP status code per ADR-027 D9.
+ * Returns:
+ *   - 'success' for 2xx
+ *   - 'client_terminal' for 4xx EXCEPT 429 (immediate dead-letter, no retry)
+ *   - 'retryable' for 429 + 5xx (counts as an attempt, exponential backoff)
+ */
+export function classifyOutboundHttpStatus(
+  status: number,
+): 'success' | 'client_terminal' | 'retryable' {
+  if (status >= 200 && status < 300) return 'success'
+  if (status === 429) return 'retryable'
+  if (status >= 400 && status < 500) return 'client_terminal'
+  return 'retryable'
+}
+
+function sha256Hex(input: string): string {
+  return createHash('sha256').update(input).digest('hex')
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve()
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function buildIdempotencyKey(
+  externalProposalId: string,
+  decision: 'approved' | 'rejected' | 'changes_requested' | 'cancelled',
+): string {
+  return `${externalProposalId}:${decision}`
+}
+
+interface OutboundSnapshotInputs {
+  client: SupabaseAdminClient
+  linkId: string
+  now: string
+}
+
+async function writeLinkSnapshotSent({
+  client,
+  linkId,
+  now,
+}: OutboundSnapshotInputs): Promise<void> {
+  const { error } = await table(client, 'website_inbound_links')
+    .update({
+      current_status: 'review_webhook_sent',
+      review_webhook_status: 'sent',
+      review_webhook_attempted_at: now,
+      review_webhook_sent_at: now,
+      review_webhook_error: null,
+    })
+    .eq('id', linkId)
+  if (error) {
+    logger.error('outbound_webhook.snapshot_sent_failed', {
+      linkId,
+      ...errorToLogContext(error),
+    })
+  }
+}
+
+async function writeLinkSnapshotFailed({
+  client,
+  linkId,
+  now,
+  errorMessage,
+}: OutboundSnapshotInputs & { errorMessage: string }): Promise<void> {
+  const { error } = await table(client, 'website_inbound_links')
+    .update({
+      current_status: 'review_webhook_failed',
+      review_webhook_status: 'failed',
+      review_webhook_attempted_at: now,
+      review_webhook_error: errorMessage,
+    })
+    .eq('id', linkId)
+  if (error) {
+    logger.error('outbound_webhook.snapshot_failed_write_failed', {
+      linkId,
+      ...errorToLogContext(error),
+    })
+  }
+}
+
+async function writeLinkSnapshotSkipped({
+  client,
+  linkId,
+  now,
+  reason,
+}: OutboundSnapshotInputs & { reason: string }): Promise<void> {
+  const { error } = await table(client, 'website_inbound_links')
+    .update({
+      review_webhook_status: 'skipped',
+      review_webhook_attempted_at: now,
+      review_webhook_error: reason,
+    })
+    .eq('id', linkId)
+  if (error) {
+    logger.error('outbound_webhook.snapshot_skipped_failed', {
+      linkId,
+      ...errorToLogContext(error),
+    })
+  }
+}
+
+/**
+ * Drive a single outbound POST attempt against the given URL and headers.
+ * The caller owns the ledger lifecycle (begin/end attempt); this helper is
+ * a thin transport adapter so that the cron sweeper and the inline retry
+ * loop share the exact same fetch + classification logic.
+ */
+async function runSingleAttempt({
+  url,
+  bodyText,
+  fetchImpl,
+}: {
+  url: string
+  bodyText: string
+  fetchImpl: typeof fetch
+}): Promise<{
+  outcome: 'success' | 'client_terminal' | 'retryable' | 'network_throw'
+  httpStatus: number | null
+  errorMessage: string | null
+  signatureHeader: string
+}> {
+  // Fresh signature per attempt (ADR-027 hard invariant: each retry re-signs
+  // with a fresh timestamp; cached signature bytes are forbidden).
+  const headers = signWebsitePayload(bodyText)
+  const signatureHeader = headers['x-noon-signature'] ?? ''
+  try {
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers,
+      body: bodyText,
+    })
+    const classification = classifyOutboundHttpStatus(response.status)
+    if (classification === 'success') {
+      // Drain response body for observability; ignore any read error (the
+      // 2xx response is already terminal-success).
+      await response.text().catch(() => '')
+      return {
+        outcome: 'success',
+        httpStatus: response.status,
+        errorMessage: null,
+        signatureHeader,
+      }
+    }
+    const bodySnippet = await response.text().catch(() => '')
+    const errorMessage = bodySnippet || `HTTP ${response.status}`
+    return {
+      outcome: classification,
+      httpStatus: response.status,
+      errorMessage,
+      signatureHeader,
+    }
+  } catch (error) {
+    return {
+      outcome: 'network_throw',
+      httpStatus: null,
+      errorMessage:
+        error instanceof Error ? error.message : 'Outbound webhook fetch threw.',
+      signatureHeader,
+    }
+  }
+}
+
+interface DispatchLoopInputs {
+  client: SupabaseAdminClient
+  url: string
+  bodyText: string
+  idempotencyKeyHeader: string // passed for headers; ledger persisted value is identical
+  eventId: string
+  startingAttempt: number // attempts already on the row before this loop begins
+  maxAttempts: number
+  inlineRetryEnabled: boolean
+  fetchImpl: typeof fetch
+  randomFn: () => number
+  now: () => Date
+  sleepImpl: (ms: number) => Promise<void>
+  linkSnapshot: { linkId: string }
+}
+
+/**
+ * Drive a ledger row through one inline retry loop. Returns the terminal
+ * outcome so the caller can write the `website_inbound_links` snapshot.
+ *
+ * Shared between the inline dispatcher path (called from
+ * `sendProposalReviewDecisionToWebsite`) and the cron sweeper path
+ * (called from `runOutboundWebhookCronSweep`). Both paths share the same
+ * `max_attempts` budget per ADR-027 D4.
+ */
+async function driveDispatchLoop(input: DispatchLoopInputs): Promise<{
+  status: 'delivered' | 'failed' | 'pending'
+  httpStatus: number | null
+  errorMessage: string | null
+}> {
+  // Per ADR-027 D3 the idempotency-key header is emitted on every POST.
+  // We inject it via a fetch wrapper so `signWebsitePayload` continues to
+  // own the auth headers without coupling to idempotency semantics.
+  const fetchWithIdempotency: typeof fetch = (urlArg, init) => {
+    const baseHeaders = (init?.headers ?? {}) as Record<string, string>
+    return input.fetchImpl(urlArg, {
+      ...init,
+      headers: {
+        ...baseHeaders,
+        'X-Noon-Idempotency-Key': input.idempotencyKeyHeader,
+      },
+    })
+  }
+
+  let attempt = input.startingAttempt
+  let lastErrorMessage: string | null = null
+  let lastHttpStatus: number | null = null
+
+  while (attempt < input.maxAttempts) {
+    const bump = await beginOutboundAttempt(input.client, input.eventId, {
+      now: input.now().toISOString(),
+    })
+    attempt = bump.attemptCount
+
+    const attemptResult = await runSingleAttempt({
+      url: input.url,
+      bodyText: input.bodyText,
+      fetchImpl: fetchWithIdempotency,
+    })
+
+    // Persist the latest signature header for forensic re-derivation (D2).
+    await recordOutboundSignatureHeader(
+      input.client,
+      input.eventId,
+      attemptResult.signatureHeader,
+    )
+
+    if (attemptResult.outcome === 'success') {
+      await markOutboundDelivered(input.client, input.eventId, {
+        httpStatus: attemptResult.httpStatus ?? 200,
+        now: input.now().toISOString(),
+      })
+      return {
+        status: 'delivered',
+        httpStatus: attemptResult.httpStatus,
+        errorMessage: null,
+      }
+    }
+
+    lastErrorMessage = attemptResult.errorMessage
+    lastHttpStatus = attemptResult.httpStatus
+
+    if (attemptResult.outcome === 'client_terminal') {
+      // D9 — 4xx (except 429) terminal on first observation. No retry.
+      await markOutboundDeadLetter(input.client, input.eventId, {
+        lastError: lastErrorMessage ?? 'client_terminal',
+        lastHttpStatus,
+        now: input.now().toISOString(),
+      })
+      return {
+        status: 'failed',
+        httpStatus: lastHttpStatus,
+        errorMessage: lastErrorMessage,
+      }
+    }
+
+    // Retryable (5xx / 429 / network throw). Decide whether to schedule
+    // another inline attempt or fall through to dead-letter / pending.
+    if (attempt < input.maxAttempts && input.inlineRetryEnabled) {
+      const delayMs = computeOutboundBackoffMs(attempt, input.randomFn)
+      const nextRetryAt = new Date(input.now().getTime() + delayMs).toISOString()
+      await scheduleOutboundRetry(input.client, input.eventId, {
+        lastError: lastErrorMessage ?? 'retryable',
+        lastHttpStatus,
+        nextRetryAt,
+      })
+      await input.sleepImpl(delayMs)
+      continue
+    }
+
+    // No more inline attempts available (either max_attempts exhausted, or
+    // inline retry is disabled by the kill-switch). Transition to
+    // dead_letter on the SAME attempt — D5 option-b semantics.
+    await markOutboundDeadLetter(input.client, input.eventId, {
+      lastError: lastErrorMessage ?? 'retryable',
+      lastHttpStatus,
+      now: input.now().toISOString(),
+    })
+    return {
+      status: 'failed',
+      httpStatus: lastHttpStatus,
+      errorMessage: lastErrorMessage,
+    }
+  }
+
+  // Should be unreachable — we either return on success / client_terminal,
+  // or exit via the dead-letter branch when attempts run out. Defensive
+  // fallback: leave the row in 'pending' so the cron picks it up.
+  return {
+    status: 'pending',
+    httpStatus: lastHttpStatus,
+    errorMessage: lastErrorMessage,
+  }
+}
+
 export async function sendProposalReviewDecisionToWebsite(
   proposalId: string,
   action: WebsiteReviewAction,
-  actor?: { id?: string; email?: string; role?: string }
+  actor?: { id?: string; email?: string; role?: string },
+  deps?: OutboundDispatchDeps,
 ) {
-  const client = createSupabaseAdminClient()
+  const client = deps?.client ?? createSupabaseAdminClient()
+  const fetchImpl = deps?.fetchImpl ?? fetch
+  const nowFn = deps?.now ?? (() => new Date())
+  const randomFn = deps?.randomFn ?? Math.random
+  const sleepImpl = deps?.sleepImpl ?? defaultSleep
+
   const link = await getLinkByProposalId(client, proposalId)
 
   if (!link) {
@@ -719,16 +1104,15 @@ export async function sendProposalReviewDecisionToWebsite(
   }
 
   const url = getProposalReviewDecisionWebhookUrl()
-  const now = new Date().toISOString()
+  const initialNowIso = nowFn().toISOString()
 
   if (!url) {
-    await table(client, 'website_inbound_links')
-      .update({
-        review_webhook_status: 'skipped',
-        review_webhook_attempted_at: now,
-        review_webhook_error: 'NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL is not configured.',
-      })
-      .eq('id', link.id)
+    await writeLinkSnapshotSkipped({
+      client,
+      linkId: link.id,
+      now: initialNowIso,
+      reason: 'NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL is not configured.',
+    })
 
     return {
       applicable: true as const,
@@ -737,16 +1121,18 @@ export async function sendProposalReviewDecisionToWebsite(
     }
   }
 
+  // ----- Wire envelope (FROZEN — do NOT mutate fields). -----
+  const decision = reviewDecisionByAction[action]
   const bodyText = JSON.stringify({
     event: 'proposal_review_decision',
-    decision: reviewDecisionByAction[action],
+    decision,
     external_source: link.external_source,
     external_session_id: link.external_session_id,
     external_proposal_id: link.external_proposal_id,
     noon_app: {
       lead_id: link.lead_id,
       proposal_id: link.proposal_id,
-      reviewed_at: proposal.reviewed_at ?? now,
+      reviewed_at: proposal.reviewed_at ?? initialNowIso,
       reviewer: actor ?? null,
     },
     proposal: {
@@ -759,56 +1145,474 @@ export async function sendProposalReviewDecisionToWebsite(
     customer: proposal.lead ?? null,
   })
 
+  const idempotencyKey = buildIdempotencyKey(link.external_proposal_id, decision)
+  const payloadHash = sha256Hex(bodyText)
+
+  // D2 / D5 — always create a ledger row BEFORE any fetch. Even when the
+  // kill-switch is off, the row is written so durability is preserved.
+  let event: OutboundWebhookEventRecord
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: signWebsitePayload(bodyText),
-      body: bodyText,
+    event = await createOutboundWebhookEvent(client, {
+      endpoint: 'proposal-review-decision',
+      externalProposalId: link.external_proposal_id,
+      decision,
+      linkId: link.id,
+      proposalId: link.proposal_id,
+      payloadHash,
+      signatureHeader: null,
+      idempotencyKey,
+      requestId: randomUUID(),
+      actorId: actor?.id ?? null,
     })
+  } catch (ledgerError) {
+    // Ledger insert failed before the first fetch. We surface the error and
+    // do NOT silently fall back to a single-shot fetch — durability is the
+    // whole point of ADR-027. Snapshot the failure on the link row so
+    // operators still see it via the existing UI surface.
+    const message =
+      ledgerError instanceof Error
+        ? ledgerError.message
+        : 'Outbound ledger create failed.'
+    logger.error('outbound_webhook.ledger_create_failed', {
+      proposalId,
+      linkId: link.id,
+      ...errorToLogContext(ledgerError),
+    })
+    await writeLinkSnapshotFailed({
+      client,
+      linkId: link.id,
+      now: initialNowIso,
+      errorMessage: message,
+    })
+    return {
+      applicable: true as const,
+      status: 'failed',
+      error: message,
+    }
+  }
 
-    if (!response.ok) {
-      const responseText = await response.text().catch(() => '')
-      await table(client, 'website_inbound_links')
-        .update({
-          current_status: 'review_webhook_failed',
-          review_webhook_status: 'failed',
-          review_webhook_attempted_at: now,
-          review_webhook_error: responseText || `Website returned HTTP ${response.status}.`,
-        })
-        .eq('id', link.id)
+  const inlineRetryOn = outboundWebhookInlineRetryEnabled()
+  // When the kill-switch is OFF, max attempts collapses to 1 — the very
+  // first failure transitions the row to `dead_letter` immediately
+  // (option-b: durability-preserving panic mode).
+  const effectiveMaxAttempts = inlineRetryOn ? OUTBOUND_RETRY_MAX_ATTEMPTS : 1
 
-      return {
-        applicable: true as const,
-        status: 'failed',
-        httpStatus: response.status,
-        error: responseText || `Website returned HTTP ${response.status}.`,
+  const outcome = await driveDispatchLoop({
+    client,
+    url,
+    bodyText,
+    idempotencyKeyHeader: idempotencyKey,
+    eventId: event.eventId,
+    startingAttempt: 0,
+    maxAttempts: effectiveMaxAttempts,
+    inlineRetryEnabled: inlineRetryOn,
+    fetchImpl,
+    randomFn,
+    now: nowFn,
+    sleepImpl,
+    linkSnapshot: { linkId: link.id },
+  })
+
+  const terminalNow = nowFn().toISOString()
+  if (outcome.status === 'delivered') {
+    await writeLinkSnapshotSent({ client, linkId: link.id, now: terminalNow })
+    return {
+      applicable: true as const,
+      status: 'sent',
+      eventId: event.eventId,
+    }
+  }
+
+  // status === 'failed' (or defensive 'pending') — snapshot as failed for
+  // backwards-compatible operator queries (D8). The ledger row is the
+  // authoritative historical record for the cron / admin replay path.
+  const errorMessage =
+    outcome.errorMessage ?? `Website returned HTTP ${outcome.httpStatus ?? 'unknown'}.`
+  await writeLinkSnapshotFailed({
+    client,
+    linkId: link.id,
+    now: terminalNow,
+    errorMessage,
+  })
+  return {
+    applicable: true as const,
+    status: 'failed',
+    httpStatus: outcome.httpStatus ?? undefined,
+    error: errorMessage,
+    eventId: event.eventId,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cron sweep + admin replay drivers (ADR-027 D4 / D7)
+// ---------------------------------------------------------------------------
+
+export interface CronSweepDeps {
+  client?: SupabaseAdminClient
+  fetchImpl?: typeof fetch
+  now?: () => Date
+  randomFn?: () => number
+  sleepImpl?: (ms: number) => Promise<void>
+  limit?: number
+}
+
+export interface CronSweepResult {
+  candidateCount: number
+  delivered: string[]
+  deadLettered: string[]
+  pending: string[]
+  errors: Array<{ eventId: string; message: string }>
+}
+
+/**
+ * Cron sweep entry point — claims due `pending` rows and drives them
+ * through the same dispatch loop the inline path uses. Each cron-driven
+ * fetch increments `attempt_count` and shares the same `max_attempts`
+ * ceiling as the inline path (no separate cron budget per ADR-027 D4).
+ *
+ * Rebuilds the outbound JSON body from the linked `website_inbound_links`
+ * + `lead_proposals` rows. We deliberately do NOT store payload bytes on
+ * the ledger (ADR-027 D2 "no raw payload storage") — the body is
+ * reconstructable from live business data.
+ */
+export async function runOutboundWebhookCronSweep(
+  deps: CronSweepDeps = {},
+): Promise<CronSweepResult> {
+  const client = deps.client ?? createSupabaseAdminClient()
+  const fetchImpl = deps.fetchImpl ?? fetch
+  const nowFn = deps.now ?? (() => new Date())
+  const randomFn = deps.randomFn ?? Math.random
+  const sleepImpl = deps.sleepImpl ?? defaultSleep
+  const limit = deps.limit ?? 50
+
+  const candidates = await claimOutboundPendingDue(client, {
+    limit,
+    now: nowFn().toISOString(),
+  })
+
+  const result: CronSweepResult = {
+    candidateCount: candidates.length,
+    delivered: [],
+    deadLettered: [],
+    pending: [],
+    errors: [],
+  }
+
+  const url = getProposalReviewDecisionWebhookUrl()
+
+  for (const row of candidates) {
+    try {
+      if (!url) {
+        // Mirror the inline behavior: with no URL we leave the row in
+        // `pending` and emit a warning. The cron does NOT mutate the row
+        // status because the operator may set the env var shortly.
+        result.pending.push(row.eventId)
+        continue
       }
+
+      const bodyText = await rebuildProposalReviewDecisionBody(client, row, nowFn)
+      if (!bodyText) {
+        // Linked business rows are gone (e.g., proposal or link deleted).
+        // Mark as dead-letter to stop the cron from re-trying forever.
+        await markOutboundDeadLetter(client, row.eventId, {
+          lastError: 'business_rows_missing_for_cron_retry',
+          lastHttpStatus: null,
+          now: nowFn().toISOString(),
+        })
+        result.deadLettered.push(row.eventId)
+        continue
+      }
+
+      const outcome = await driveDispatchLoop({
+        client,
+        url,
+        bodyText,
+        idempotencyKeyHeader: row.idempotencyKey,
+        eventId: row.eventId,
+        startingAttempt: row.attemptCount,
+        maxAttempts: row.maxAttempts,
+        // Inline retry inside the loop is allowed even from the cron path —
+        // it lets the cron complete the remaining budget in a single run
+        // when the receiver is responding quickly again.
+        inlineRetryEnabled: true,
+        fetchImpl,
+        randomFn,
+        now: nowFn,
+        sleepImpl,
+        linkSnapshot: { linkId: row.linkId ?? '' },
+      })
+
+      // Snapshot the link row to mirror the inline path's D8 dual-track
+      // behavior, but only when we actually know the linkId.
+      if (row.linkId) {
+        const terminalNow = nowFn().toISOString()
+        if (outcome.status === 'delivered') {
+          await writeLinkSnapshotSent({
+            client,
+            linkId: row.linkId,
+            now: terminalNow,
+          })
+        } else if (outcome.status === 'failed') {
+          await writeLinkSnapshotFailed({
+            client,
+            linkId: row.linkId,
+            now: terminalNow,
+            errorMessage:
+              outcome.errorMessage ??
+              `Website returned HTTP ${outcome.httpStatus ?? 'unknown'}.`,
+          })
+        }
+      }
+
+      if (outcome.status === 'delivered') result.delivered.push(row.eventId)
+      else if (outcome.status === 'failed') result.deadLettered.push(row.eventId)
+      else result.pending.push(row.eventId)
+    } catch (sweepError) {
+      result.errors.push({
+        eventId: row.eventId,
+        message:
+          sweepError instanceof Error ? sweepError.message : String(sweepError),
+      })
+      logger.error('outbound_webhook.cron_row_failed', {
+        eventId: row.eventId,
+        ...errorToLogContext(sweepError),
+      })
+    }
+  }
+
+  return result
+}
+
+async function rebuildProposalReviewDecisionBody(
+  client: SupabaseAdminClient,
+  row: OutboundWebhookEventRecord,
+  nowFn: () => Date,
+): Promise<string | null> {
+  if (!row.linkId || !row.proposalId) return null
+
+  const { data: link, error: linkError } = await table(client, 'website_inbound_links')
+    .select(
+      'id, external_source, external_session_id, external_proposal_id, lead_id, proposal_id'
+    )
+    .eq('id', row.linkId)
+    .maybeSingle()
+  if (linkError || !link) return null
+
+  const { data: proposal, error: proposalError } = await table(client, 'lead_proposals')
+    .select(
+      'id, title, body, amount, currency, review_status, reviewed_at, lead:leads!lead_proposals_lead_id_fkey(id, name, email, company)'
+    )
+    .eq('id', row.proposalId)
+    .maybeSingle()
+  if (proposalError || !proposal) return null
+
+  return JSON.stringify({
+    event: 'proposal_review_decision',
+    decision: row.decision,
+    external_source: link.external_source,
+    external_session_id: link.external_session_id,
+    external_proposal_id: link.external_proposal_id,
+    noon_app: {
+      lead_id: link.lead_id,
+      proposal_id: link.proposal_id,
+      reviewed_at: proposal.reviewed_at ?? nowFn().toISOString(),
+      // Cron path runs without an actor context; the original actor lives
+      // on the ledger row but is intentionally omitted from the rebuilt
+      // body. NoonWeb's receiver does not key off `reviewer` for any
+      // load-bearing logic — see cross-repo-webhook-v1.md §7.
+      reviewer: null,
+    },
+    proposal: {
+      title: proposal.title,
+      body: proposal.body,
+      amount: proposal.amount,
+      currency: proposal.currency,
+      review_status: proposal.review_status,
+    },
+    customer: proposal.lead ?? null,
+  })
+}
+
+export interface AdminReplayDeps {
+  client?: SupabaseAdminClient
+  fetchImpl?: typeof fetch
+  now?: () => Date
+  randomFn?: () => number
+  sleepImpl?: (ms: number) => Promise<void>
+}
+
+export type AdminReplayOutcome =
+  | {
+      kind: 'not_found'
+      eventId: string
+    }
+  | {
+      kind: 'noop_delivered'
+      eventId: string
+      deliveredAt: string | null
+      externalProposalId: string
+      decision: string
+    }
+  | {
+      kind: 'noop_replayed'
+      eventId: string
+      replayedByEventId: string | null
+      externalProposalId: string
+      decision: string
+    }
+  | {
+      kind: 'conflict_pending'
+      eventId: string
+      nextRetryAt: string | null
+    }
+  | {
+      kind: 'replayed'
+      sourceEventId: string
+      newEventId: string
+      status: 'delivered' | 'failed' | 'pending'
+      httpStatus: number | null
+      errorMessage: string | null
+      externalProposalId: string
+      decision: string
     }
 
-    await table(client, 'website_inbound_links')
-      .update({
-        current_status: 'review_webhook_sent',
-        review_webhook_status: 'sent',
-        review_webhook_attempted_at: now,
-        review_webhook_sent_at: now,
-        review_webhook_error: null,
+/**
+ * Drive the admin replay endpoint state machine (ADR-027 D7). The endpoint
+ * route handler is a thin authz + JSON wrapper around this function.
+ */
+export async function driveAdminOutboundReplay(
+  eventId: string,
+  deps: AdminReplayDeps = {},
+): Promise<AdminReplayOutcome> {
+  const client = deps.client ?? createSupabaseAdminClient()
+  const fetchImpl = deps.fetchImpl ?? fetch
+  const nowFn = deps.now ?? (() => new Date())
+  const randomFn = deps.randomFn ?? Math.random
+  const sleepImpl = deps.sleepImpl ?? defaultSleep
+
+  const source = await getOutboundWebhookEvent(client, eventId)
+  if (!source) {
+    return { kind: 'not_found', eventId }
+  }
+
+  if (source.status === 'delivered') {
+    return {
+      kind: 'noop_delivered',
+      eventId: source.eventId,
+      deliveredAt: source.deliveredAt,
+      externalProposalId: source.externalProposalId,
+      decision: source.decision,
+    }
+  }
+  if (source.status === 'replayed') {
+    return {
+      kind: 'noop_replayed',
+      eventId: source.eventId,
+      replayedByEventId: source.replayedByEventId,
+      externalProposalId: source.externalProposalId,
+      decision: source.decision,
+    }
+  }
+  if (source.status === 'pending') {
+    return {
+      kind: 'conflict_pending',
+      eventId: source.eventId,
+      nextRetryAt: source.nextRetryAt,
+    }
+  }
+
+  // source.status === 'dead_letter' — spawn a new row + drive it.
+  const { newEventId, record: spawned } = await spawnOutboundReplay(client, source.eventId, {
+    now: nowFn().toISOString(),
+  })
+
+  const url = getProposalReviewDecisionWebhookUrl()
+  if (!url) {
+    // Without a URL we cannot proceed; mark the new row dead-letter so the
+    // chain status reflects the configuration gap.
+    await markOutboundDeadLetter(client, newEventId, {
+      lastError: 'NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL is not configured.',
+      lastHttpStatus: null,
+      now: nowFn().toISOString(),
+    })
+    return {
+      kind: 'replayed',
+      sourceEventId: source.eventId,
+      newEventId,
+      status: 'failed',
+      httpStatus: null,
+      errorMessage: 'NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL is not configured.',
+      externalProposalId: source.externalProposalId,
+      decision: source.decision,
+    }
+  }
+
+  const bodyText = await rebuildProposalReviewDecisionBody(client, spawned, nowFn)
+  if (!bodyText) {
+    await markOutboundDeadLetter(client, newEventId, {
+      lastError: 'business_rows_missing_for_admin_replay',
+      lastHttpStatus: null,
+      now: nowFn().toISOString(),
+    })
+    return {
+      kind: 'replayed',
+      sourceEventId: source.eventId,
+      newEventId,
+      status: 'failed',
+      httpStatus: null,
+      errorMessage: 'business_rows_missing_for_admin_replay',
+      externalProposalId: source.externalProposalId,
+      decision: source.decision,
+    }
+  }
+
+  const outcome = await driveDispatchLoop({
+    client,
+    url,
+    bodyText,
+    idempotencyKeyHeader: spawned.idempotencyKey,
+    eventId: newEventId,
+    startingAttempt: 0,
+    maxAttempts: spawned.maxAttempts,
+    inlineRetryEnabled: true,
+    fetchImpl,
+    randomFn,
+    now: nowFn,
+    sleepImpl,
+    linkSnapshot: { linkId: spawned.linkId ?? '' },
+  })
+
+  // Mirror inline path's D8 snapshot updates so operator dashboards keep
+  // tracking the latest attempt outcome.
+  if (spawned.linkId) {
+    const terminalNow = nowFn().toISOString()
+    if (outcome.status === 'delivered') {
+      await writeLinkSnapshotSent({
+        client,
+        linkId: spawned.linkId,
+        now: terminalNow,
       })
-      .eq('id', link.id)
-
-    return { applicable: true as const, status: 'sent' }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Website webhook failed.'
-
-    await table(client, 'website_inbound_links')
-      .update({
-        current_status: 'review_webhook_failed',
-        review_webhook_status: 'failed',
-        review_webhook_attempted_at: now,
-        review_webhook_error: message,
+    } else if (outcome.status === 'failed') {
+      await writeLinkSnapshotFailed({
+        client,
+        linkId: spawned.linkId,
+        now: terminalNow,
+        errorMessage:
+          outcome.errorMessage ??
+          `Website returned HTTP ${outcome.httpStatus ?? 'unknown'}.`,
       })
-      .eq('id', link.id)
+    }
+  }
 
-    return { applicable: true as const, status: 'failed', error: message }
+  return {
+    kind: 'replayed',
+    sourceEventId: source.eventId,
+    newEventId,
+    status: outcome.status,
+    httpStatus: outcome.httpStatus,
+    errorMessage: outcome.errorMessage,
+    externalProposalId: source.externalProposalId,
+    decision: source.decision,
   }
 }
 
