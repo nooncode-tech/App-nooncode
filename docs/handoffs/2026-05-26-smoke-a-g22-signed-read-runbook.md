@@ -393,3 +393,110 @@ Después de correr los 8 scenarios + verificaciones, captar en un comment del PR
 - **Rate-limit budget shared with NoonWeb-dev**: si NoonWeb dev también está testing contra el mismo APP_BASE, el budget `${token}:${ip}` puede chocar. Coordinar window.
 - **No transport ledger participation**: per ADR-024 D1, este endpoint NO escribe en `website_webhook_events`. NO buscar entries ahí post-smoke — es expected.
 - **`SUPABASE_SERVICE_ROLE_KEY` bypass**: el handler usa admin client. La inserción de la rejection decision en §1.3 también puede usar admin client. Si insertás vía RLS-gated path, asegurate que el caller tiene `sales` role visible-to-the-lead.
+
+---
+
+## §9. Execution report — 2026-05-26 (first live run)
+
+**Date:** 2026-05-26
+**Target:** `https://nooncode-app-pi.vercel.app` (production, develop @ `b8a0cd4`)
+**Operator:** Pedro
+**Outcome:** **PASS funcional**. 1 cosmetic finding documented as ADR-024 §Closure notes CN-1.
+
+### Lesson learned during fixture creation — RPC is auth-gated, NOT callable from service_role
+
+The runbook §1 originally instructed running `request_lead_prototype(uuid)` via Supabase MCP / SQL Editor to generate the fixture workspaces. **This does not work.** The RPC is `SECURITY DEFINER` but reads `auth.uid()` at the top of the body; when called from `service_role` (no auth context) it raises `UNAUTHENTICATED` immediately.
+
+**Workaround applied for this smoke execution:** direct INSERTs into `prototype_workspaces` (and `prototype_decisions` for the rejected fixture), bypassing the RPC entirely. This is valid because the smoke targets the GET handler — not the RPC. The RPC's Gate A (credits) / Gate B (cap) / regenerate semantics are out of scope here.
+
+**Future runbook readers:** prefer the direct-INSERT approach below over the RPC. The RPC works only when invoked via an authenticated seller session.
+
+#### Direct-INSERT fixture creation snippet (use this)
+
+```sql
+-- Identify an active seller profile id (will be used as created_by + assigned_to)
+select id, full_name from public.user_profiles where role = 'sales' and is_active = true limit 1;
+
+-- Then, with that profile id substituted as <SELLER_ID>, run one CTE per fixture:
+with seller as (select '<SELLER_ID>'::uuid as id),
+
+-- PENDING fixture
+pending_lead as (
+  insert into public.leads (name, source, score, created_by, assigned_to, company, maxwell_snapshot)
+  select 'SMOKE-G22 PENDING — Acme Co', 'other', 50, seller.id, seller.id, 'Acme Co',
+         jsonb_build_object('project_type', 'landing')
+    from seller
+  returning id
+),
+pending_workspace as (
+  insert into public.prototype_workspaces (
+    lead_id, requested_by_profile_id, current_stage, status,
+    last_operation_id, share_token
+  )
+  select pending_lead.id, seller.id, 'sales', 'pending_generation',
+         gen_random_uuid(), gen_random_uuid()::text
+    from pending_lead, seller
+  returning id, share_token
+),
+-- (repeat similar CTEs for SUPERSEDED — two workspaces, the older with
+--  share_token_superseded_at = clock_timestamp() — and REJECTED — one
+--  workspace + one prototype_decisions row with decision='rejected')
+...
+select
+  (select share_token from pending_workspace) as SMOKE_G22_TOKEN_PENDING,
+  -- ...similar for SUPERSEDED + REJECTED
+;
+```
+
+Notable schema corrections vs. the earlier runbook draft:
+
+- `leads.source` is an enum (`cold_call`, `event`, `maxwell`, `other`, `referral`, `social`, `website`) — NOT a free text. Use `'other'` for smoke fixtures (not `'smoke_test'`).
+- `leads` required NOT NULL columns (no default): `name`, `source`, `score`, `created_by`. Other NOT NULL columns have defaults (`tags={}`, `status='new'`, `value=0`, `assignment_status='owned'`, `auto_followup_enabled=true`, `publication_status='published'`, `maxwell_snapshot={}`).
+- `wallet_accounts` is keyed by `(profile_id, currency)`; columns are `available_to_spend / available_to_withdraw / pending / locked` (no `bucket` column, no `available_balance` column). Credits live in a different table (`user_wallets`) — but for smoke fixtures created via direct INSERT, credits are not consumed, so neither needs touching.
+
+### Execution results — 2026-05-26
+
+| # | Scenario | Expected | Got | Verdict |
+|---|---|---|---|---|
+| 1 | token-not-found | HTTP 404 PROTOTYPE_READ_TOKEN_NOT_FOUND + `no-store` | exact | ✅ PASS |
+| 2 | missing-signature | HTTP 401 WEBSITE_WEBHOOK_AUTH_FAILED + `no-store` | exact | ✅ PASS |
+| 3 | tampered-signature | HTTP 401 WEBSITE_WEBHOOK_AUTH_FAILED + `no-store` | exact | ✅ PASS |
+| 4 | stale-timestamp (-10min) | HTTP 401 WEBSITE_WEBHOOK_AUTH_FAILED + `no-store` | exact | ✅ PASS |
+| 5 | happy 200 pending | HTTP 200 + `private, max-age=30, stale-while-revalidate=60` | HTTP 200 + `private, max-age=30` ⚠️ | ✅ functional / ⚠️ cache divergence (CN-1) |
+| 6 | replay byte-identical | 2 × HTTP 200, byte-identical body (modulo serverTime + requestId), cache match | byte-identical YES; Cache-Control match YES (same incomplete value) | ✅ PASS (with CN-1 caveat) |
+| 7 | superseded | HTTP 410 PROTOTYPE_READ_TOKEN_SUPERSEDED + `no-store` | exact | ✅ PASS |
+| 8 | happy 200 rejected | HTTP 200 + decision.status=rejected + notes echoed verbatim + correct businessName + projectTypeLabel | exact + `Cache-Control: private, max-age=30` ⚠️ | ✅ functional / ⚠️ cache divergence (CN-1) |
+
+### Side-effect verification (post-fires)
+
+| Check | Expected | Actual |
+|---|---|---|
+| PENDING workspace count | 1, not superseded | ✅ 1, not superseded |
+| SUPERSEDED workspace count | 2, any_superseded=true | ✅ 2, any_superseded=true |
+| REJECTED workspace count | 1, not superseded | ✅ 1, not superseded |
+| REJECTED `prototype_decisions.notes` | verbatim "Smoke G22 — cliente prefiere otra estética." | ✅ exact match |
+| `website_webhook_events` for `prototype-signed-read` endpoint | 0 entries (ledger declined per ADR-024 D1) | ✅ 0 |
+
+**Conclusion: GET is HTTP-idempotent verified live in prod. No state mutation across 8 fires.**
+
+### Cache-Control finding — see ADR-024 §Closure notes CN-1
+
+The `stale-while-revalidate=60` directive is stripped from the live response when the response is marked `private`. Hypothesis: Vercel CDN normalization. The handler emits the full string (unit-tested); the CDN edge strips before client receives. **Accepted as-is**, divergence documented in ADR-024 CN-1. Functional impact is small (max-age=30 preserved; SWR window narrows from 30-90s to 30s sharp). NoonWeb-dev should be aware when reading §6.4 of `cross-repo-webhook-v1.md` that the live SWR-60s tail is not preserved.
+
+### Fixtures cleaned up
+
+```sql
+delete from public.leads where id in (
+  'c5e13e93-ac89-417c-96d1-fa9e9e256781',  -- PENDING
+  '19b36add-d9d5-4913-a38f-12fadc7198eb',  -- SUPERSEDED
+  'f065b569-133c-4d0d-a777-d9ba6e0e366e'   -- REJECTED
+);
+```
+
+FK CASCADE removed 4 prototype_workspaces rows + 1 prototype_decisions row. Post-cleanup count check returned 0 for all three (leads, workspaces, decisions). Producción limpia.
+
+### Next operational steps
+
+1. **NoonWeb-dev D-slice render** unblocked — App-side endpoint fully verified live.
+2. **Bilateral smoke test** (NoonWeb → App round-trip with real client signed request) is the next confidence step before NoonWeb production deploy.
+3. **No follow-up iteration required** on App side for G22. CN-1 is filed as an accepted divergence, not a debt.

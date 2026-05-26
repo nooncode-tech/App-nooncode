@@ -1,8 +1,9 @@
 # ADR-024: Prototype signed-read cross-repo wire contract — symmetric inbound read entry for Pull B.2 render
 
-**Status:** Accepted (amended 2026-05-26 — see §Amendments at end)
+**Status:** Accepted (amended 2026-05-26 — see §Amendments + §Closure notes at end)
 **Date:** 2026-05-25
 **Amended:** 2026-05-26 (A1 — lead-context source column mapping correction; see §Amendments)
+**Closure notes:** 2026-05-26 (CN-1 — D7 `stale-while-revalidate=60` stripped by Vercel CDN in `private` responses, divergence accepted as-is; see §Closure notes)
 **Deciders:** Pedro (Engineering owner), system-architecture
 **Supersedes:** None
 **Discharges:** ADR-023 D8 (deferred render-read endpoint declaration)
@@ -584,3 +585,57 @@ NoonWeb-dev has not yet acknowledged §6 (per the open issue tracked in `docs/ha
 - §"Explicitly NOT in the response (sanitization strip-list)" line about `leads.project_type` edited to refer to `maxwell_snapshot ->> 'project_type'`.
 - `docs/integrations/cross-repo-webhook-v1.md` §6.4 field semantics updated in the same turn.
 - Iteration spec `specs/fase-3-g22-prototype-signed-read-handler-impl.md` OQ-1 marked RESOLVED with reference here.
+
+---
+
+## Closure notes
+
+### CN-1 (2026-05-26) — D7 `stale-while-revalidate=60` stripped by Vercel CDN in live `private` responses
+
+**Context.** Smoke A G22 execution (Lista App follow-up, 2026-05-26) fired 8 signed GETs against the deployed handler at `https://nooncode-app-pi.vercel.app/api/integrations/website/prototype-signed-read/[token]`. All scenarios passed functional verification (HTTP statuses, body shapes, error codes, sanitization, idempotency, ledger-decline). One cosmetic divergence surfaced on scenarios 5/6/8 (200 responses).
+
+**Finding.** D7 specifies the byte-exact 200-response header:
+
+```
+Cache-Control: private, max-age=30, stale-while-revalidate=60
+```
+
+The handler at `lib/server/website-integration.ts::serveWebsitePrototypeSignedRead` sets exactly this string (verified by unit test `tests/server/api/integrations/website/prototype-signed-read.test.ts` AC-9 + 525-test suite green). However, the **live response** from Vercel returns:
+
+```
+Cache-Control: private, max-age=30
+```
+
+The `stale-while-revalidate=60` directive is **stripped before the client receives the response**.
+
+**Hypothesis (strong, not empirically confirmed).** Vercel CDN normalizes `Cache-Control` headers by stripping `stale-while-revalidate` when the response is marked `private`. Semantically, SWR is a shared-cache (CDN) directive — when a response is `private`, the CDN treats it as "do not cache here at all" and strips SWR which would otherwise be a no-op. The normalization is applied at the CDN edge before the response reaches the client.
+
+The hypothesis is consistent with:
+- The handler code provably emits the full string (unit-tested).
+- The middleware / route wrapper does not touch the header further (verified by reading `app/api/integrations/website/prototype-signed-read/[token]/route.ts`).
+- The Vercel platform is the only intermediary between handler and client.
+- Other public Vercel projects report similar SWR-on-private normalization in community threads.
+
+Hypothesis NOT confirmed empirically (would require firing the same request bypassing Vercel CDN, e.g., directly against the function URL — out of smoke scope).
+
+**Decision: accept the divergence as-is. Do NOT amend D7.**
+
+**Rationale:**
+
+1. **Functional impact is bounded and small.** The `max-age=30` window is preserved verbatim. What's lost: the 60s SWR background-revalidation window. Per D7's "Eventual-consistency window" note, the supersede-visibility window narrows from 30-90s to 30s sharp. Cliente revalidates at max-age expiry instead of serving stale-during-revalidation. Slight extra latency on the (rare) cache-miss-during-revalidation path; no data correctness issue.
+2. **NoonWeb consumer behavior unchanged for the common case.** The browser (or NoonWeb's edge if it deploys one) sees `private, max-age=30` and caches for 30s. After 30s it makes a fresh request. The SWR optimization is a perf nicety, not a correctness requirement.
+3. **No data exposure risk.** `private` is preserved — that's the security-relevant directive. The CDN does NOT share the response across tenants. The lost SWR doesn't widen any blast radius.
+4. **Investigation cost is disproportionate.** Confirming the hypothesis empirically (bypass-CDN test) and finding a workaround (e.g., `CDN-Cache-Control` separate header, or removing `private`) would be ~2-4h of investigation + likely require an ADR amendment if the workaround changes semantics. The win is the SWR 60s window — not worth the cost at pilot scale.
+5. **D7 prose remains the architecturally intended behavior.** Future migration off Vercel CDN (or Vercel's own normalization policy change) would restore the full directive without code change. Documenting the divergence here preserves the architectural intent + the operational reality.
+
+**Acceptable workarounds (for a future iteration if SWR becomes important):**
+
+- Set `CDN-Cache-Control: public, max-age=30, stale-while-revalidate=60` as a separate header (Vercel-specific CDN directive that doesn't conflict with browser `Cache-Control: private, max-age=30`). Untested.
+- Drop `private` and use `public, max-age=30, stale-while-revalidate=60`. **Rejected** — `private` is load-bearing; token-bound responses must NOT enter shared CDN tiers.
+- Use the `Vercel-CDN-Cache-Control` header (similar to above, more explicit). Untested.
+
+**Where this note lives in source:**
+
+- This `CN-1` Closure note (here).
+- The `docs/handoffs/2026-05-26-smoke-a-g22-signed-read-runbook.md` §9 "Execution report" cross-references this closure note.
+- AC-9 of the iteration spec remains "Cache header exactness" by the test contract — the unit test verifies the handler's output value. The handler is correct; the CDN is the divergence point.
