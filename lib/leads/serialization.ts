@@ -40,6 +40,7 @@ export interface LeadWire {
   lastContactedAt: string | null
   nextFollowUpAt: string | null
   autoFollowupEnabled: boolean
+  nicheId: string | null
 }
 
 export function deserializeLead(lead: LeadWire): Lead {
@@ -79,5 +80,6 @@ export function deserializeLead(lead: LeadWire): Lead {
     lastContactedAt: lead.lastContactedAt ? new Date(lead.lastContactedAt) : undefined,
     nextFollowUpAt: lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) : undefined,
     autoFollowupEnabled: lead.autoFollowupEnabled,
+    nicheId: lead.nicheId ?? undefined,
   }
 }

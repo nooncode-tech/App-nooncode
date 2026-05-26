@@ -7,8 +7,11 @@ import type { AuthenticatedPrincipal } from '@/lib/server/profiles/types'
 import type { LeadInsert, LeadRowWithProfiles } from '@/lib/server/leads/types'
 import { ApiError } from '@/lib/server/api/errors'
 import { createLead } from '@/lib/server/leads/repository'
+import { type Niche, getNicheById } from '@/lib/server/maxwell/niches'
 
 type DatabaseClient = SupabaseClient<Database>
+
+const nicheIdsSchema = z.array(z.string().trim().min(1).max(64)).max(2).optional()
 
 export const maxwellLeadSearchRequestSchema = z.discriminatedUnion('mode', [
   z.object({
@@ -16,11 +19,13 @@ export const maxwellLeadSearchRequestSchema = z.discriminatedUnion('mode', [
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
     locale: z.string().trim().min(2).max(20).optional(),
+    nicheIds: nicheIdsSchema,
   }),
   z.object({
     mode: z.literal('manual_zone'),
     zoneText: z.string().trim().min(3).max(200),
     locale: z.string().trim().min(2).max(20).optional(),
+    nicheIds: nicheIdsSchema,
   }),
 ])
 
@@ -132,10 +137,17 @@ interface SearchCounts {
   published: number
 }
 
+export interface MaxwellLeadSearchLeadGroup {
+  nicheId: string
+  nicheLabel: string
+  leads: LeadRowWithProfiles[]
+}
+
 export interface MaxwellLeadSearchResult {
   runId: string
   status: 'completed' | 'insufficient' | 'needs_review' | 'failed'
   leads: LeadRowWithProfiles[]
+  leadsByNiche?: MaxwellLeadSearchLeadGroup[]
   counts: SearchCounts
   radiusKm: number
   message: string
@@ -326,10 +338,31 @@ async function geocodeZone(zoneText: string): Promise<CenterPoint | null> {
   }
 }
 
-async function fetchCandidates(center: CenterPoint, radiusKm: number): Promise<Candidate[]> {
+export function buildOverpassQuery(center: CenterPoint, radiusKm: number, niche?: Niche): string {
   const radiusMeters = Math.min(radiusKm, 100) * 1000
   const around = `${radiusMeters},${center.latitude},${center.longitude}`
-  const query = `
+
+  if (niche) {
+    // Whitelist mode: query strictly the tags the niche advertises. Tags come
+    // from the static TS catalog (no external input), so interpolation is safe.
+    const lines: string[] = []
+    for (const tag of niche.overpassTags) {
+      const filter = `["name"]["${tag.key}"="${tag.value}"]`
+      lines.push(`      node${filter}(around:${around});`)
+      lines.push(`      way${filter}(around:${around});`)
+      lines.push(`      relation${filter}(around:${around});`)
+    }
+    return `
+    [out:json][timeout:15];
+    (
+${lines.join('\n')}
+    );
+    out center tags 80;
+  `
+  }
+
+  // Generic mode (no niche): preserved byte-identical from the previous query.
+  return `
     [out:json][timeout:15];
     (
       node["name"]["amenity"](around:${around});
@@ -347,6 +380,10 @@ async function fetchCandidates(center: CenterPoint, radiusKm: number): Promise<C
     );
     out center tags 80;
   `
+}
+
+async function fetchCandidates(center: CenterPoint, radiusKm: number, niche?: Niche): Promise<Candidate[]> {
+  const query = buildOverpassQuery(center, radiusKm, niche)
 
   const response = await fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
@@ -410,13 +447,25 @@ function chunkCandidates(candidates: Candidate[], size: number): Candidate[][] {
   return chunks
 }
 
-async function auditCandidates(candidates: Candidate[], locale: string, radiusKm: number) {
+async function auditCandidates(
+  candidates: Candidate[],
+  locale: string,
+  radiusKm: number,
+  niche?: Niche,
+) {
+  // Architecture C2: when niche is provided, inject a tone-and-context line
+  // BEFORE the "No prometas resultados garantizados." line. The Zod schema
+  // (maxwellAuditSchema) is byte-identical regardless of this prompt change.
+  const nicheHint = niche
+    ? `\nNicho objetivo: ${niche.label}. Contexto adicional: ${niche.auditHint}`
+    : ''
   const { object } = await generateObject({
-    model: openai('gpt-4o-mini'),
+    // ADR-026: gpt-4o-mini → gpt-5.5 (rollback = one-line literal revert).
+    model: openai('gpt-5.5'),
     schema: maxwellAuditSchema,
     system: `Eres Maxwell Lead Engine V1 para NoonApp outbound.
 Tu trabajo es auditar negocios candidatos y devolver solo oportunidades accionables para sellers.
-No inventes datos. Usa solo la informacion publica provista por OpenStreetMap y marca inferencias como probables.
+No inventes datos. Usa solo la informacion publica provista por OpenStreetMap y marca inferencias como probables.${nicheHint}
 No prometas resultados garantizados. No uses tono agresivo.
 Publica solo si hay dolor claro, evidencia observable, solucion concreta para Noon, canal de contacto util y score >= 60.
 Genera sales_speech en el idioma solicitado (${locale}) cuando sea viable, con tono consultivo, local y sin presion.
@@ -470,7 +519,8 @@ function buildLeadInsert(
   principal: AuthenticatedPrincipal,
   runId: string,
   candidate: Candidate,
-  audit: Awaited<ReturnType<typeof auditCandidates>>[number]
+  audit: Awaited<ReturnType<typeof auditCandidates>>[number],
+  niche?: Niche,
 ): LeadInsert {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
   const now = new Date().toISOString()
@@ -521,6 +571,8 @@ function buildLeadInsert(
     maxwell_last_refreshed_at: now,
     maxwell_dedupe_key: candidate.dedupeKey,
     maxwell_confidence: audit.confidence,
+    // TODO(types-regen): cast until database.types.ts is regenerated post-merge
+    ...({ niche_id: niche?.id ?? null } as unknown as Record<string, never>),
   }
 }
 
@@ -564,94 +616,142 @@ async function assertDailySearchLimit(client: DatabaseClient, principal: Authent
   }
 }
 
-export async function runMaxwellLeadSearch(params: {
-  request: z.infer<typeof maxwellLeadSearchRequestSchema>
-  principal: AuthenticatedPrincipal
+/**
+ * Architecture C1: Deterministic per-niche cap.
+ *
+ * Returns the max number of leads to publish for the niche currently being
+ * processed, given the position in the request (zero-indexed) and the
+ * leads already published in prior niches. The total cap across all niches
+ * is 5.
+ *
+ * - 0 niches (generic) or 1 niche: cap = 5.
+ * - 2 niches, first iteration: cap = min(3, remaining) — reserve room for B.
+ * - 2 niches, second iteration: cap = remaining — B absorbs whatever A left.
+ *
+ * Slack absorption (case A=1, B=4 → final 5 total) is implicit: when A
+ * under-publishes, B's iteration sees a larger remaining budget.
+ */
+/**
+ * @deprecated Kept exported for backwards compatibility of the test in
+ * `tests/server/maxwell/niche-distribution.test.ts`. The new distribution
+ * uses {@link allocateLeads} after both niches are collected, so the
+ * "iteration cap" is no longer used in the engine. The function still
+ * encodes the canonical 3+2 default allocation when no tie-break info is
+ * available, which is what the unit tests assert.
+ */
+export function nicheMaxForIteration(
+  totalNiches: number,
+  iterationIndex: number,
+  alreadyPublished: number,
+): number {
+  const remaining = Math.max(0, 5 - alreadyPublished)
+  if (totalNiches <= 1) return remaining
+  if (iterationIndex === 0) return Math.min(3, remaining)
+  return remaining
+}
+
+interface PublishableEntry {
+  audit: Awaited<ReturnType<typeof auditCandidates>>[number]
+  candidate: Candidate
+}
+
+/**
+ * Architecture C1: full tie-break allocation.
+ *
+ * Given the per-niche pools of publishable audits (already sorted by total
+ * score descending), decide how many leads to publish per niche.
+ *
+ * - 0 niches / 1 niche: cap = min(pool.length, 5).
+ * - 2 niches:
+ *   - both pools have ≥3: the niche with the higher topScore takes 3, the
+ *     other takes 2. Ties resolved by lexicographic nicheId (smaller wins).
+ *   - one pool has <2 (below the "min" floor): the other absorbs slack up
+ *     to a total of 5.
+ *   - both pools have 2 ≤ len < 3: canonical "best effort" split is
+ *     min(len, 3) for the first listed niche, then fill the second up to 5
+ *     total.
+ *
+ * Pure function — exported for unit testing.
+ */
+export function allocateLeads(
+  pools: Array<{ nicheId: string | undefined; pool: PublishableEntry[] }>,
+): number[] {
+  if (pools.length === 0) return []
+  if (pools.length === 1) return [Math.min(pools[0].pool.length, 5)]
+
+  const [a, b] = pools
+  const lenA = a.pool.length
+  const lenB = b.pool.length
+
+  if (lenA === 0 && lenB === 0) return [0, 0]
+  if (lenA === 0) return [0, Math.min(lenB, 5)]
+  if (lenB === 0) return [Math.min(lenA, 5), 0]
+
+  // Both ≥3 → tie-break decides who gets the 5th slot (3 vs 2 split).
+  if (lenA >= 3 && lenB >= 3) {
+    const topA = a.pool[0].audit.scoring.total
+    const topB = b.pool[0].audit.scoring.total
+    if (topA > topB) return [3, 2]
+    if (topB > topA) return [2, 3]
+    // Tied topScore — lexicographic on nicheId (smaller wins the 3-slot).
+    const idA = a.nicheId ?? ''
+    const idB = b.nicheId ?? ''
+    return idA <= idB ? [3, 2] : [2, 3]
+  }
+
+  // At least one niche is short of 3. Apply slack absorption with totalCap=5.
+  // First niche takes min(lenA, 3) (canonical cap), then second fills up to 5.
+  const assignA = Math.min(lenA, 3)
+  const assignB = Math.min(lenB, 5 - assignA)
+  return [assignA, assignB]
+}
+
+/**
+ * Per-niche search: fetches Overpass candidates with the niche whitelist,
+ * dedupes against the leads table, audits chunks, and returns publishable
+ * entries SORTED by total score descending. Does NOT create leads — that
+ * happens after `allocateLeads` runs on the combined pools (Architecture C1).
+ *
+ * Per-niche caps preserved: max 60 candidates / 3 audit chunks of 20.
+ * Stops auditing further chunks once 3 publishables are collected (the max
+ * any niche can be assigned under the 2-niche distribution).
+ */
+async function collectPublishableForNiche(params: {
+  baseCenter: CenterPoint
+  radiusKm: number
+  locale: string
+  niche: Niche | undefined
+  runId: string
   serverClient: DatabaseClient
   adminClient: DatabaseClient
-  acceptLanguage?: string | null
-}): Promise<MaxwellLeadSearchResult> {
-  const { request, principal, serverClient, adminClient } = params
-  const locale = normalizeLocale(request.locale ?? params.acceptLanguage?.split(',')[0])
+  counts: SearchCounts
+  perNicheCap: number
+}): Promise<PublishableEntry[]> {
+  const {
+    baseCenter,
+    radiusKm,
+    locale,
+    niche,
+    runId,
+    serverClient,
+    adminClient,
+    counts,
+    perNicheCap,
+  } = params
 
-  assertMaxwellAiConfigured()
-  await assertDailySearchLimit(serverClient, principal)
+  if (perNicheCap <= 0) return []
 
-  const radiusKm = await getAllowedRadiusKm(adminClient, principal)
-  const baseCenter: CenterPoint | null = request.mode === 'current_location'
-    ? { latitude: request.latitude, longitude: request.longitude }
-    : await geocodeZone(request.zoneText)
-
-  const { data: run, error: runError } = await serverClient
-    .from('maxwell_search_runs')
-    .insert({
-      requested_by: principal.userId,
-      mode: request.mode,
-      center_latitude: baseCenter?.latitude ?? null,
-      center_longitude: baseCenter?.longitude ?? null,
-      zone_text: request.mode === 'manual_zone' ? request.zoneText : null,
-      radius_km: radiusKm,
-      locale,
-      status: 'running',
-      stage: baseCenter ? 'searching_candidates' : 'detecting_location',
-    })
-    .select('id')
-    .single()
-
-  if (runError || !run) {
-    throw new ApiError('MAXWELL_RUN_CREATE_FAILED', runError?.message ?? 'Could not create Maxwell run.', 500)
-  }
-
-  const runId = run.id
-  const counts: SearchCounts = {
-    candidatesFound: 0,
-    candidatesAudited: 0,
-    duplicatesFound: 0,
-    rejected: 0,
-    published: 0,
-  }
-
-  try {
-  if (!baseCenter) {
-    const message = 'No se pudo resolver la ubicacion o zona manual. Ajusta la zona y vuelve a intentar.'
-    await updateRun(serverClient, runId, {
-      status: 'insufficient',
-      stage: 'completed',
-      message,
-      completed_at: new Date().toISOString(),
-    })
-
-    return { runId, status: 'insufficient', leads: [], counts, radiusKm, message }
-  }
-
-  const candidates = await fetchCandidates(baseCenter, radiusKm)
-  counts.candidatesFound = candidates.length
-
-  await updateRun(serverClient, runId, {
-    stage: 'filtering_candidates',
-    candidates_found: counts.candidatesFound,
-  })
-
-  if (candidates.length === 0) {
-    const message = 'Maxwell no encontro candidatos con canal publico util dentro del radio permitido.'
-    await updateRun(serverClient, runId, {
-      status: 'insufficient',
-      stage: 'completed',
-      message,
-      candidates_found: counts.candidatesFound,
-      completed_at: new Date().toISOString(),
-    })
-
-    return { runId, status: 'insufficient', leads: [], counts, radiusKm, message }
-  }
+  const candidates = await fetchCandidates(baseCenter, radiusKm, niche)
+  counts.candidatesFound += candidates.length
+  if (candidates.length === 0) return []
 
   const duplicateKeys = await findDuplicateKeys(adminClient, candidates)
-  counts.duplicatesFound = duplicateKeys.size
-  const uniqueCandidates = candidates.filter((candidate) => !duplicateKeys.has(candidate.dedupeKey))
-  const publishedLeads: LeadRowWithProfiles[] = []
+  counts.duplicatesFound += duplicateKeys.size
+  const uniqueCandidates = candidates.filter((c) => !duplicateKeys.has(c.dedupeKey))
 
+  const collected: PublishableEntry[] = []
   for (const candidateChunk of chunkCandidates(uniqueCandidates.slice(0, 60), 20).slice(0, 3)) {
-    if (publishedLeads.length >= 5) break
+    if (collected.length >= perNicheCap) break
 
     await updateRun(serverClient, runId, {
       stage: 'auditing_businesses',
@@ -659,12 +759,10 @@ export async function runMaxwellLeadSearch(params: {
       duplicates_found: counts.duplicatesFound,
     })
 
-    const audits = await auditCandidates(candidateChunk, locale, radiusKm)
+    const audits = await auditCandidates(candidateChunk, locale, radiusKm, niche)
     counts.candidatesAudited += candidateChunk.length
 
     for (const audit of audits) {
-      if (publishedLeads.length >= 5) break
-
       const candidate = candidateChunk.find((item) => item.id === audit.candidateId)
       if (!candidate) {
         counts.rejected += 1
@@ -684,32 +782,184 @@ export async function runMaxwellLeadSearch(params: {
         continue
       }
 
-      const lead = await createLead(serverClient, buildLeadInsert(principal, runId, candidate, audit))
-      publishedLeads.push(lead)
-      counts.published += 1
+      collected.push({ audit, candidate })
     }
   }
 
-  const status = publishedLeads.length >= 3 ? 'completed' : publishedLeads.length > 0 ? 'insufficient' : 'insufficient'
-  const message = publishedLeads.length >= 3
-    ? `Maxwell publico ${publishedLeads.length} oportunidades accionables dentro de tu radio.`
-    : publishedLeads.length > 0
-      ? `Maxwell encontro ${publishedLeads.length} lead(s) validos, pero marco la busqueda como leads insuficientes para no publicar basura.`
-      : 'Maxwell audito candidatos, pero ninguno cumplio score, evidencia y canal suficiente.'
+  // Sort by total score desc so tie-break can compare top-of-pool.
+  collected.sort((x, y) => y.audit.scoring.total - x.audit.scoring.total)
+  return collected
+}
 
-  await updateRun(serverClient, runId, {
-    status,
-    stage: 'completed',
-    candidates_found: counts.candidatesFound,
-    candidates_audited: counts.candidatesAudited,
-    duplicates_found: counts.duplicatesFound,
-    leads_rejected: counts.rejected,
-    leads_published: counts.published,
-    message,
-    completed_at: new Date().toISOString(),
-  })
+export async function runMaxwellLeadSearch(params: {
+  request: z.infer<typeof maxwellLeadSearchRequestSchema>
+  principal: AuthenticatedPrincipal
+  serverClient: DatabaseClient
+  adminClient: DatabaseClient
+  acceptLanguage?: string | null
+}): Promise<MaxwellLeadSearchResult> {
+  const { request, principal, serverClient, adminClient } = params
+  const locale = normalizeLocale(request.locale ?? params.acceptLanguage?.split(',')[0])
 
-  return { runId, status, leads: publishedLeads, counts, radiusKm, message }
+  assertMaxwellAiConfigured()
+  await assertDailySearchLimit(serverClient, principal)
+
+  // Architecture C1: resolve niches from the request — unknown ids silently
+  // dropped via whitelist (R5). When no niches survive, generic mode is used.
+  const requestedNicheIds = request.nicheIds ?? []
+  const niches: Niche[] = []
+  const niche_ids_for_run: string[] = []
+  for (const id of requestedNicheIds) {
+    const niche = getNicheById(id)
+    if (niche) {
+      niches.push(niche)
+      niche_ids_for_run.push(niche.id)
+    }
+  }
+  const searchTargets: Array<Niche | undefined> = niches.length > 0 ? niches : [undefined]
+
+  const radiusKm = await getAllowedRadiusKm(adminClient, principal)
+  const baseCenter: CenterPoint | null = request.mode === 'current_location'
+    ? { latitude: request.latitude, longitude: request.longitude }
+    : await geocodeZone(request.zoneText)
+
+  // niche_ids column is additive (migration 0061). The insert cast avoids
+  // touching database.types.ts which is intentionally not regenerated here.
+  const runInsert: Database['public']['Tables']['maxwell_search_runs']['Insert'] & {
+    niche_ids?: string[] | null
+  } = {
+    requested_by: principal.userId,
+    mode: request.mode,
+    center_latitude: baseCenter?.latitude ?? null,
+    center_longitude: baseCenter?.longitude ?? null,
+    zone_text: request.mode === 'manual_zone' ? request.zoneText : null,
+    radius_km: radiusKm,
+    locale,
+    status: 'running',
+    stage: baseCenter ? 'searching_candidates' : 'detecting_location',
+    // TODO(types-regen): cast until database.types.ts is regenerated post-merge
+    niche_ids: niche_ids_for_run.length > 0 ? niche_ids_for_run : null,
+  }
+
+  const { data: run, error: runError } = await serverClient
+    .from('maxwell_search_runs')
+    .insert(runInsert as Database['public']['Tables']['maxwell_search_runs']['Insert'])
+    .select('id')
+    .single()
+
+  if (runError || !run) {
+    throw new ApiError('MAXWELL_RUN_CREATE_FAILED', runError?.message ?? 'Could not create Maxwell run.', 500)
+  }
+
+  const runId = run.id
+  const counts: SearchCounts = {
+    candidatesFound: 0,
+    candidatesAudited: 0,
+    duplicatesFound: 0,
+    rejected: 0,
+    published: 0,
+  }
+
+  try {
+    if (!baseCenter) {
+      const message = 'No se pudo resolver la ubicacion o zona manual. Ajusta la zona y vuelve a intentar.'
+      await updateRun(serverClient, runId, {
+        status: 'insufficient',
+        stage: 'completed',
+        message,
+        completed_at: new Date().toISOString(),
+      })
+
+      return { runId, status: 'insufficient', leads: [], counts, radiusKm, message }
+    }
+
+    await updateRun(serverClient, runId, {
+      stage: 'filtering_candidates',
+    })
+
+    // Architecture C1 (full): two-phase per niche — first collect publishable
+    // audits sequentially (without inserting), then run allocateLeads to apply
+    // the 3-vs-2 tie-break based on each pool's top score, then insert leads
+    // in deterministic order.
+    //
+    // Per-niche collection cap = 3 (the max any niche can be assigned in the
+    // 2-niche distribution). Single-niche/generic mode bumps the cap to 5.
+    const perNicheCap = niches.length === 2 ? 3 : 5
+
+    const niceArr: Array<Niche | undefined> = searchTargets
+    const pools: PublishableEntry[][] = []
+    for (let i = 0; i < niceArr.length; i += 1) {
+      const niche = niceArr[i]
+      const pool = await collectPublishableForNiche({
+        baseCenter,
+        radiusKm,
+        locale,
+        niche,
+        runId,
+        serverClient,
+        adminClient,
+        counts,
+        perNicheCap,
+      })
+      pools.push(pool)
+    }
+
+    // Allocate using the full tie-break (topScore → lexicographic on nicheId).
+    const allocation = allocateLeads(
+      pools.map((pool, i) => ({ nicheId: niceArr[i]?.id, pool })),
+    )
+
+    const groups: MaxwellLeadSearchLeadGroup[] = []
+    const allPublishedLeads: LeadRowWithProfiles[] = []
+
+    for (let i = 0; i < niceArr.length; i += 1) {
+      const niche = niceArr[i]
+      const take = allocation[i] ?? 0
+      const selected = pools[i].slice(0, take)
+      const insertedLeads: LeadRowWithProfiles[] = []
+      for (const { audit, candidate } of selected) {
+        const lead = await createLead(
+          serverClient,
+          buildLeadInsert(principal, runId, candidate, audit, niche),
+        )
+        insertedLeads.push(lead)
+        counts.published += 1
+      }
+      if (niche) {
+        groups.push({ nicheId: niche.id, nicheLabel: niche.label, leads: insertedLeads })
+      }
+      allPublishedLeads.push(...insertedLeads)
+    }
+
+    const publishedCount = allPublishedLeads.length
+    const status = publishedCount >= 3 ? 'completed' : 'insufficient'
+    const message = publishedCount >= 3
+      ? `Maxwell publico ${publishedCount} oportunidades accionables dentro de tu radio.`
+      : publishedCount > 0
+        ? `Maxwell encontro ${publishedCount} lead(s) validos, pero marco la busqueda como leads insuficientes para no publicar basura.`
+        : 'Maxwell audito candidatos, pero ninguno cumplio score, evidencia y canal suficiente.'
+
+    await updateRun(serverClient, runId, {
+      status,
+      stage: 'completed',
+      candidates_found: counts.candidatesFound,
+      candidates_audited: counts.candidatesAudited,
+      duplicates_found: counts.duplicatesFound,
+      leads_rejected: counts.rejected,
+      leads_published: counts.published,
+      message,
+      completed_at: new Date().toISOString(),
+    })
+
+    return {
+      runId,
+      status,
+      leads: allPublishedLeads,
+      leadsByNiche: niches.length > 0 ? groups : undefined,
+      counts,
+      radiusKm,
+      message,
+    }
   } catch (error) {
     await updateRun(serverClient, runId, {
       status: 'failed',

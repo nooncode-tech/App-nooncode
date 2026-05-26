@@ -512,6 +512,23 @@ export default function LeadsPage() {
       </div>
       <div className="app-section">
 
+      {/* Niche selector (Maxwell search refinement). Hydrated from saved
+          preferences on mount; can be overridden per-search. */}
+      <Card className="p-4">
+        <div className="mb-2">
+          <p className="text-sm font-medium">Nichos objetivo (opcional)</p>
+          <p className="text-xs text-muted-foreground">
+            Elige hasta 2 nichos para que Maxwell enfoque la búsqueda. Sin nichos, Maxwell busca en todos los rubros.
+          </p>
+        </div>
+        <NicheSelector
+          selectedIds={selectedNicheIds}
+          onChange={setSelectedNicheIds}
+          maxSelections={2}
+          disabled={isMaxwellSearching}
+        />
+      </Card>
+
       {(isMaxwellSearching || lastMaxwellResult) && (
         <Card className="p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -540,6 +557,45 @@ export default function LeadsPage() {
               value={((maxwellStageIndex + 1) / maxwellStages.length) * 100}
             />
           )}
+        </Card>
+      )}
+
+      {lastMaxwellResult?.leadsByNiche && lastMaxwellResult.leadsByNiche.length > 0 && (
+        <Card className="p-4">
+          <p className="text-sm font-medium mb-2">Resultados por nicho</p>
+          <div className="space-y-3">
+            {lastMaxwellResult.leadsByNiche.map((group) => (
+              <div key={group.nicheId} className="rounded-md border bg-muted/20 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">{group.nicheLabel}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {group.leads.length === 0
+                      ? 'Sin resultados'
+                      : `${group.leads.length} lead(s)`}
+                  </span>
+                </div>
+                {group.leads.length > 0 && (
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    {group.leads.map((wireLead) => {
+                      const lead = deserializeLead(wireLead)
+                      return (
+                        <li key={lead.id}>
+                          <button
+                            type="button"
+                            className="text-left hover:underline"
+                            onClick={() => handleOpenLead(lead)}
+                          >
+                            {lead.name}
+                            {lead.company ? ` — ${lead.company}` : ''} · Score {lead.score}
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 
