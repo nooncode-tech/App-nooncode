@@ -460,8 +460,11 @@ async function auditCandidates(
     ? `\nNicho objetivo: ${niche.label}. Contexto adicional: ${niche.auditHint}`
     : ''
   const { object } = await generateObject({
-    // ADR-026: gpt-4o-mini → gpt-5.5 (rollback = one-line literal revert).
-    model: openai('gpt-5.5'),
+    // ADR-026 rollback applied: gpt-5.5 caused Vercel function timeouts
+    // (>90s per audit chunk against the full maxwellAuditSchema). Reverted
+    // to gpt-4o-mini for runtime stability. Re-evaluate gpt-5.5 in a
+    // follow-up iteration with raised maxDuration and/or smaller chunks.
+    model: openai('gpt-4o-mini'),
     schema: maxwellAuditSchema,
     system: `Eres Maxwell Lead Engine V1 para NoonApp outbound.
 Tu trabajo es auditar negocios candidatos y devolver solo oportunidades accionables para sellers.
