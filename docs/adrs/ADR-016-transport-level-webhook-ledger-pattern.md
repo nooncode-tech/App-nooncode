@@ -6,7 +6,7 @@
 **Supersedes:** None
 **Related:**
 - TDR-003 (Stripe webhook event ledger) — the canonical precedent this ADR generalizes.
-- `docs/integrations/cross-repo-webhook-v1.md` §8.2, §13 (audit B15 placeholder).
+- `docs/integrations/cross-repo-webhook-v1.md` §10.2 (transport-level idempotency, post-B15 implementation), §14 (reference impl; was audit B15 placeholder pre-resolution). Section numbers reflect the post-ADR-024 cascade (2026-05-25); pre-cascade refs were §8.2 / §13 and pre-B15-implementation refs were §8.2 / §13 placeholder.
 - `specs/fase-2-c-b15-website-webhook-ledger.md` — iteration spec authored alongside this ADR.
 - ADR-014 (migration prefix convention).
 
@@ -19,7 +19,7 @@ Two classes of inbound HTTPS webhooks now exist in the App:
 1. **Stripe** — single endpoint (`/api/webhooks/stripe`). Sender supplies an event id (`evt_…`) that is unique per event by construction. Transport-level idempotency is enforced via `stripe_webhook_events` (migration 0041 + `lib/server/stripe/webhook-events.ts`) using `event_id` as the PRIMARY KEY.
 2. **NoonWeb v1 cross-repo** — two endpoints (`/api/integrations/website/inbound-proposal`, `/api/integrations/website/payment-confirmed`). Sender authenticates with HMAC-SHA256 over `${timestamp}.${bodyText}` (`lib/server/website-webhook-auth.ts`). **No sender-supplied event id.** Today the only idempotency guarantee is at the application layer: lookup by `(external_source, external_session_id|external_proposal_id|external_payment_id)` against `website_inbound_links`.
 
-Audit B15 (`cross-repo-webhook-v1.md` §13, Medium severity) identifies the gap: a replay carrying a forged but never-seen-before external-id triplet would currently pass auth and reach business logic — the inner idempotency layer cannot detect it because there is no row to find by external id.
+Audit B15 (`cross-repo-webhook-v1.md` §14, Medium severity — section number post-ADR-024 cascade 2026-05-25; pre-cascade §13) identifies the gap: a replay carrying a forged but never-seen-before external-id triplet would currently pass auth and reach business logic — the inner idempotency layer cannot detect it because there is no row to find by external id.
 
 The Stripe pattern is proven (live since Phase 17A, ~3 weeks of production traffic, zero duplicates observed per ops). The Web v1 pattern needs the same protection but lacks the natural primary key Stripe gets for free. Architecture must decide:
 
@@ -46,7 +46,7 @@ When the sender does not supply a unique event id (the NoonWeb v1 case), the led
 - `endpoint` is a short text discriminator naming the inbound route (`inbound-proposal`, `payment-confirmed`).
 - `signature_hash = sha256(${timestamp}.${bodyText})` is computed over the **exact byte string the HMAC was verified against**. This is the same input the auth layer fed to `crypto.createHmac` — see `verifyWebsiteWebhookSignature` in `lib/server/website-webhook-auth.ts`. Two requests carrying the same `x-noon-signature` value have the same `signature_hash` and represent the same logical event; two requests carrying different `x-noon-signature` values are different events even if their payload bodies look identical (different timestamps would produce different signatures, which is the desired behavior — a replay attempt with the same body but a refreshed timestamp would have to be the legitimate sender who knows the secret).
 
-Rationale for byte-fidelity (raw `bodyText`) over canonical JSON: the HMAC already verifies that the receiver sees the same bytes the sender signed. Computing the hash over canonical JSON would re-introduce the exact serialization-drift risk the wire contract §11 explicitly warns against ("Trailing whitespace, key ordering, and float formatting all matter"). The auth layer already enforces byte fidelity; the ledger inherits it for free.
+Rationale for byte-fidelity (raw `bodyText`) over canonical JSON: the HMAC already verifies that the receiver sees the same bytes the sender signed. Computing the hash over canonical JSON would re-introduce the exact serialization-drift risk the wire contract §13 (Test fixtures, post-ADR-024 cascade; pre-cascade §12) explicitly warns against ("Trailing whitespace, key ordering, and float formatting all matter"). The auth layer already enforces byte fidelity; the ledger inherits it for free.
 
 For Stripe (sender-supplied event id), identity stays `event_id` as PRIMARY KEY. This ADR does not change Stripe.
 
@@ -145,7 +145,7 @@ Three reasons:
 
 1. **The shape is structurally identical between Stripe and Web.** Same lifecycle calls, same status enum, same RLS policy shape, same operator query surface. Treating B15 as one-off would force the next inbound-webhook integration to re-derive the same decisions.
 2. **The differences are minimal and well-bounded.** Sender event id vs computed hash is one column; PK vs UNIQUE constraint is one DDL line. Documenting "transport-level ledger" as a pattern with two specializations (sender-id-as-PK, hash-as-UNIQUE) makes future inbound webhooks (e.g., a hypothetical OAuth provider, Stripe Connect events, a Calendly integration) cheap.
-3. **The wire-contract clause `cross-repo-webhook-v1.md` §13 references this as audit B15.** A pattern-level ADR closes B15 at the conceptual level (not just the implementation level) and lets future audits reference the pattern directly.
+3. **The wire-contract clause `cross-repo-webhook-v1.md` §14 references this as audit B15** (section number post-ADR-024 cascade 2026-05-25; pre-cascade §13). A pattern-level ADR closes B15 at the conceptual level (not just the implementation level) and lets future audits reference the pattern directly.
 
 ### Why `(endpoint, signature_hash)` and not `(endpoint, signature_hash, payload_hash)`
 
@@ -181,7 +181,7 @@ After B15 ships, every authenticated inbound NoonWeb v1 webhook produces exactly
 
 ### Wire contract unchanged
 
-`cross-repo-webhook-v1.md` is updated to reflect implementation reality (§8.2 flipped from "planned mitigation v2" to "implemented in v1 internal — wire unchanged"; §13 removes B15) but the schema, headers, status codes, response shapes are byte-identical to today. NoonWeb requires no coordination.
+`cross-repo-webhook-v1.md` is updated to reflect implementation reality (the transport-idempotency section — §10.2 post-ADR-024 cascade, was §9.2 pre-cascade — flipped from "planned mitigation v2" to "implemented in v1 internal — wire unchanged"; the reference-impl + open-issues sections — §14 / §15 post-ADR-024 cascade, were §13 / §14 pre-cascade — removed B15 from open issues) but the schema, headers, status codes, response shapes are byte-identical to today. NoonWeb requires no coordination.
 
 ### Stripe ledger untouched
 
@@ -438,7 +438,7 @@ Add `WEBSITE_WEBHOOK_LEDGER_ENABLED` to env-var docs (default ON, kill-switch on
 ## References
 
 - TDR-003 — Stripe webhook event ledger (the canonical precedent).
-- `docs/integrations/cross-repo-webhook-v1.md` §2 (HMAC contract), §3.4 / §4.5 (wire response shapes), §8.2 (B15 placeholder), §13 (audit B15).
+- `docs/integrations/cross-repo-webhook-v1.md` §2 (HMAC contract), §3.4 / §4.5 (wire response shapes), §10.2 (transport-level idempotency — was §8.2 pre-cascade as B15 placeholder, now post-cascade is the resolved implementation note), §14 (reference impl — was §13 pre-cascade where audit B15 sat as an open issue before resolution). Section numbers reflect the ADR-024 cascade 2026-05-25.
 - `specs/fase-2-c-b15-website-webhook-ledger.md` — iteration spec.
 - `supabase/migrations/0041_phase_17a_stripe_webhook_event_ledger.sql` — schema reference.
 - `lib/server/stripe/webhook-events.ts` — helper-shape reference.

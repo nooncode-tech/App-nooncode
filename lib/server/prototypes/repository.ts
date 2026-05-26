@@ -49,10 +49,17 @@ export async function getPrototypeWorkspaceByLeadId(
   client: DatabaseClient,
   leadId: string
 ): Promise<PrototypeWorkspaceRow | null> {
+  // Per ADR-023 D3 + migration 0060 (R1 refactor): `prototype_workspaces.lead_id`
+  // is no longer UNIQUE — regenerate produces V1 / V2 / V3 rows for the same
+  // lead. Callers of this helper want the latest (non-superseded if any,
+  // otherwise newest by `created_at`) workspace. `.order(created_at desc).limit(1)`
+  // is the canonical "latest workspace" pattern.
   const { data, error } = await client
     .from('prototype_workspaces')
     .select(prototypeWorkspaceSelect)
     .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   if (error) {

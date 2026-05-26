@@ -10,6 +10,8 @@ import { activatePaidProposal } from '@/lib/server/payments/activation'
 import { creditActivationEarnings } from '@/lib/server/earnings/activation-credit'
 import { getPrototypeWorkspaceByLeadId } from '@/lib/server/prototypes/repository'
 import { ensureWebsiteInboundPrototypeWorkspace } from '@/lib/server/prototypes/website-inbound'
+import { errorToLogContext, logger } from '@/lib/server/api/logger'
+import { createPrototypeDecisionDraft } from '@/lib/server/maxwell/prototype-decision-draft'
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>
 
@@ -802,6 +804,432 @@ export async function sendProposalReviewDecisionToWebsite(
       .eq('id', link.id)
 
     return { applicable: true as const, status: 'failed', error: message }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// prototype-decision (inbound POST, ADR-023 + ADR-025, cross-repo §5)
+// ---------------------------------------------------------------------------
+
+const websitePrototypeDecisionNotesSchema = z
+  .string()
+  .trim()
+  .max(2000, 'Prototype decision notes must be 2000 characters or fewer.')
+  .optional()
+  .nullable()
+
+export const websitePrototypeDecisionPayloadSchema = z.object({
+  external_source: z.string().trim().min(1).default('noon_website'),
+  // Authoritative resolver per ADR-023 D2.
+  token: z.string().trim().min(1),
+  // Defensive cross-check per ADR-023 D2.
+  prototype_workspace_id: z.string().uuid(),
+  // Exact-set enum per ADR-023 D5 + cross-repo §5.2 / §5.5
+  // (PROTOTYPE_DECISION_INVALID_DECISION).
+  decision: z.enum(['accepted', 'rejected']),
+  notes: websitePrototypeDecisionNotesSchema,
+  client: z
+    .object({
+      user_agent: z.string().trim().max(500).optional().nullable(),
+    })
+    .optional(),
+  metadata: looseRecordSchema,
+})
+
+export type WebsitePrototypeDecisionPayload = z.infer<
+  typeof websitePrototypeDecisionPayloadSchema
+>
+
+export interface ReceiveWebsitePrototypeDecisionResult {
+  idempotent: false
+  decisionId: string
+  prototypeWorkspaceId: string
+  leadId: string
+  decision: 'accepted' | 'rejected'
+  decidedAt: string
+  draftPropuestaQueued: boolean
+  /** Convenience back-channel for the route handler structured log. */
+  sellerProfileId: string
+}
+
+interface ResolvedPrototypeWorkspace {
+  id: string
+  lead_id: string
+  status: string
+  requested_by_profile_id: string
+  share_token_superseded_at: string | null
+}
+
+async function resolvePrototypeWorkspaceByShareToken(
+  client: SupabaseAdminClient,
+  token: string,
+): Promise<ResolvedPrototypeWorkspace | null> {
+  const { data, error } = await table(client, 'prototype_workspaces')
+    .select('id, lead_id, status, requested_by_profile_id, share_token_superseded_at')
+    .eq('share_token', token)
+    .maybeSingle()
+
+  if (error) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_PERSIST_FAILED',
+      `Prototype workspace lookup by share_token failed: ${error.message}`,
+      500,
+    )
+  }
+
+  return (data as ResolvedPrototypeWorkspace | null) ?? null
+}
+
+async function leadIsHardDeleted(
+  client: SupabaseAdminClient,
+  leadId: string,
+): Promise<boolean> {
+  const { data, error } = await table(client, 'leads')
+    .select('id')
+    .eq('id', leadId)
+    .maybeSingle()
+
+  if (error) {
+    // Treat lookup failure as a server error rather than masking it as 410.
+    throw new ApiError(
+      'PROTOTYPE_DECISION_PERSIST_FAILED',
+      `Lead presence check failed: ${error.message}`,
+      500,
+    )
+  }
+
+  return data === null
+}
+
+async function findExistingPrototypeDecision(
+  client: SupabaseAdminClient,
+  prototypeWorkspaceId: string,
+): Promise<{ id: string; decision: string } | null> {
+  const { data, error } = await table(client, 'prototype_decisions')
+    .select('id, decision')
+    .eq('prototype_workspace_id', prototypeWorkspaceId)
+    .maybeSingle()
+
+  if (error) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_PERSIST_FAILED',
+      `Prototype decision uniqueness check failed: ${error.message}`,
+      500,
+    )
+  }
+
+  return (data as { id: string; decision: string } | null) ?? null
+}
+
+interface InsertedDecisionRow {
+  id: string
+  decided_at: string
+}
+
+async function insertPrototypeDecisionRow(
+  client: SupabaseAdminClient,
+  input: {
+    prototypeWorkspaceId: string
+    leadId: string
+    decision: 'accepted' | 'rejected'
+    notes: string | null
+    clientUserAgent: string | null
+    webhookEventId: string | null
+  },
+): Promise<InsertedDecisionRow> {
+  const { data, error } = await table(client, 'prototype_decisions')
+    .insert({
+      prototype_workspace_id: input.prototypeWorkspaceId,
+      lead_id: input.leadId,
+      decision: input.decision,
+      notes: input.notes,
+      client_user_agent: input.clientUserAgent,
+      webhook_event_id: input.webhookEventId,
+    })
+    .select('id, decided_at')
+    .single()
+
+  if (error || !data?.id) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_PERSIST_FAILED',
+      `Prototype decision insert failed: ${error?.message ?? 'no row returned'}`,
+      500,
+    )
+  }
+
+  return data as InsertedDecisionRow
+}
+
+function buildSellerNotificationCopy(input: {
+  decision: 'accepted' | 'rejected'
+  draftStatus: 'queued' | 'failed' | 'not_applicable'
+  truncatedNotes: string | null
+}): { title: string; body: string } {
+  if (input.decision === 'accepted') {
+    if (input.draftStatus === 'failed') {
+      return {
+        title: 'Cliente aceptó el prototipo (acción manual requerida)',
+        body:
+          'El cliente aceptó tu prototipo. La generación automática del borrador de propuesta falló — ' +
+          'creá la propuesta manualmente desde el detalle del lead.',
+      }
+    }
+    return {
+      title: 'Cliente aceptó el prototipo',
+      body:
+        'El cliente aceptó tu prototipo. Maxwell preparó un borrador de propuesta — ' +
+        'revisalo y elegí tu seller fee antes de enviarlo a PM review.',
+    }
+  }
+
+  const notesSegment = input.truncatedNotes ? ` Nota del cliente: "${input.truncatedNotes}".` : ''
+  return {
+    title: 'Cliente rechazó el prototipo',
+    body:
+      `El cliente rechazó tu prototipo.${notesSegment} ` +
+      `Podés regenerar V2 si el lead lo amerita.`,
+  }
+}
+
+function truncateNotesForNotification(notes: string | null): string | null {
+  if (!notes) return null
+  const trimmed = notes.trim()
+  if (!trimmed) return null
+  return trimmed.length > 240 ? `${trimmed.slice(0, 237)}...` : trimmed
+}
+
+async function insertSellerPrototypeDecisionNotification(
+  client: SupabaseAdminClient,
+  input: {
+    sellerProfileId: string
+    decisionId: string
+    decision: 'accepted' | 'rejected'
+    draftStatus: 'queued' | 'failed' | 'not_applicable'
+    truncatedNotes: string | null
+    leadId: string
+  },
+): Promise<void> {
+  const copy = buildSellerNotificationCopy({
+    decision: input.decision,
+    draftStatus: input.draftStatus,
+    truncatedNotes: input.truncatedNotes,
+  })
+
+  const { error } = await table(client, 'user_notifications').insert({
+    profile_id: input.sellerProfileId,
+    source_kind: 'prototype_decision_received',
+    source_event_id: input.decisionId,
+    domain: 'leads',
+    title: copy.title,
+    body: copy.body,
+    href: `/dashboard/leads/${input.leadId}`,
+  })
+
+  if (error) {
+    // Notification failure must NOT block the decision response. We log it
+    // and continue; the decision row is already persisted and the wire-shape
+    // response is correct. Operator visibility comes from the structured log.
+    logger.warn('prototype.decision.notification_insert_failed', {
+      sellerProfileId: input.sellerProfileId,
+      decisionId: input.decisionId,
+      leadId: input.leadId,
+      decision: input.decision,
+      errorMessage: error.message,
+    })
+  }
+}
+
+/**
+ * Fire-and-forget Maxwell draft scheduler per ADR-023 D6 + OQ-2 resolution
+ * (Backend 2026-05-25): detached promise with explicit `.catch()`. Safe
+ * across Node 20 / 22 / Vercel serverless runtime; runs after the response
+ * has been written to the wire (the awaited callsite returns BEFORE this
+ * function awaits anything).
+ */
+export function scheduleAcceptedPrototypeDecisionSideEffects(input: {
+  adminClient: SupabaseAdminClient
+  decisionId: string
+  prototypeWorkspaceId: string
+  leadId: string
+  sellerProfileId: string
+}): void {
+  void Promise.resolve().then(async () => {
+    try {
+      const draft = await createPrototypeDecisionDraft({
+        client: input.adminClient,
+        leadId: input.leadId,
+        sellerProfileId: input.sellerProfileId,
+        prototypeWorkspaceId: input.prototypeWorkspaceId,
+        decisionId: input.decisionId,
+      })
+
+      logger.info('prototype.decision.accepted.draft_created', {
+        decisionId: input.decisionId,
+        prototypeWorkspaceId: input.prototypeWorkspaceId,
+        leadId: input.leadId,
+        sellerProfileId: input.sellerProfileId,
+        proposalId: draft.proposalId,
+        projectType: draft.projectType,
+        complexity: draft.complexity,
+        amount: draft.amount,
+      })
+
+      await insertSellerPrototypeDecisionNotification(input.adminClient, {
+        sellerProfileId: input.sellerProfileId,
+        decisionId: input.decisionId,
+        decision: 'accepted',
+        draftStatus: 'queued',
+        truncatedNotes: null,
+        leadId: input.leadId,
+      })
+    } catch (draftError) {
+      logger.error('prototype.decision.accepted.draft_creation_failed', {
+        decisionId: input.decisionId,
+        prototypeWorkspaceId: input.prototypeWorkspaceId,
+        leadId: input.leadId,
+        sellerProfileId: input.sellerProfileId,
+        ...errorToLogContext(draftError),
+      })
+
+      // Escalated notification: tell the seller to create the draft manually.
+      await insertSellerPrototypeDecisionNotification(input.adminClient, {
+        sellerProfileId: input.sellerProfileId,
+        decisionId: input.decisionId,
+        decision: 'accepted',
+        draftStatus: 'failed',
+        truncatedNotes: null,
+        leadId: input.leadId,
+      }).catch((notifError) => {
+        logger.error('prototype.decision.accepted.escalation_notification_failed', {
+          decisionId: input.decisionId,
+          ...errorToLogContext(notifError),
+        })
+      })
+    }
+  }).catch((unexpected) => {
+    // Top-level guardrail. The inner `.then(async () => ...)` body has its
+    // own try/catch above, so reaching this branch means the promise pipeline
+    // itself failed (extremely rare). Log so the operator can detect.
+    logger.error('prototype.decision.accepted.side_effect_pipeline_failed', {
+      decisionId: input.decisionId,
+      ...errorToLogContext(unexpected),
+    })
+  })
+}
+
+/**
+ * Synchronous business handler for `POST /api/integrations/website/prototype-decision`.
+ * The route file owns HMAC verify + ledger claim + replay-path branching +
+ * `markWebsiteWebhookEventProcessed`; this handler executes the persistence
+ * flow once the route has accepted the request for processing.
+ *
+ * 8-step flow per spec §C-slice (handler):
+ *   1. Token → workspace lookup (404 PROTOTYPE_DECISION_TOKEN_NOT_FOUND on miss).
+ *   2. Defensive cross-check workspace_id matches resolved id
+ *      (409 PROTOTYPE_DECISION_IDENTIFIER_MISMATCH on mismatch).
+ *   3. Lifecycle checks: 410 PROTOTYPE_DECISION_TOKEN_EXPIRED if superseded;
+ *      410 PROTOTYPE_DECISION_LEAD_DELETED if lead cascade left a stale row.
+ *   4. Uniqueness check (409 PROTOTYPE_DECISION_ALREADY_DECIDED for conflicting
+ *      NEW requests; bit-identical replay is handled by the route before reaching
+ *      this handler).
+ *   5. INSERT `prototype_decisions` row (500 PROTOTYPE_DECISION_PERSIST_FAILED on DB error).
+ *   6. Return wire-shape (caller writes the response).
+ *   7. On `decision === 'accepted'`, the CALLER schedules the Maxwell draft
+ *      fire-and-forget via `scheduleAcceptedPrototypeDecisionSideEffects`.
+ *   8. On `decision === 'rejected'`, this function inserts the seller
+ *      notification synchronously (no draft side effect).
+ */
+export async function receiveWebsitePrototypeDecision(
+  payload: WebsitePrototypeDecisionPayload,
+  webhookEventId: string | null,
+  clientOverride?: SupabaseAdminClient,
+): Promise<ReceiveWebsitePrototypeDecisionResult> {
+  const client = clientOverride ?? createSupabaseAdminClient()
+
+  // Step 1 — resolve token.
+  const workspace = await resolvePrototypeWorkspaceByShareToken(client, payload.token)
+
+  if (!workspace) {
+    throw new NotFoundApiError(
+      'No prototype workspace matches the supplied share token.',
+      'PROTOTYPE_DECISION_TOKEN_NOT_FOUND',
+    )
+  }
+
+  // Step 2 — defensive cross-check.
+  if (workspace.id !== payload.prototype_workspace_id) {
+    logger.warn('prototype.decision.identifier_mismatch', {
+      resolvedWorkspaceId: workspace.id,
+      payloadWorkspaceId: payload.prototype_workspace_id,
+      leadId: workspace.lead_id,
+    })
+    throw new ConflictApiError(
+      'The supplied prototype_workspace_id does not match the workspace resolved from the token.',
+      'PROTOTYPE_DECISION_IDENTIFIER_MISMATCH',
+    )
+  }
+
+  // Step 3a — superseded token.
+  if (workspace.share_token_superseded_at !== null) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_TOKEN_EXPIRED',
+      'This prototype share token has been superseded by a newer iteration.',
+      410,
+    )
+  }
+
+  // Step 3b — defensive lead-deleted check (FK cascade should have removed
+  // the workspace too, but the cascade race is possible).
+  if (await leadIsHardDeleted(client, workspace.lead_id)) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_LEAD_DELETED',
+      'The lead this prototype belonged to no longer exists.',
+      410,
+    )
+  }
+
+  // Step 4 — uniqueness check.
+  const existingDecision = await findExistingPrototypeDecision(client, workspace.id)
+  if (existingDecision) {
+    throw new ConflictApiError(
+      'This prototype workspace already has a recorded terminal decision.',
+      'PROTOTYPE_DECISION_ALREADY_DECIDED',
+    )
+  }
+
+  // Step 5 — INSERT.
+  const clientUserAgent = payload.client?.user_agent?.trim() ?? null
+  const trimmedNotes = payload.notes?.trim() ?? null
+  const decisionRow = await insertPrototypeDecisionRow(client, {
+    prototypeWorkspaceId: workspace.id,
+    leadId: workspace.lead_id,
+    decision: payload.decision,
+    notes: trimmedNotes && trimmedNotes.length > 0 ? trimmedNotes : null,
+    clientUserAgent,
+    webhookEventId,
+  })
+
+  // Step 8 — reject path: inline seller notification (no draft side effect).
+  if (payload.decision === 'rejected') {
+    await insertSellerPrototypeDecisionNotification(client, {
+      sellerProfileId: workspace.requested_by_profile_id,
+      decisionId: decisionRow.id,
+      decision: 'rejected',
+      draftStatus: 'not_applicable',
+      truncatedNotes: truncateNotesForNotification(trimmedNotes),
+      leadId: workspace.lead_id,
+    })
+  }
+
+  return {
+    idempotent: false,
+    decisionId: decisionRow.id,
+    prototypeWorkspaceId: workspace.id,
+    leadId: workspace.lead_id,
+    decision: payload.decision,
+    decidedAt: decisionRow.decided_at,
+    draftPropuestaQueued: payload.decision === 'accepted',
+    sellerProfileId: workspace.requested_by_profile_id,
   }
 }
 

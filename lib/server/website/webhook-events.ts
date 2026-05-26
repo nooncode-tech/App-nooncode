@@ -4,7 +4,10 @@ import type { Database } from '@/lib/server/supabase/database.types'
 
 type DatabaseClient = SupabaseClient<Database>
 
-export type WebsiteWebhookEndpoint = 'inbound-proposal' | 'payment-confirmed'
+export type WebsiteWebhookEndpoint =
+  | 'inbound-proposal'
+  | 'payment-confirmed'
+  | 'prototype-decision'
 
 export type WebsiteWebhookEventStatus = 'processing' | 'processed' | 'failed'
 
@@ -19,6 +22,15 @@ export interface WebsiteWebhookEventInput {
 export interface WebsiteWebhookEventRecord {
   shouldProcess: boolean
   eventId: string
+  /**
+   * Discriminator added per ADR-025 D1 / A1. The replay-path helper for
+   * the `prototype-decision` endpoint requires this field to branch into
+   * the FK-join lookup against `prototype_decisions.webhook_event_id`.
+   * Existing call sites for `inbound-proposal` / `payment-confirmed`
+   * continue to ignore the field; their replay path keeps reading
+   * `linkId` against `website_inbound_links`.
+   */
+  endpoint: WebsiteWebhookEndpoint
   status: WebsiteWebhookEventStatus
   attemptCount: number
   externalSessionId: string | null
@@ -74,7 +86,7 @@ export async function recordWebsiteWebhookEvent(
       status: 'processing',
     })
     .select(
-      'id, status, attempt_count, external_session_id, external_proposal_id, external_payment_id, link_id',
+      'id, endpoint, status, attempt_count, external_session_id, external_proposal_id, external_payment_id, link_id',
     )
     .maybeSingle()
 
@@ -82,6 +94,7 @@ export async function recordWebsiteWebhookEvent(
     return {
       shouldProcess: true,
       eventId: inserted.id,
+      endpoint: (inserted.endpoint as WebsiteWebhookEndpoint | null) ?? input.endpoint,
       status: asStatus(inserted.status),
       attemptCount: inserted.attempt_count,
       externalSessionId: inserted.external_session_id ?? null,
@@ -100,7 +113,7 @@ export async function recordWebsiteWebhookEvent(
   const { data: existing, error: selectError } = await client
     .from('website_webhook_events')
     .select(
-      'id, status, attempt_count, external_session_id, external_proposal_id, external_payment_id, link_id',
+      'id, endpoint, status, attempt_count, external_session_id, external_proposal_id, external_payment_id, link_id',
     )
     .eq('endpoint', input.endpoint)
     .eq('signature_hash', input.signatureHash)
@@ -114,11 +127,24 @@ export async function recordWebsiteWebhookEvent(
 
   const currentStatus = asStatus(existing.status)
   const linkId = existing.link_id ?? null
+  const existingEndpoint = (existing.endpoint as WebsiteWebhookEndpoint | null) ?? input.endpoint
 
-  if (currentStatus === 'processed' && linkId !== null) {
+  // Endpoint-specific "processed" detection. Per ADR-025 D1, the
+  // `prototype-decision` endpoint does NOT populate `link_id` (it has no
+  // `website_inbound_links` row by design — §5.7 of cross-repo-webhook-v1.md
+  // / D1 ledger row shape). Its "processed" signal is `status = 'processed'`
+  // alone; the replay-path helper resolves the recorded `prototype_decisions`
+  // row via the `webhook_event_id` FK-join. The other two endpoints retain
+  // the original `link_id` check (preserves their behavior unchanged).
+  const isProcessed =
+    currentStatus === 'processed' &&
+    (existingEndpoint === 'prototype-decision' || linkId !== null)
+
+  if (isProcessed) {
     return {
       shouldProcess: false,
       eventId: existing.id,
+      endpoint: existingEndpoint,
       status: 'processed',
       attemptCount: existing.attempt_count,
       externalSessionId: existing.external_session_id ?? null,
@@ -146,6 +172,7 @@ export async function recordWebsiteWebhookEvent(
   return {
     shouldProcess: true,
     eventId: existing.id,
+    endpoint: existingEndpoint,
     status: 'processing',
     attemptCount: nextAttempt,
     externalSessionId: existing.external_session_id ?? null,
@@ -222,6 +249,80 @@ export async function composeReplayResponseFromLedger(
     response.projectId = link.project_id
   }
   return response
+}
+
+/**
+ * Replay-response reconstruction for the `prototype-decision` endpoint.
+ *
+ * Per ADR-025 D1 / A1: rather than extending the generic `website_webhook_events`
+ * schema with an endpoint-specific FK column (option a — rejected; sets schema
+ * sprawl precedent), the replay path joins `prototype_decisions` to the ledger
+ * row via the existing `webhook_event_id` soft-FK declared by ADR-023 D4.
+ *
+ * Architecture preference (ADR-025 D1 implementation alternative b.2):
+ * sibling helper rather than a `switch` branch inside `composeReplayResponseFromLedger`.
+ * Preserves the existing function's behavior unchanged for `inbound-proposal` /
+ * `payment-confirmed` (smaller blast radius).
+ *
+ * Wire-shape rules (per ADR-025 D1 + cross-repo-webhook-v1.md §5.4):
+ *   - `idempotent: true` always on replay.
+ *   - `draftPropuestaQueued: false` always on replay — per ADR-023 D6 the
+ *     Maxwell draft fire-and-forget runs only on the original successful
+ *     run; replays return the recorded state without re-invoking side effects.
+ *
+ * Defensive null fallback (per ADR-025 D1): if the matched `prototype_decisions`
+ * row's `webhook_event_id` is NULL (the FK is `on delete set null`, so a
+ * ledger row purge can orphan the link), return null so the handler falls
+ * through to "re-run business logic" per ADR-016 D6's failed-then-retry branch.
+ */
+export interface WebsitePrototypeDecisionReplayResponse {
+  idempotent: true
+  decisionId: string
+  prototypeWorkspaceId: string
+  leadId: string
+  decision: 'accepted' | 'rejected'
+  decidedAt: string
+  draftPropuestaQueued: false
+}
+
+export async function composePrototypeDecisionReplayResponseFromLedger(
+  client: DatabaseClient,
+  ledger: WebsiteWebhookEventRecord,
+): Promise<WebsitePrototypeDecisionReplayResponse | null> {
+  if (ledger.endpoint !== 'prototype-decision') {
+    return null
+  }
+
+  const { data: decision, error } = await client
+    .from('prototype_decisions')
+    .select('id, prototype_workspace_id, lead_id, decision, decided_at')
+    .eq('webhook_event_id', ledger.eventId)
+    .maybeSingle()
+
+  if (error || !decision) {
+    return null
+  }
+
+  const decisionValue =
+    decision.decision === 'accepted' || decision.decision === 'rejected'
+      ? decision.decision
+      : null
+
+  if (decisionValue === null) {
+    // Defensive: if the DB CHECK constraint is violated somehow (data drift),
+    // fall through to re-run business logic per ADR-016 D6.
+    return null
+  }
+
+  return {
+    idempotent: true,
+    decisionId: decision.id,
+    prototypeWorkspaceId: decision.prototype_workspace_id,
+    leadId: decision.lead_id,
+    decision: decisionValue,
+    decidedAt: decision.decided_at,
+    draftPropuestaQueued: false,
+  }
 }
 
 export async function markWebsiteWebhookEventFailed(
