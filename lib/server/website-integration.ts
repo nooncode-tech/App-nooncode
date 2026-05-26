@@ -8,7 +8,12 @@ import {
 } from '@/lib/server/website-webhook-auth'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
 import { creditActivationEarnings } from '@/lib/server/earnings/activation-credit'
-import { getPrototypeWorkspaceByLeadId } from '@/lib/server/prototypes/repository'
+import {
+  countPrototypeWorkspaceVersionForLead,
+  getPrototypeWorkspaceByLeadId,
+  getPrototypeWorkspaceByShareToken,
+  type PrototypeSignedReadRow,
+} from '@/lib/server/prototypes/repository'
 import { ensureWebsiteInboundPrototypeWorkspace } from '@/lib/server/prototypes/website-inbound'
 import { errorToLogContext, logger } from '@/lib/server/api/logger'
 import { createPrototypeDecisionDraft } from '@/lib/server/maxwell/prototype-decision-draft'
@@ -1262,4 +1267,297 @@ export async function listInboundPmQueue() {
   }
 
   return data ?? []
+}
+
+// ----------------------------------------------------------------------------
+// G22 — GET /api/integrations/website/prototype-signed-read/[token]
+// Per ADR-024 + cross-repo-webhook-v1.md §6 + spec
+// fase-3-g22-prototype-signed-read-handler-impl.
+// ----------------------------------------------------------------------------
+
+// Inline humanization map per spec §"Project-type label derivation" + ADR-024
+// §Amendments A1 (OQ-1 resolution). Small / closed; <=5 expected values. A
+// future iteration may extract to `lib/maxwell/project-type-labels.ts` if the
+// table grows or requires localization.
+const PROTOTYPE_PROJECT_TYPE_LABELS: Record<string, string> = {
+  landing: 'Landing Page',
+  landing_page: 'Landing Page',
+  webapp: 'Web App',
+  web_app: 'Web App',
+  ecommerce: 'E-commerce',
+  e_commerce: 'E-commerce',
+  sitio_web: 'Sitio Web',
+  website: 'Sitio Web',
+}
+
+function humanizePrototypeProjectType(raw: string | null | undefined): string {
+  if (!raw || typeof raw !== 'string') return 'Sitio Web'
+  return PROTOTYPE_PROJECT_TYPE_LABELS[raw.trim().toLowerCase()] ?? 'Sitio Web'
+}
+
+function extractMaxwellProjectType(snapshot: unknown): string | null {
+  if (!snapshot || typeof snapshot !== 'object') return null
+  const value = (snapshot as Record<string, unknown>).project_type
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+// Cache header values are byte-exact per ADR-024 D7 / AC-9. Do not mutate.
+const PROTOTYPE_SIGNED_READ_CACHE_CONTROL_OK =
+  'private, max-age=30, stale-while-revalidate=60'
+const PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR = 'no-store'
+
+export interface PrototypeSignedReadSuccessBody {
+  data: {
+    workspace: {
+      id: string
+      version: number
+      generatedAt: string
+    }
+    leadContext: {
+      businessName: string
+      projectTypeLabel: string
+    }
+    prototype: {
+      deployedUrl: string | null
+      generatedHtml: string | null
+    }
+    decision: {
+      status: 'pending' | 'accepted' | 'rejected'
+      notes: string | null
+      decidedAt: string | null
+    }
+    lifecycle: {
+      tokenSuperseded: boolean
+      iterationNumber: number
+    }
+    serverTime: string
+  }
+}
+
+export interface PrototypeSignedReadErrorBody {
+  error: string
+  code: 'PROTOTYPE_READ_TOKEN_NOT_FOUND' | 'PROTOTYPE_READ_TOKEN_SUPERSEDED' | 'PROTOTYPE_READ_LEAD_DELETED' | 'PROTOTYPE_READ_INTERNAL_FAILED'
+}
+
+export type PrototypeSignedReadServeResult =
+  | {
+      kind: 'ok'
+      status: 200
+      cacheControl: typeof PROTOTYPE_SIGNED_READ_CACHE_CONTROL_OK
+      body: PrototypeSignedReadSuccessBody
+      log: {
+        level: 'info'
+        event: 'website.prototype_signed_read.served'
+        fields: {
+          workspaceId: string
+          decisionStatus: 'pending' | 'accepted' | 'rejected'
+          workspaceVersion: number
+        }
+      }
+    }
+  | {
+      kind: 'error'
+      status: 404 | 410 | 500
+      cacheControl: typeof PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR
+      body: PrototypeSignedReadErrorBody
+      log: {
+        level: 'warn'
+        event: 'website.prototype_signed_read.rejected'
+        fields: {
+          code: PrototypeSignedReadErrorBody['code']
+          tokenPrefix: string
+        }
+      }
+    }
+
+/**
+ * Synchronous business handler for `GET /api/integrations/website/prototype-signed-read/[token]`.
+ *
+ * The route file owns HMAC verify + rate-limit + response wrapping (NextResponse
+ * + `x-request-id` + `Cache-Control` header). This helper owns lifecycle
+ * resolution and the response-body construction via the positive allowlist
+ * (ADR-024 D4 §"Sanitization") — no `{ ...workspaceRow }` spreads, every field
+ * is named explicitly.
+ *
+ * Lifecycle check order per ADR-024 D2 §"Tombstone case":
+ *   1. Token resolves to workspace row? Otherwise `404 PROTOTYPE_READ_TOKEN_NOT_FOUND`.
+ *   2. Parent `leads` row missing on the join? `410 PROTOTYPE_READ_LEAD_DELETED`.
+ *   3. `share_token_superseded_at` non-null? `410 PROTOTYPE_READ_TOKEN_SUPERSEDED`.
+ *   4. Compute version + build response.
+ */
+export async function serveWebsitePrototypeSignedRead(
+  token: string,
+  clientOverride?: SupabaseAdminClient,
+): Promise<PrototypeSignedReadServeResult> {
+  const client = clientOverride ?? createSupabaseAdminClient()
+  const tokenPrefix = token.slice(0, 8)
+
+  let row: PrototypeSignedReadRow | null
+  try {
+    row = await getPrototypeWorkspaceByShareToken(client, token)
+  } catch (err) {
+    logger.error('website.prototype_signed_read.lookup_failed', {
+      tokenPrefix,
+      ...errorToLogContext(err),
+    })
+    return {
+      kind: 'error',
+      status: 500,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'Internal server error resolving prototype share token.',
+        code: 'PROTOTYPE_READ_INTERNAL_FAILED',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_INTERNAL_FAILED', tokenPrefix },
+      },
+    }
+  }
+
+  if (!row) {
+    return {
+      kind: 'error',
+      status: 404,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'No prototype matches the supplied share token.',
+        code: 'PROTOTYPE_READ_TOKEN_NOT_FOUND',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_TOKEN_NOT_FOUND', tokenPrefix },
+      },
+    }
+  }
+
+  if (!row.lead) {
+    return {
+      kind: 'error',
+      status: 410,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'The prototype is no longer available.',
+        code: 'PROTOTYPE_READ_LEAD_DELETED',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_LEAD_DELETED', tokenPrefix },
+      },
+    }
+  }
+
+  if (row.workspace.share_token_superseded_at !== null) {
+    return {
+      kind: 'error',
+      status: 410,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'This prototype has been replaced by a newer version.',
+        code: 'PROTOTYPE_READ_TOKEN_SUPERSEDED',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_TOKEN_SUPERSEDED', tokenPrefix },
+      },
+    }
+  }
+
+  // 200 path — compute version + build response via positive allowlist.
+  let version: number
+  try {
+    version = await countPrototypeWorkspaceVersionForLead(
+      client,
+      row.lead.id,
+      row.workspace.id,
+    )
+  } catch (err) {
+    logger.error('website.prototype_signed_read.version_count_failed', {
+      tokenPrefix,
+      workspaceId: row.workspace.id,
+      ...errorToLogContext(err),
+    })
+    return {
+      kind: 'error',
+      status: 500,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'Internal server error resolving prototype iteration number.',
+        code: 'PROTOTYPE_READ_INTERNAL_FAILED',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_INTERNAL_FAILED', tokenPrefix },
+      },
+    }
+  }
+
+  const businessName = row.lead.company ?? row.lead.name
+  const projectTypeLabel = humanizePrototypeProjectType(
+    extractMaxwellProjectType(row.lead.maxwell_snapshot),
+  )
+
+  const decisionStatus: 'pending' | 'accepted' | 'rejected' =
+    row.decision === null
+      ? 'pending'
+      : row.decision.decision === 'accepted'
+        ? 'accepted'
+        : 'rejected'
+
+  // Sanitizer rule per ADR-024 D3: `decision.notes` is non-null ONLY when
+  // status === 'rejected' AND the row has a notes value. Even if 'accepted'
+  // rows carried a notes value, we strip it here.
+  const decisionNotes =
+    decisionStatus === 'rejected' && row.decision !== null ? row.decision.notes : null
+  const decisionDecidedAt =
+    decisionStatus !== 'pending' && row.decision !== null ? row.decision.decided_at : null
+
+  const body: PrototypeSignedReadSuccessBody = {
+    data: {
+      workspace: {
+        id: row.workspace.id,
+        version,
+        generatedAt: row.workspace.created_at,
+      },
+      leadContext: {
+        businessName,
+        projectTypeLabel,
+      },
+      prototype: {
+        deployedUrl: row.workspace.demo_url,
+        generatedHtml: row.workspace.generated_content,
+      },
+      decision: {
+        status: decisionStatus,
+        notes: decisionNotes,
+        decidedAt: decisionDecidedAt,
+      },
+      lifecycle: {
+        tokenSuperseded: row.workspace.share_token_superseded_at !== null,
+        iterationNumber: version,
+      },
+      serverTime: new Date().toISOString(),
+    },
+  }
+
+  return {
+    kind: 'ok',
+    status: 200,
+    cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_OK,
+    body,
+    log: {
+      level: 'info',
+      event: 'website.prototype_signed_read.served',
+      fields: {
+        workspaceId: row.workspace.id,
+        decisionStatus,
+        workspaceVersion: version,
+      },
+    },
+  }
 }

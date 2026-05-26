@@ -1,7 +1,8 @@
 # ADR-024: Prototype signed-read cross-repo wire contract — symmetric inbound read entry for Pull B.2 render
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-05-26 — see §Amendments at end)
 **Date:** 2026-05-25
+**Amended:** 2026-05-26 (A1 — lead-context source column mapping correction; see §Amendments)
 **Deciders:** Pedro (Engineering owner), system-architecture
 **Supersedes:** None
 **Discharges:** ADR-023 D8 (deferred render-read endpoint declaration)
@@ -212,8 +213,8 @@ ADR-023 D3 covers every state the GET endpoint needs to render. No edge case req
 | `data.workspace.id` | uuid | `prototype_workspaces.id` | NoonWeb needs the workspace UUID to attach to the subsequent `prototype-decision` POST (ADR-023 §5.2 `prototype_workspace_id` payload field). Without it, NoonWeb would have to derive it client-side or store it from a separate fetch. | Flat string UUID. No nesting. |
 | `data.workspace.version` | integer ≥ 1 | derived from iteration history (count of preceding workspaces under the same lead, +1) | NoonWeb may render "Prototipo V2" badge. Operator-relevant for UX clarity. Operator inferred this is the right place from L-4 (iteration cap) tracking. | Integer 1, 2, 3, …; matches ADR-023 D7 `max_iterations_per_lead` semantics. |
 | `data.workspace.generatedAt` | ISO 8601 | `prototype_workspaces.created_at` | NoonWeb may render "Generado el dd/mm". Audit visibility. | ISO 8601 string (UTC), not Unix epoch — symmetric with `decision.decidedAt` and other timestamps in the cross-repo doc. |
-| `data.leadContext.businessName` | string | `leads.business_name` | NoonWeb renders "Prototipo para `{businessName}`" as the page header. The lead context is **minimal by design** — only fields the client themselves provided during the Maxwell chat. | Required (non-null); a lead without `business_name` is a data integrity bug that should be caught upstream by Maxwell ingestion validation. |
-| `data.leadContext.projectTypeLabel` | string | derived from `leads.project_type` (an enum → human label mapping done App-side) | NoonWeb renders a human-readable project type ("Landing Page", "Web App", "E-commerce"). Reduces NoonWeb's coupling to App's internal enum strings. | Required string. **The raw enum `leads.project_type` is NOT in the response** — only the derived label is exposed. This decouples the cross-repo contract from App's internal enum evolution. |
+| `data.leadContext.businessName` | string | `leads.company` (with `leads.name` fallback) — see §Amendments A1 | NoonWeb renders "Prototipo para `{businessName}`" as the page header. The lead context is **minimal by design** — only fields the client themselves provided during the Maxwell chat. | Required (non-null); handler coalesces `company ?? name` so the field is always populated. |
+| `data.leadContext.projectTypeLabel` | string | derived from `leads.maxwell_snapshot ->> 'project_type'` (with default `'Sitio Web'` fallback) — see §Amendments A1 | NoonWeb renders a human-readable project type ("Landing Page", "Web App", "E-commerce"). Reduces NoonWeb's coupling to App's internal source field shape. | Required string. **The raw `maxwell_snapshot.project_type` is NOT in the response** — only the derived label is exposed. This decouples the cross-repo contract from App's internal Maxwell snapshot evolution. |
 | `data.prototype.deployedUrl` | string \| null | `prototype_workspaces.deployed_url` (whatever column B-slice declares) | The primary render path: NoonWeb embeds an iframe pointing at the Vercel-hosted prototipo URL. | Nullable for the "build in progress" state. |
 | `data.prototype.generatedHtml` | string \| null | `prototype_workspaces.generated_html` (or equivalent) | Fallback render path for when no iframe URL is available (e.g., static HTML prototipo). NoonWeb decides which path to render based on which field is non-null. | Nullable. **Both may be null simultaneously** during the "build in progress" state; NoonWeb-side UX renders "preparando tu prototipo". |
 | `data.decision.status` | `'pending' \| 'accepted' \| 'rejected'` | derived from `prototype_decisions` row presence + `decision` column | The state-machine value NoonWeb uses to switch the page's mode (accept/reject CTA vs accepted-banner vs rejected-banner). | Closed enum of three values. **`pending` is the default when no `prototype_decisions` row exists for the workspace.** |
@@ -238,7 +239,7 @@ The following App-internal fields MUST NEVER appear in the response. The sanitiz
 - `prototype_credit_settings.*` (admin config)
 - `prototype_decisions.client_user_agent` (forensic — client-side already knows their own UA)
 - `prototype_decisions.webhook_event_id` (transport-ledger forensic linkage)
-- The full `leads.project_type` raw enum value (only the derived label is exposed per `leadContext.projectTypeLabel`)
+- The raw `leads.maxwell_snapshot ->> 'project_type'` value (only the derived label is exposed per `leadContext.projectTypeLabel`; see §Amendments A1)
 - `prototype_workspaces.share_token` (must NEVER echo back the token in the response body — defense against log scraping)
 - `share_token_superseded_at` (the timestamp itself; only the boolean `tokenSuperseded` derived from it is exposed)
 
@@ -531,7 +532,55 @@ These are the files a future implementation iteration will touch. **None are tou
 - **Author:** system-architecture (Claude Code session, 2026-05-25), reviewed by Pedro
 - **Supersedes:** nothing
 - **Superseded by:** nothing
-- **Amendments:** none
+- **Amendments:** A1 (2026-05-26) — see §Amendments
 - **Discharges:** ADR-023 D8 (deferred render-read endpoint declaration)
 
 This ADR formalizes the 4 operator-locked decisions (L-1..L-4 from project memory) and the 2 architectural locks inherited from ADR-023 (D3 + D8), then resolves 7 architecturally load-bearing questions (Q-arch-1..Q-arch-7) into a single durable record. The cross-repo wire contract document `docs/integrations/cross-repo-webhook-v1.md` §6 is the wire-level extension that NoonWeb-dev reads against (Docs materializes in the next turn); this ADR is the rationale and decision register that future App-side iterations reference.
+
+---
+
+## Amendments
+
+### A1 (2026-05-26) — Lead-context source column mapping correction
+
+**Context.** During the Analysis phase of iteration `fase-3-g22-prototype-signed-read-handler-impl` (G22 handler implementation), the operator-driven OQ-1 surfaced that two source columns referenced in D3 + cross-repo doc §6.4 do not exist in the actual schema:
+
+- `leads.business_name` — does NOT exist. The `leads` table has `name`, `company`, `notes`, `maxwell_snapshot` (JSONB), etc.
+- `leads.project_type` — does NOT exist as a column on `leads`. `project_type` exists only on `lead_proposals` (which is the wrong source — proposals don't exist at prototipo render time, before client decides).
+
+The drift is between the ADR's prose (firmed 2026-05-25) and the schema as it stands at migration 0060. The endpoint has not shipped yet, so no NoonWeb client implementation breaks; the cost of amendment is bounded to docs.
+
+**Decision.** Adopt the mapping verified empirically by Analysis against `lib/server/supabase/database.types.ts`:
+
+| Response field | Original (incorrect) source | Amended source | Handler derivation |
+|---|---|---|---|
+| `data.leadContext.businessName` | `leads.business_name` | `leads.company` with `leads.name` fallback | `businessName = lead.company ?? lead.name` |
+| `data.leadContext.projectTypeLabel` | derived from `leads.project_type` enum | derived from `leads.maxwell_snapshot ->> 'project_type'` with `'Sitio Web'` default | `projectTypeLabel = humanizeLabel(maxwellSnapshot?.project_type ?? 'Sitio Web')` |
+
+**Rationale.**
+
+1. **`leads.company` is the natural source for businessName.** It's the only column on `leads` that semantically maps to "client business / company name". The `leads.name` fallback covers the edge case where the lead was created without explicit company info (Maxwell may infer from chat).
+2. **`leads.maxwell_snapshot` is the canonical home for client-provided context at prototipo render time.** Maxwell ingestion populates this JSONB with `business.industry`, `mainPain`, `noonOpportunity`, `prototypeIdea`, `objections`, `speech`, and **`project_type`** (the client's self-described project type, e.g., `'landing'`, `'web_app'`, `'ecommerce'`). The handler humanizes the value into the existing label vocabulary (`'Landing Page'`, `'Web App'`, `'E-commerce'`, etc.) using a small inline map.
+3. **`'Sitio Web'` default is a safe fallback** when Maxwell snapshot is malformed or missing the project_type field. NoonWeb renders a generic "Prototipo para `{businessName}` — Sitio Web" header — better than an empty label or a 500.
+
+**Backend constraints (G22 handler iteration):**
+
+- The repository helper `getPrototypeWorkspaceByShareToken` (new, scope of the handler iteration) MUST include `leads.company`, `leads.name`, and `leads.maxwell_snapshot` in its SELECT projection.
+- The handler builds the response via the existing field-by-field allowlist pattern (D4) and applies the derivations inline (no new shared helper required; ~10 lines).
+- The humanization map (`projectTypeLabel` value transformation) lives inline in the handler. If it grows >5 entries or requires localization, a future iteration may extract it to `lib/maxwell/project-type-labels.ts`. Out of scope for the G22 handler iteration.
+
+**Forbidden by A1:**
+
+- Adding `leads.business_name` or `leads.project_type` columns to the schema as a "make the contract fit" workaround. The contract is what amends; the schema is the source of truth.
+- Mapping `businessName` from `leads.maxwell_snapshot ->> 'company'` (the snapshot may carry stale or pre-edit data; `leads.company` is the operator-curated truth).
+
+**Coordination with NoonWeb-dev:**
+
+NoonWeb-dev has not yet acknowledged §6 (per the open issue tracked in `docs/handoffs/2026-05-25-maxwell-chat-cross-repo-contracts-noonweb-handoff.md`). The cross-repo doc §6.4 is updated in the same turn as this amendment; NoonWeb-dev's pending acknowledgment now covers the corrected wire mapping. No additional ceremony required; flag in the same handoff that the contract was amended pre-acknowledgment.
+
+**Where this amendment lives in source:**
+
+- D3 §"Field-by-field rationale and tradeoffs" table (rows for `businessName` + `projectTypeLabel`) edited inline with cross-reference to §Amendments A1.
+- §"Explicitly NOT in the response (sanitization strip-list)" line about `leads.project_type` edited to refer to `maxwell_snapshot ->> 'project_type'`.
+- `docs/integrations/cross-repo-webhook-v1.md` §6.4 field semantics updated in the same turn.
+- Iteration spec `specs/fase-3-g22-prototype-signed-read-handler-impl.md` OQ-1 marked RESOLVED with reference here.

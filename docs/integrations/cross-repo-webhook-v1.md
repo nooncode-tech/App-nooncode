@@ -399,7 +399,7 @@ A successful response after retry MUST be treated identically to a successful re
 
 ## 6. Inbound read endpoint — `prototype-signed-read` (Web → App, GET)
 
-> **Status:** wire contract firmed by ADR-024 (2026-05-25). Endpoint code lands in a follow-up handler iteration (App-side). Persistence (`prototype_workspaces.share_token` + `share_token_superseded_at`) lands in B-slice per ADR-023. NoonWeb route `/maxwell/prototipo/[token]` render against this endpoint lands in D-slice (NoonWeb-side).
+> **Status:** wire contract firmed by ADR-024 (2026-05-25; amended A1 2026-05-26 — lead-context source column mapping correction). **Endpoint shipped 2026-05-26 via PR `feat/g22-prototype-signed-read-handler` (App-side handler).** Persistence (`prototype_workspaces.share_token` + `share_token_superseded_at`) shipped in B-slice per ADR-023 (PR #110, 2026-05-26). NoonWeb route `/maxwell/prototipo/[token]` render against this endpoint lands in D-slice (NoonWeb-side, pending).
 > **Anchor:** see `docs/adrs/ADR-024-prototype-signed-read-cross-repo-contract.md` for the rationale behind every shape decision below. This is the symmetric **read** entry to §5 `prototype-decision`'s **write** entry; together they materialize Pull pattern B.2 from ADR-023 L-2 / D8.
 
 ### 6.1 Endpoint
@@ -475,8 +475,8 @@ Payload shape per ADR-024 D3 (Choice C: prototipo content + minimal lead context
 - `data.workspace.id` — `prototype_workspaces.id`. NoonWeb forwards this as the `prototype_workspace_id` defensive cross-check in the subsequent §5 `prototype-decision` POST.
 - `data.workspace.version` — integer ≥ 1, derived from iteration history under the same lead (+1 per regenerate). Matches the ADR-023 D7 `max_iterations_per_lead` semantics.
 - `data.workspace.generatedAt` — `prototype_workspaces.created_at` as ISO 8601 (UTC).
-- `data.leadContext.businessName` — `leads.business_name`. Required (non-null).
-- `data.leadContext.projectTypeLabel` — **derived label** from `leads.project_type` (e.g., `"Landing Page"`, `"Web App"`, `"E-commerce"`). The raw enum value is NOT exposed. Decouples NoonWeb from App's internal enum evolution.
+- `data.leadContext.businessName` — handler derives `leads.company ?? leads.name` (always populated). See ADR-024 §Amendments A1 (2026-05-26) for the source-column mapping correction.
+- `data.leadContext.projectTypeLabel` — **derived label** from `leads.maxwell_snapshot ->> 'project_type'` (e.g., `"Landing Page"`, `"Web App"`, `"E-commerce"`) with default `"Sitio Web"` when the snapshot is missing or malformed. The raw source value is NOT exposed. Decouples NoonWeb from App's internal Maxwell snapshot evolution. See ADR-024 §Amendments A1.
 - `data.prototype.deployedUrl` — Vercel-hosted prototipo URL (iframe target). Nullable during the "build in progress" state.
 - `data.prototype.generatedHtml` — fallback static HTML when no iframe URL is available. Nullable. Both may be null simultaneously during the build window; NoonWeb renders "preparando tu prototipo".
 - `data.decision.status` — `'pending'` (no `prototype_decisions` row), `'accepted'`, or `'rejected'`.
@@ -594,7 +594,7 @@ Per ADR-024 D4 (ad-hoc inline allowlist; formal `lib/security/project-isolation.
 - `prototype_credit_settings.*` (admin config)
 - `prototype_decisions.client_user_agent` (forensic — client-side already knows their own UA)
 - `prototype_decisions.webhook_event_id` (transport-ledger forensic linkage)
-- The raw `leads.project_type` enum value (only the derived `leadContext.projectTypeLabel` is exposed)
+- The raw `leads.maxwell_snapshot ->> 'project_type'` value (only the derived `leadContext.projectTypeLabel` is exposed; see ADR-024 §Amendments A1)
 - `prototype_workspaces.share_token` (MUST NEVER echo back the token in the response body — defense against log scraping)
 - `share_token_superseded_at` raw timestamp (only the derived boolean `lifecycle.tokenSuperseded` is exposed)
 
@@ -851,7 +851,7 @@ These files implement the v1 contract on the App side. The Go rewrite will reimp
 - Inbound proposal route: `app/api/integrations/website/inbound-proposal/route.ts`
 - Inbound payment route: `app/api/integrations/website/payment-confirmed/route.ts`
 - Inbound prototype-decision route: `app/api/integrations/website/prototype-decision/route.ts` (B+C slice implemented 2026-05-25 — migration `0060_phase_23a_prototype_decisions.sql` + handler `receiveWebsitePrototypeDecision` + Maxwell draft `lib/server/maxwell/prototype-decision-draft.ts`; contract per ADR-023 + §5)
-- Inbound prototype-signed-read route: `app/api/integrations/website/prototype-signed-read/[token]/route.ts` (handler iteration — pending implementation as of 2026-05-25; contract firmed by ADR-024 + §6 of this doc)
+- Inbound prototype-signed-read route: `app/api/integrations/website/prototype-signed-read/[token]/route.ts` (handler shipped 2026-05-26; handler-helper `serveWebsitePrototypeSignedRead` in `lib/server/website-integration.ts`; repository helpers `getPrototypeWorkspaceByShareToken` + `countPrototypeWorkspaceVersionForLead` in `lib/server/prototypes/repository.ts`; contract per ADR-024 + §6)
 - Schema definitions: `lib/server/website-integration.ts`
 - Outbound proposal-review-decision sender: `sendProposalReviewDecisionToWebsite` in `lib/server/website-integration.ts`
 - Idempotency table: `supabase/migrations/0034_phase_14a_website_inbound_integration.sql`
@@ -873,7 +873,7 @@ These files implement the v1 contract on the App side. The Go rewrite will reimp
 | ~~Secret rotation procedure not documented as a runbook~~ | ~~Low~~ | — | **Resolved 2026-05-26** — `docs/runbooks/cross-repo-secret-rotation.md` covers planned + incident-driven rotation for all App-nooncode secrets, with §4 dedicated to cross-repo coordination of `NOON_WEBSITE_WEBHOOK_SECRET`. Codifies the G13 (2026-05-17) `.mcp.json` rotation pattern. |
 | `prototype-decision` endpoint code not yet implemented (C-slice) | Tracking | App | Contract firmed by ADR-023 + §5; route + handler + Maxwell-draft fire-and-forget pending. NoonWeb-dev acknowledgment of §5 required before D-slice (NoonWeb route) builds |
 | `prototype_decisions` table + `prototype_workspaces.share_token` + `prototype_credit_settings.max_iterations_per_lead` migration not yet applied (B-slice) | Tracking | App | Per ADR-023 D4 + D7. Soft prerequisite of C-slice handler and §6 handler iteration |
-| `prototype-signed-read` endpoint code not yet implemented (handler iteration) | Tracking | App | Contract firmed by ADR-024 + §6 of this doc (2026-05-25). Route `app/api/integrations/website/prototype-signed-read/[token]/route.ts` + handler module + sanitization allowlist (ADR-024 D4) + tests pending. Soft dependency on B-slice (`prototype_workspaces.share_token` column). NoonWeb-dev acknowledgment of §6 required before D-slice render-fetch builds against it. |
+| ~~`prototype-signed-read` endpoint code not yet implemented (handler iteration)~~ | ~~Tracking~~ | — | **Resolved 2026-05-26** — handler shipped per ADR-024 + §6 + ADR-024 §Amendments A1. Route + handler-helper + repository helpers + 10 unit tests landed on branch `feat/g22-prototype-signed-read-handler` (PR pending). NoonWeb-dev acknowledgment of §6 still required before D-slice render-fetch builds against it; wire shape unchanged from §6 firmed contract. |
 | NoonWeb-side render of `/maxwell/prototipo/[token]` against §6 (D-slice render iteration) | Tracking | NoonWeb | Out of this repo. NoonWeb consumes the firmed §6 contract: GET fetch on render, switch UI mode based on `data.decision.status`, render error states per §6.5 (404 / 410 / 401 / 429 / 500), embed iframe at `data.prototype.deployedUrl`. Bilateral smoke test required against the App-side handler before NoonWeb production deploy. |
 
 ---

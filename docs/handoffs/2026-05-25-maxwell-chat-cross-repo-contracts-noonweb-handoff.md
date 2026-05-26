@@ -7,6 +7,8 @@
 > - GET render: `docs/adrs/ADR-024-prototype-signed-read-cross-repo-contract.md` + `docs/integrations/cross-repo-webhook-v1.md` §6.
 > - POST decision: `docs/adrs/ADR-023-prototype-decision-cross-repo-contract.md` + `docs/adrs/ADR-025-prototype-decision-impl-architecture-firmups.md` + `docs/integrations/cross-repo-webhook-v1.md` §5.
 > **Status:** both wire contracts **frozen**. NoonWeb-side D-slice render+decision iteration can start NOW against this handoff. Both App-side handler iterations are independent slices (the contracts decouple both sides). Bilateral smoke test required before NoonWeb production deploy.
+>
+> **2026-05-26 amendment notice (ADR-024 A1):** ADR-024 was amended on 2026-05-26 to correct the lead-context source column mapping (`businessName` and `projectTypeLabel`). **The wire shape NoonWeb sees is unchanged** — same field names, same types, same response envelope. The change is App-internal (which DB columns App reads to populate the response). No NoonWeb-dev action required; this is a transparency-only flag. See `docs/adrs/ADR-024-prototype-signed-read-cross-repo-contract.md` §Amendments for detail.
 
 This handoff is the operational unblock for NoonWeb-dev to build the full Maxwell-chat lead-creation flow at `/maxwell/prototipo/[token]`. It compacts both wire contracts into the minimal surface NoonWeb needs to build the route end-to-end. For any rationale not covered here, defer to the source-of-truth ADRs.
 
