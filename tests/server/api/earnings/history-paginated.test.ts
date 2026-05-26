@@ -21,7 +21,7 @@ const earningsHistorySchema = z.object({
 // ---------------------------------------------------------------------------
 
 type Principal = { userId: string; role: string }
-type GetPrincipalFn = () => Promise<Principal | null>
+type RequirePrincipalFn = () => Promise<Principal>
 type CreateClientFn = () => Promise<unknown>
 type ListEarningsFn = (
   client: unknown,
@@ -40,18 +40,20 @@ interface EarningsRow {
 }
 
 function makeGETHandler(deps: {
-  getCurrentPrincipal: GetPrincipalFn
+  requirePrincipal: RequirePrincipalFn
   createSupabaseServerClient: CreateClientFn
   listEarningsHistory: ListEarningsFn
   listAllEarningsHistory: ListAllEarningsFn
 }) {
   return async function GET(request: Request) {
     try {
-      const principal = await deps.getCurrentPrincipal()
-
-      if (!principal) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
+      // Post-G24 (2026-05-26): the real route at app/api/earnings/history/route.ts
+      // uses `requirePrincipal()` which throws AuthGuardError on no session;
+      // the outer try/catch + toErrorResponse maps that to 401 UNAUTHENTICATED.
+      // This mock mirrors the real flow — the 'unauthenticated' code path is
+      // covered by sibling tests (e.g., list-notifications.test.ts) and is not
+      // re-exercised here. This file's tests focus on pagination behavior.
+      const principal = await deps.requirePrincipal()
 
       const { searchParams } = new URL(request.url)
       const parsed = earningsHistorySchema.parse({
@@ -94,8 +96,8 @@ function makeUrl(params: Record<string, string> = {}) {
 
 const fakeClient = {}
 const createClientStub: CreateClientFn = async () => fakeClient
-const adminPrincipal: GetPrincipalFn = async () => ({ userId: 'admin-1', role: 'admin' })
-const userPrincipal: GetPrincipalFn = async () => ({ userId: 'user-1', role: 'sales' })
+const adminPrincipal: RequirePrincipalFn = async () => ({ userId: 'admin-1', role: 'admin' })
+const userPrincipal: RequirePrincipalFn = async () => ({ userId: 'user-1', role: 'sales' })
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -109,7 +111,7 @@ test('default limit is 100', async () => {
   }
 
   const GET = makeGETHandler({
-    getCurrentPrincipal: userPrincipal,
+    requirePrincipal: userPrincipal,
     createSupabaseServerClient: createClientStub,
     listEarningsHistory: listStub,
     listAllEarningsHistory: async () => [],
@@ -128,7 +130,7 @@ test('limit cap is 200 (not 100)', async () => {
   }
 
   const GET = makeGETHandler({
-    getCurrentPrincipal: userPrincipal,
+    requirePrincipal: userPrincipal,
     createSupabaseServerClient: createClientStub,
     listEarningsHistory: listStub,
     listAllEarningsHistory: async () => [],
@@ -155,7 +157,7 @@ test('?cursor accepted and passed through to repository', async () => {
   }
 
   const GET = makeGETHandler({
-    getCurrentPrincipal: userPrincipal,
+    requirePrincipal: userPrincipal,
     createSupabaseServerClient: createClientStub,
     listEarningsHistory: listStub,
     listAllEarningsHistory: async () => [],
@@ -174,7 +176,7 @@ test('malformed cursor → first page (cursor null), status 200', async () => {
   }
 
   const GET = makeGETHandler({
-    getCurrentPrincipal: userPrincipal,
+    requirePrincipal: userPrincipal,
     createSupabaseServerClient: createClientStub,
     listEarningsHistory: listStub,
     listAllEarningsHistory: async () => [],
@@ -199,7 +201,7 @@ test('admin path calls listAllEarningsHistory (returns all users earnings)', asy
   }
 
   const GET = makeGETHandler({
-    getCurrentPrincipal: adminPrincipal,
+    requirePrincipal: adminPrincipal,
     createSupabaseServerClient: createClientStub,
     listEarningsHistory: listUserStub,
     listAllEarningsHistory: listAllStub,
@@ -219,7 +221,7 @@ test('non-admin scopes to userId — listEarningsHistory receives correct profil
   }
 
   const GET = makeGETHandler({
-    getCurrentPrincipal: userPrincipal,
+    requirePrincipal: userPrincipal,
     createSupabaseServerClient: createClientStub,
     listEarningsHistory: listStub,
     listAllEarningsHistory: async () => [],

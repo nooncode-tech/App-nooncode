@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
-import { getCurrentPrincipal } from '@/lib/server/auth/session'
+import { requirePrincipal } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { decodeCursor } from '@/lib/server/pagination/cursor'
 import { buildCursorResponse } from '@/lib/server/pagination/envelope'
@@ -14,11 +14,7 @@ const earningsHistorySchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    const principal = await getCurrentPrincipal()
-
-    if (!principal) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const principal = await requirePrincipal()
 
     const { searchParams } = new URL(request.url)
     const parsed = earningsHistorySchema.parse({
