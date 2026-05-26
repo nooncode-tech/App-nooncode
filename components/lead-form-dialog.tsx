@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { NicheSelector } from '@/components/maxwell/niche-selector'
 import { toast } from 'sonner'
 
 interface LeadFormDialogProps {
@@ -41,6 +42,7 @@ interface LeadFormDialogProps {
     notes?: string
     tags: string[]
     leadOrigin?: LeadOrigin
+    nicheId?: string
   }
 }
 
@@ -65,6 +67,7 @@ interface LeadFormState {
   tags: string
   locationText: string
   leadOrigin: LeadOrigin
+  nicheId: string
 }
 
 function createEmptyFormData(): LeadFormState {
@@ -80,6 +83,7 @@ function createEmptyFormData(): LeadFormState {
     tags: '',
     locationText: '',
     leadOrigin: 'inbound',
+    nicheId: '',
   }
 }
 
@@ -124,6 +128,7 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
     tags: editLead?.tags?.join(', ') || '',
     locationText: '',
     leadOrigin: editLead?.leadOrigin || 'inbound',
+    nicheId: editLead?.nicheId || '',
   })
 
   const handleLocationChange = (value: string) => {
@@ -171,6 +176,7 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
         longitude: geoCoords?.longitude,
         leadOrigin: formData.leadOrigin,
         autoFollowupEnabled: true,
+        nicheId: formData.nicheId || undefined,
       }
 
       if (editLead) {
@@ -293,6 +299,20 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Nicho (opcional)</Label>
+            <p className="text-xs text-muted-foreground">
+              Etiqueta este lead con un nicho para trazabilidad y filtrado.
+            </p>
+            <NicheSelector
+              selectedIds={formData.nicheId ? [formData.nicheId] : []}
+              onChange={(ids) =>
+                setFormData((prev) => ({ ...prev, nicheId: ids[0] ?? '' }))
+              }
+              maxSelections={1}
+            />
           </div>
 
           <div className="space-y-2">

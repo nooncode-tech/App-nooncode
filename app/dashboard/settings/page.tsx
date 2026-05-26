@@ -50,7 +50,9 @@ import {
   DollarSign,
   Loader2,
   Info,
+  Target,
 } from 'lucide-react'
+import { NicheSelector } from '@/components/maxwell/niche-selector'
 
 export default function SettingsPage() {
   const { authMode, user, switchRole } = useAuth()
@@ -70,6 +72,11 @@ export default function SettingsPage() {
   // Notification preferences
   const [notifPrefs, setNotifPrefs] = useState<Record<string, boolean>>({})
   const [notifSaving, setNotifSaving] = useState(false)
+
+  // Maxwell niche preferences (Prospección tab — sales/pm/admin)
+  const [nichePrefs, setNichePrefs] = useState<string[]>([])
+  const [nichePrefsLoading, setNichePrefsLoading] = useState(false)
+  const [nichePrefsSaving, setNichePrefsSaving] = useState(false)
 
   // Admin earnings credit state
   const [creditTargetId, setCreditTargetId] = useState('')
@@ -105,6 +112,43 @@ export default function SettingsPage() {
       .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!isSupabaseMode) return
+    if (!(user?.role === 'sales' || user?.role === 'pm' || user?.role === 'admin')) return
+    setNichePrefsLoading(true)
+    fetch('/api/maxwell/niche-preferences')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        const ids = json?.data?.preferredNicheIds
+        if (Array.isArray(ids)) setNichePrefs(ids)
+      })
+      .catch(() => {})
+      .finally(() => setNichePrefsLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.role, isSupabaseMode])
+
+  const handleSaveNichePrefs = async (nextIds: string[]) => {
+    setNichePrefs(nextIds)
+    setNichePrefsSaving(true)
+    try {
+      const res = await fetch('/api/maxwell/niche-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferredNicheIds: nextIds }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        toast.error(json?.error ?? 'No se pudieron guardar las preferencias')
+        return
+      }
+      toast.success('Preferencias de nichos guardadas')
+    } catch {
+      toast.error('Error de red al guardar preferencias')
+    } finally {
+      setNichePrefsSaving(false)
+    }
+  }
 
   const handleSaveNotifPrefs = async () => {
     setNotifSaving(true)
@@ -163,6 +207,7 @@ export default function SettingsPage() {
   if (!user) return null
 
   const isAdmin = user.role === 'admin'
+  const isSalesOrPm = user.role === 'sales' || user.role === 'pm' || user.role === 'admin'
 
   const settingsUserRows = selectSettingsUserRows(users)
   const settingsDirectoryRows = selectSettingsDirectoryRows(settingsUsers)
@@ -204,6 +249,12 @@ export default function SettingsPage() {
             <Bell className="size-4 mr-2" />
             Notificaciones
           </TabsTrigger>
+          {isSalesOrPm && (
+            <TabsTrigger value="prospeccion">
+              <Target className="size-4 mr-2" />
+              Prospección
+            </TabsTrigger>
+          )}
           {isAdmin && isSupabaseMode && (
             <TabsTrigger value="prototypes">
               <Coins className="size-4 mr-2" />
@@ -674,6 +725,44 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Prospección (Maxwell niche preferences) — sales | pm | admin */}
+        {isSalesOrPm && (
+          <TabsContent value="prospeccion" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Target className="size-5" />
+                  Nichos preferidos para Maxwell
+                </CardTitle>
+                <CardDescription>
+                  Elige hasta 2 nichos por defecto para tus búsquedas Maxwell. Podrás cambiarlos por búsqueda desde Leads.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {nichePrefsLoading ? (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    Cargando preferencias...
+                  </div>
+                ) : (
+                  <NicheSelector
+                    selectedIds={nichePrefs}
+                    onChange={handleSaveNichePrefs}
+                    maxSelections={2}
+                    disabled={nichePrefsSaving || !isSupabaseMode}
+                  />
+                )}
+                {nichePrefsSaving && (
+                  <p className="text-xs text-muted-foreground inline-flex items-center gap-2">
+                    <Loader2 className="size-3 animate-spin" />
+                    Guardando…
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
         {/* Prototype Credit Settings */}
         {isSupabaseMode && (
           <>

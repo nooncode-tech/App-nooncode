@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { buildLeadDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
 import { useData } from '@/lib/data-context'
+import { deserializeLead } from '@/lib/leads/serialization'
 import type { Lead, LeadStatus } from '@/lib/types'
 import {
   leadStatusLabels,
@@ -48,6 +49,7 @@ import { LeadCard } from '@/components/lead-card'
 import { LeadDetail } from '@/components/lead-detail'
 import { LeadFormDialog } from '@/components/lead-form-dialog'
 import { LeadImportDialog } from '@/components/lead-import-dialog'
+import { NicheSelector } from '@/components/maxwell/niche-selector'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Search,
@@ -74,6 +76,11 @@ interface MaxwellSearchResponse {
     runId: string
     status: 'completed' | 'insufficient' | 'needs_review' | 'failed'
     leads: LeadWire[]
+    leadsByNiche?: Array<{
+      nicheId: string
+      nicheLabel: string
+      leads: LeadWire[]
+    }>
     counts: {
       candidatesFound: number
       candidatesAudited: number
@@ -138,6 +145,35 @@ export default function LeadsPage() {
   const [manualZoneOpen, setManualZoneOpen] = useState(false)
   const [manualZoneText, setManualZoneText] = useState('')
   const [lastMaxwellResult, setLastMaxwellResult] = useState<MaxwellSearchResponse['data'] | null>(null)
+  const [selectedNicheIds, setSelectedNicheIds] = useState<string[]>([])
+  // Hydrate selectedNicheIds from user's saved preferences on mount. If the
+  // endpoint isn't live yet or returns nothing, we keep the empty array —
+  // the user can still pick niches manually for this search.
+  // TODO(backend-integration): verify endpoint contract once Backend ships
+  //   `/api/maxwell/niche-preferences` (frozen in Architecture C4).
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+    let cancelled = false
+    fetch('/api/maxwell/niche-preferences')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.data?.preferredNicheIds) return
+        const ids = Array.isArray(json.data.preferredNicheIds)
+          ? (json.data.preferredNicheIds as string[])
+          : []
+        if (ids.length > 0) {
+          setSelectedNicheIds(ids)
+        }
+      })
+      .catch(() => {
+        // Silent: preferences are optional. User can still pick manually.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authMode])
   const requestedLeadId = searchParams.get('leadId')
   // Tracks a leadId we just closed so the open-from-URL effect does not
   // race-reopen the dialog while router.replace propagates the cleared
@@ -268,11 +304,18 @@ export default function LeadsPage() {
       setMaxwellStageIndex((current) => Math.min(current + 1, maxwellStages.length - 1))
     }, 1600)
 
+    // Architecture C5: pass nicheIds only when populated. Backend silently
+    // drops unknown ids and tolerates the field being absent.
+    const bodyPayload =
+      selectedNicheIds.length > 0
+        ? { ...payload, nicheIds: selectedNicheIds }
+        : payload
+
     try {
       const response = await fetch('/api/maxwell/lead-searches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(bodyPayload),
       })
       const json = await response.json().catch(() => null)
 
@@ -469,6 +512,23 @@ export default function LeadsPage() {
       </div>
       <div className="app-section">
 
+      {/* Niche selector (Maxwell search refinement). Hydrated from saved
+          preferences on mount; can be overridden per-search. */}
+      <Card className="p-4">
+        <div className="mb-2">
+          <p className="text-sm font-medium">Nichos objetivo (opcional)</p>
+          <p className="text-xs text-muted-foreground">
+            Elige hasta 2 nichos para que Maxwell enfoque la búsqueda. Sin nichos, Maxwell busca en todos los rubros.
+          </p>
+        </div>
+        <NicheSelector
+          selectedIds={selectedNicheIds}
+          onChange={setSelectedNicheIds}
+          maxSelections={2}
+          disabled={isMaxwellSearching}
+        />
+      </Card>
+
       {(isMaxwellSearching || lastMaxwellResult) && (
         <Card className="p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -497,6 +557,45 @@ export default function LeadsPage() {
               value={((maxwellStageIndex + 1) / maxwellStages.length) * 100}
             />
           )}
+        </Card>
+      )}
+
+      {lastMaxwellResult?.leadsByNiche && lastMaxwellResult.leadsByNiche.length > 0 && (
+        <Card className="p-4">
+          <p className="text-sm font-medium mb-2">Resultados por nicho</p>
+          <div className="space-y-3">
+            {lastMaxwellResult.leadsByNiche.map((group) => (
+              <div key={group.nicheId} className="rounded-md border bg-muted/20 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">{group.nicheLabel}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {group.leads.length === 0
+                      ? 'Sin resultados'
+                      : `${group.leads.length} lead(s)`}
+                  </span>
+                </div>
+                {group.leads.length > 0 && (
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    {group.leads.map((wireLead) => {
+                      const lead = deserializeLead(wireLead)
+                      return (
+                        <li key={lead.id}>
+                          <button
+                            type="button"
+                            className="text-left hover:underline"
+                            onClick={() => handleOpenLead(lead)}
+                          >
+                            {lead.name}
+                            {lead.company ? ` — ${lead.company}` : ''} · Score {lead.score}
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 

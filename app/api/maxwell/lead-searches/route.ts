@@ -56,6 +56,11 @@ export async function POST(request: Request) {
         runId: result.runId,
         status: result.status,
         leads: result.leads.map(mapLeadRowToWire),
+        leadsByNiche: result.leadsByNiche?.map((group) => ({
+          nicheId: group.nicheId,
+          nicheLabel: group.nicheLabel,
+          leads: group.leads.map(mapLeadRowToWire),
+        })),
         counts: result.counts,
         radiusKm: result.radiusKm,
         message: result.message,

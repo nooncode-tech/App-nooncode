@@ -150,6 +150,7 @@ export interface Lead {
   lastContactedAt?: Date
   nextFollowUpAt?: Date
   autoFollowupEnabled: boolean
+  nicheId?: string
 }
 
 export interface LeadDraft extends Omit<
