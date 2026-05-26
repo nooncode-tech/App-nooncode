@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getCurrentPrincipal } from '@/lib/server/auth/session'
+import { requirePrincipal } from '@/lib/server/auth/guards'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import {
@@ -17,8 +17,7 @@ const withdrawSchema = z.object({
 
 export async function GET() {
   try {
-    const principal = await getCurrentPrincipal()
-    if (!principal) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const principal = await requirePrincipal()
 
     const client = await createSupabaseServerClient()
     const requests = await listWithdrawalRequestsForActor(client, principal.userId)
@@ -31,8 +30,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const principal = await getCurrentPrincipal()
-    if (!principal) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const principal = await requirePrincipal()
 
     const body = withdrawSchema.parse(await request.json())
     const client = await createSupabaseServerClient()
