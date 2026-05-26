@@ -212,6 +212,17 @@
   - `components/lead-detail.tsx`
   - seller location/manual-zone search, allowed-radius calculation, Overpass/Nominatim candidate sourcing, GPT-first structured audit, score >= 60 filtering, dedupe by `maxwell_dedupe_key`, 3-batch/60-candidate cap, durable `maxwell_search_runs`, durable `maxwell_lead_feedback`, and `salesSpeech` variants with browser/device TTS are implemented in code
   - still requires fresh runtime validation after the source-PDF context sync
+- Maxwell Lead Engine V1 now supports niche-based segmentation (`docs/adrs/ADR-026-maxwell-lead-engine-gpt-5-5-model-selection.md`):
+  - Durable catalog of 20 families / 126 micro-niches in `lib/server/maxwell/niches.ts` (data-only, safe for client import).
+  - Shared `components/maxwell/niche-selector.tsx` (2-level family → micro-niche, controlled component) used in 3 surfaces: `/dashboard/leads` (`maxSelections=2`), `/dashboard/settings` tab Prospección (`maxSelections=2`, gated `sales|pm|admin`), and `components/lead-form-dialog.tsx` (`maxSelections=1`).
+  - `/api/maxwell/lead-searches` accepts optional `nicheIds: string[]` (max 2). Sequential per-niche search with Overpass whitelist (`[key=value]` per niche) and deterministic 5-leads/2-niches distribution implemented as a two-phase collect-then-allocate flow: each niche collects up to 3 publishable audits, then `allocateLeads` applies the C1 tie-break (when both pools ≥3, the niche with the higher `max(topScore)` takes 3 and the other 2; tied topScore → lexicographic `nicheId` wins). Slack absorption handles `[1, 4]`, `[3, 1]`, `[0, 5]`, `[2, 2]` per the matrix.
+  - `maxwellAuditSchema` is byte-invariant: niche context lands only in the system prompt via `auditHint`.
+  - New endpoint `GET / PATCH /api/maxwell/niche-preferences` (admin-client + principal pin, sales/pm/admin role gate, whitelist via `getNicheById`, max 2 ids).
+  - Audit model switched from `gpt-4o-mini` to `gpt-5.5` (single literal change inside `lib/server/maxwell/lead-engine.ts`; rollback = one-line revert).
+  - Migration `0061_phase_23b_maxwell_niche_system.sql` adds `leads.niche_id TEXT`, `maxwell_search_runs.niche_ids TEXT[]`, `user_profiles.preferred_niche_ids TEXT[] DEFAULT '{}'`. Additive, nullable, idempotent (`if not exists`), no RLS changes.
+  - `database.types.ts` is intentionally NOT regenerated in this PR; confined casts live in `lib/server/leads/mappers.ts` (3 sites), `lib/server/leads/repository.ts` (4 sites), `lib/server/maxwell/lead-engine.ts` (run-insert + buildLeadInsert), and `app/api/maxwell/niche-preferences/route.ts` (select/update casts). All carry `// TODO(types-regen)` comments. Follow-up PR runs `supabase gen types typescript` and removes them.
+  - Browser smoke E2E of the niche flow is deferred by design — Validator returns PARTIAL on this iteration.
+  - Daily search rate-limit (3/seller) counts per HTTP request, not per niche. Per-niche Overpass candidate cap (60) is per niche, not aggregated.
 - Supabase Advisor security posture (last walkthrough 2026-05-20 per B12 / FASE 3):
   - **0 errors** in the latest advisor run.
   - **Leaked-password protection**: remains a manual Supabase Auth setting at Dashboard → Auth → Password Security → HaveIBeenPwned check. Not a repo code change. Re-evaluate at the next walkthrough — enabling is recommended before any external-client exposure.

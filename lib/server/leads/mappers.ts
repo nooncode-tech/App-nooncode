@@ -43,6 +43,8 @@ export function mapLeadRowToWire(row: LeadRowWithProfiles): LeadWire {
     lastContactedAt: row.last_contacted_at,
     nextFollowUpAt: row.next_follow_up_at,
     autoFollowupEnabled: row.auto_followup_enabled,
+    // TODO(types-regen): cast until database.types.ts is regenerated post-merge
+    nicheId: (row as unknown as { niche_id?: string | null }).niche_id ?? null,
   }
 }
 
@@ -70,6 +72,8 @@ export function mapCreateLeadInputToInsert(
     latitude: input.latitude ?? null,
     longitude: input.longitude ?? null,
     lead_origin: input.leadOrigin,
+    // TODO(types-regen): cast until database.types.ts is regenerated post-merge
+    ...({ niche_id: input.nicheId ?? null } as unknown as Record<string, never>),
   }
 }
 
@@ -98,6 +102,10 @@ export function mapUpdateLeadInputToUpdate(input: UpdateLeadInput): LeadUpdate {
   if (input.latitude !== undefined) update.latitude = input.latitude ?? null
   if (input.longitude !== undefined) update.longitude = input.longitude ?? null
   if (input.autoFollowupEnabled !== undefined) update.auto_followup_enabled = input.autoFollowupEnabled
+  if (input.nicheId !== undefined) {
+    // TODO(types-regen): cast until database.types.ts is regenerated post-merge
+    ;(update as unknown as { niche_id: string | null }).niche_id = input.nicheId ?? null
+  }
 
   return update
 }

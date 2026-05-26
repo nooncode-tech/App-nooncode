@@ -322,6 +322,7 @@ function mapLeadDraftToRequest(leadData: LeadDraft) {
     latitude: leadData.latitude ?? null,
     longitude: leadData.longitude ?? null,
     leadOrigin: leadData.leadOrigin,
+    nicheId: leadData.nicheId ?? null,
   }
 }
 
@@ -346,6 +347,7 @@ function mapLeadUpdatesToRequest(updates: LeadUpdates) {
   if (updates.nextFollowUpAt !== undefined) {
     payload.nextFollowUpAt = updates.nextFollowUpAt?.toISOString() ?? null
   }
+  if (updates.nicheId !== undefined) payload.nicheId = updates.nicheId ?? null
 
   return payload
 }

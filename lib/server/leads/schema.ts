@@ -55,6 +55,7 @@ const baseLeadShape = {
   latitude: z.number().min(-90).max(90).optional().nullable(),
   longitude: z.number().min(-180).max(180).optional().nullable(),
   leadOrigin: leadOriginSchema,
+  nicheId: z.string().trim().min(1).max(64).optional().nullable(),
 }
 
 export const createLeadSchema = z.object({
@@ -83,6 +84,7 @@ export const updateLeadSchema = z
     locationText: baseLeadShape.locationText,
     latitude: baseLeadShape.latitude,
     longitude: baseLeadShape.longitude,
+    nicheId: baseLeadShape.nicheId,
     autoFollowupEnabled: z.boolean().optional(),
     // lead_origin is intentionally excluded from updates — immutable after creation
   })

@@ -37,6 +37,7 @@ const leadSelect = `
   maxwell_last_refreshed_at,
   maxwell_dedupe_key,
   maxwell_confidence,
+  niche_id,
   created_at,
   updated_at,
   assigned_profile:user_profiles!leads_assigned_to_fkey(legacy_mock_id, full_name)
@@ -60,7 +61,9 @@ export async function listLeads(
   }
 
   return {
-    rows: (data ?? []) as LeadRowWithProfiles[],
+    // TODO(types-regen): cast bridges niche_id (added by 0061) until
+    // database.types.ts is regenerated post-merge.
+    rows: (data ?? []) as unknown as LeadRowWithProfiles[],
     total: count ?? 0,
   }
 }
@@ -79,7 +82,8 @@ export async function getLeadById(
     throw new Error(`Failed to load lead: ${error.message}`)
   }
 
-  return (data ?? null) as LeadRowWithProfiles | null
+  // TODO(types-regen): cast bridges niche_id until database.types.ts is regenerated.
+  return (data ?? null) as unknown as LeadRowWithProfiles | null
 }
 
 export async function createLead(
@@ -96,7 +100,8 @@ export async function createLead(
     throw new Error(`Failed to create lead: ${error?.message ?? 'No lead returned.'}`)
   }
 
-  return data as LeadRowWithProfiles
+  // TODO(types-regen): cast bridges niche_id until database.types.ts is regenerated.
+  return data as unknown as LeadRowWithProfiles
 }
 
 export async function updateLeadById(
@@ -115,7 +120,8 @@ export async function updateLeadById(
     throw new Error(`Failed to update lead: ${error?.message ?? 'No lead returned.'}`)
   }
 
-  return data as LeadRowWithProfiles
+  // TODO(types-regen): cast bridges niche_id until database.types.ts is regenerated.
+  return data as unknown as LeadRowWithProfiles
 }
 
 export async function deleteLeadById(client: DatabaseClient, leadId: string): Promise<void> {

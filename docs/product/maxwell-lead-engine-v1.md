@@ -123,3 +123,60 @@ Then validate:
 - prototype request path from a Maxwell lead
 
 Any missing behavior should be implemented as a small Leads/Maxwell slice only. Do not reopen website, inbound, payments, workspace, developer board, or post-payment logic.
+
+## Addendum — Sistema de nichos (Maxwell V1.1)
+
+Esta iteración añade segmentación por nicho al Lead Engine V1 sin romper el flujo genérico.
+
+### Catálogo
+
+- 20 familias de negocio agrupando 126 micro-nichos (`lib/server/maxwell/niches.ts`).
+- Cada micro-nicho declara `overpassTags` (whitelist de tags OSM) y `auditHint` (pista de contexto que se inyecta al system prompt del auditor).
+- El catálogo vive en TypeScript (sin FK en DB). Si un `leads.niche_id` queda con un id obsoleto, la UI lo trata como "Nicho desconocido".
+
+### Búsqueda por nicho
+
+- El payload de `/api/maxwell/lead-searches` acepta opcionalmente `nicheIds: string[]` (máximo 2). IDs desconocidos se descartan silenciosamente vía whitelist.
+- Cuando hay nichos, Maxwell ejecuta búsquedas Overpass **secuenciales**, una por nicho, con la whitelist `[key=value]` correspondiente.
+- Distribución 5 leads / 2 nichos (Architecture C1) — algoritmo en dos fases:
+  - **Fase 1 — recolección por nicho**: cada nicho se audita secuencialmente y recolecta hasta 3 audits publicables (cap suficiente para el escenario peor del 2-nichos). En modo 1-nicho/genérico el cap sube a 5.
+  - **Fase 2 — asignación con tie-break** (`allocateLeads`):
+    - 0/1 nicho: cap = `min(pool.length, 5)`.
+    - 2 nichos, ambos con ≥3 publicables: el nicho con `max(topScore)` toma 3, el otro 2. Empate de topScore → desempate lexicográfico por `nicheId` (menor recibe 3).
+    - 2 nichos con slack (uno < 3 publicables): el otro absorbe hasta total = 5. Casos canónicos: `[1, 4]`, `[3, 1]`, `[0, 5]`, `[2, 2]`.
+  - Los leads se insertan en orden determinístico (orden del request × ranking interno por score descendente).
+- El límite diario de 3 búsquedas/seller cuenta **por request HTTP**, no por nicho.
+- El cap de 60 candidatos por audit pass aplica **por nicho**, no agregado.
+
+### Modelo
+
+- Auditor: `openai('gpt-5.5')` reemplaza `gpt-4o-mini` (ADR-026). Rollback = revertir un único literal.
+- El `salesSpeech` calibra el tono al nicho via `auditHint` en el system prompt. El schema `maxwellAuditSchema` es invariante.
+
+### Búsqueda genérica preservada
+
+Cuando `nicheIds` está ausente o vacío, la query Overpass es byte-idéntica a la legacy (`amenity|shop|tourism|office|craft|healthcare`). El comportamiento histórico no cambia.
+
+### Endpoint nuevo
+
+`GET / PATCH /api/maxwell/niche-preferences` (`sales` | `pm` | `admin`):
+
+- Almacena `user_profiles.preferred_niche_ids` (array de hasta 2 ids del catálogo).
+- Admin-client con ownership pin (`.eq('id', principal.userId)`).
+- Whitelist server-side: `getNicheById` rechaza ids desconocidos con `400 NICHE_UNKNOWN`.
+
+### UI
+
+- **`/dashboard/leads`**: selector de 2 niveles (familia → micro-nicho) con `maxSelections=2`, hidratado desde `niche-preferences`. Resultados agrupados por nicho cuando hay grupos; lista única en otro caso.
+- **`/dashboard/settings` → tab Prospección** (gated `sales|pm|admin`): persiste preferencias vía PATCH.
+- **Formulario manual de lead**: selector con `maxSelections=1` entre "Fuente" y "Origen del lead".
+
+### Limitaciones conocidas
+
+- Zonas rurales sin cobertura OSM detallada pueden devolver `insufficient` cuando se filtra por nicho. Workaround: reintentar sin nichos para fallback genérico.
+- Browser smoke E2E del flujo nuevo queda diferido (Validator devuelve PARTIAL por diseño).
+- `database.types.ts` no se regenera en esta PR; existen 3 casts confinados en `mappers.ts` + 4 casts puente en `repository.ts` con TODOs.
+
+### Migración
+
+`supabase/migrations/0061_phase_23b_maxwell_niche_system.sql` agrega 3 columnas nullable y aditivas: `leads.niche_id TEXT`, `maxwell_search_runs.niche_ids TEXT[]`, `user_profiles.preferred_niche_ids TEXT[] DEFAULT '{}'`. Idempotente, sin cambios de RLS.

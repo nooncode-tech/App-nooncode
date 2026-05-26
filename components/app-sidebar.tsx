@@ -272,6 +272,15 @@ export function AppSidebar() {
             pathname={pathname}
           />
         )}
+
+        {!canAccessAdmin(user.role) && (user.role === 'sales' || user.role === 'pm') && (
+          <NavGroup
+            label="Cuenta"
+            color="oklch(0.45 0.02 275)"
+            items={[{ title: 'Configuracion', href: '/dashboard/settings', icon: Settings }]}
+            pathname={pathname}
+          />
+        )}
       </SidebarContent>
 
       {/* ── User footer ── */}
