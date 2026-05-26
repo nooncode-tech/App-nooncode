@@ -211,6 +211,9 @@ function baseMockArgs(overrides: { developerUserId?: string | null } = {}) {
       user_profiles: [{ data: actorRow, error: null }],
       // NEW: project developer lookup
       projects: [{ data: { developer_user_id: developerUserId }, error: null }],
+      // PR #108 absorbed drift: linkInboundPrototypeWorkspaceToProject lookup
+      // (no workspace in these scenarios → early-return at website-integration.ts:157)
+      prototype_workspaces: [{ data: null, error: null }],
     },
     singleByTable: {
       lead_proposals: [{ data: proposalRow, error: null }],
@@ -363,6 +366,8 @@ test('payment-confirmed inbound: replay (link already has project_id) still call
       payments: [{ data: { id: PAYMENT_ID }, error: null }],  // existing payment found → no insert
       user_profiles: [{ data: actorRow, error: null }],
       projects: [{ data: { developer_user_id: DEVELOPER_ID }, error: null }],
+      // PR #108 absorbed drift: linkInboundPrototypeWorkspaceToProject lookup
+      prototype_workspaces: [{ data: null, error: null }],
     },
     singleByTable: {
       lead_proposals: [{ data: proposalRow, error: null }],

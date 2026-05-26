@@ -97,6 +97,7 @@ async function validateHandoffReadyMigration(admin: ReturnType<typeof createClie
       generated_content: 'https://v0.dev/demo/handoff-validation',
       generated_at: new Date().toISOString(),
       last_operation_id: randomUUID(),
+      share_token: randomUUID(),
     })
     .select('id, current_stage, status')
     .single()
