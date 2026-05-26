@@ -22,6 +22,7 @@ Audited 2026-05-09 against `feature/sprint-5-hardening`.
 | `app/api/integrations/website/inbound-proposal/route.ts` | HMAC-signed payload from marketing site (contract: `docs/integrations/cross-repo-webhook-v1.md` §3) | `readSignedWebsiteJson` from `lib/server/website-webhook-auth.ts` |
 | `app/api/integrations/website/payment-confirmed/route.ts` | HMAC-signed payload (contract: `docs/integrations/cross-repo-webhook-v1.md` §4) | `readSignedWebsiteJson` |
 | `app/api/integrations/website/prototype-decision/route.ts` | HMAC-signed payload (contract: `docs/integrations/cross-repo-webhook-v1.md` §5; B+C slice impl 2026-05-25, ledger-backed per ADR-016/ADR-023) | `readSignedWebsiteJsonWithRawBody` |
+| `app/api/integrations/website/prototype-signed-read/[token]/route.ts` | HMAC-signed GET with zero-body signing input (`${timestamp}.`); contract: `docs/integrations/cross-repo-webhook-v1.md` §6 + ADR-024 (impl 2026-05-26); rate-limit 60/min combined key `${token}:${ip}`; `Cache-Control: private, max-age=30, stale-while-revalidate=60` on 200, `no-store` on 4xx/5xx; transport ledger declined-by-design per ADR-024 D1 | `verifyWebsiteWebhookSignature` |
 | `app/api/leads/auto-followup/route.ts` | `Authorization: Bearer ${CRON_SECRET}` | inline `isCronAuthorized` |
 | `app/api/notifications/route.ts` | Authenticated session principal | `requirePrincipal` from `lib/server/auth/guards.ts` |
 | `app/api/notifications/[notificationId]/read/route.ts` | Authenticated session principal | `requirePrincipal` |
