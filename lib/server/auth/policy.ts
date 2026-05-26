@@ -16,7 +16,11 @@ export const teamManagerRoles: AppRole[] = ['admin', 'sales_manager', 'pm']
 export const fullStatsRoles: AppRole[] = ['admin', 'sales_manager']
 
 export const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
-  { prefix: '/dashboard/settings', access: 'admin' },
+  // `/dashboard/settings` is reachable by any authenticated user; the page
+  // itself gates each TabsTrigger (Notificaciones, Prospección stay visible
+  // to sales/pm/admin; Users, Roles, Prototypes, Earnings stay admin-only
+  // via `isAdmin && (...)` per-tab guards).
+  { prefix: '/dashboard/settings', access: 'authenticated' },
   { prefix: '/dashboard/leads', access: 'sales' },
   { prefix: '/dashboard/pipeline', access: 'sales' },
   { prefix: '/dashboard/prototypes', access: 'sales' },
