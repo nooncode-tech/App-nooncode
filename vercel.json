@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/cron/outbound-webhook-retry",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 8 * * *"
     }
   ]
 }

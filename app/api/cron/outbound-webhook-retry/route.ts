@@ -6,7 +6,8 @@ import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import { claimOutboundPendingDue } from '@/lib/server/website/outbound-webhook-events'
 import { runOutboundWebhookCronSweep } from '@/lib/server/website-integration'
 
-// Vercel Cron handler — every 5 minutes (`*/5 * * * *` per ADR-027 D4).
+// Vercel Cron handler — once per day at 08:00 UTC (`0 8 * * *`).
+// ADR-027 D4 originally specified */5 * * * *; downgraded to daily due to Vercel Hobby plan limit.
 // Sweeps `public.outbound_webhook_events` rows in status='pending' whose
 // `next_retry_at` is due and drives them through the same dispatcher loop
 // the inline path uses. The cron and inline paths SHARE the same
