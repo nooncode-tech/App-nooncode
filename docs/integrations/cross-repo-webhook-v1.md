@@ -475,8 +475,8 @@ Payload shape per ADR-024 D3 (Choice C: prototipo content + minimal lead context
 - `data.workspace.id` — `prototype_workspaces.id`. NoonWeb forwards this as the `prototype_workspace_id` defensive cross-check in the subsequent §5 `prototype-decision` POST.
 - `data.workspace.version` — integer ≥ 1, derived from iteration history under the same lead (+1 per regenerate). Matches the ADR-023 D7 `max_iterations_per_lead` semantics.
 - `data.workspace.generatedAt` — `prototype_workspaces.created_at` as ISO 8601 (UTC).
-- `data.leadContext.businessName` — `leads.business_name`. Required (non-null).
-- `data.leadContext.projectTypeLabel` — **derived label** from `leads.project_type` (e.g., `"Landing Page"`, `"Web App"`, `"E-commerce"`). The raw enum value is NOT exposed. Decouples NoonWeb from App's internal enum evolution.
+- `data.leadContext.businessName` — handler derives `leads.company ?? leads.name` (always populated). See ADR-024 §Amendments A1 (2026-05-26) for the source-column mapping correction.
+- `data.leadContext.projectTypeLabel` — **derived label** from `leads.maxwell_snapshot ->> 'project_type'` (e.g., `"Landing Page"`, `"Web App"`, `"E-commerce"`) with default `"Sitio Web"` when the snapshot is missing or malformed. The raw source value is NOT exposed. Decouples NoonWeb from App's internal Maxwell snapshot evolution. See ADR-024 §Amendments A1.
 - `data.prototype.deployedUrl` — Vercel-hosted prototipo URL (iframe target). Nullable during the "build in progress" state.
 - `data.prototype.generatedHtml` — fallback static HTML when no iframe URL is available. Nullable. Both may be null simultaneously during the build window; NoonWeb renders "preparando tu prototipo".
 - `data.decision.status` — `'pending'` (no `prototype_decisions` row), `'accepted'`, or `'rejected'`.
@@ -594,7 +594,7 @@ Per ADR-024 D4 (ad-hoc inline allowlist; formal `lib/security/project-isolation.
 - `prototype_credit_settings.*` (admin config)
 - `prototype_decisions.client_user_agent` (forensic — client-side already knows their own UA)
 - `prototype_decisions.webhook_event_id` (transport-ledger forensic linkage)
-- The raw `leads.project_type` enum value (only the derived `leadContext.projectTypeLabel` is exposed)
+- The raw `leads.maxwell_snapshot ->> 'project_type'` value (only the derived `leadContext.projectTypeLabel` is exposed; see ADR-024 §Amendments A1)
 - `prototype_workspaces.share_token` (MUST NEVER echo back the token in the response body — defense against log scraping)
 - `share_token_superseded_at` raw timestamp (only the derived boolean `lifecycle.tokenSuperseded` is exposed)
 
