@@ -307,6 +307,7 @@ test('composeReplayResponseFromLedger returns wire shape when link snapshot exis
   const ledger: WebsiteWebhookEventRecord = {
     shouldProcess: false,
     eventId: 'evt-x',
+    endpoint: 'payment-confirmed',
     status: 'processed',
     attemptCount: 1,
     externalSessionId: 'sess-007',
@@ -341,6 +342,7 @@ test('composeReplayResponseFromLedger omits projectId when link has no project_i
   const ledger: WebsiteWebhookEventRecord = {
     shouldProcess: false,
     eventId: 'evt-y',
+    endpoint: 'inbound-proposal',
     status: 'processed',
     attemptCount: 1,
     externalSessionId: 'sess-008',
@@ -360,6 +362,7 @@ test('composeReplayResponseFromLedger returns null when linkId is null on the le
   const ledger: WebsiteWebhookEventRecord = {
     shouldProcess: false,
     eventId: 'evt-z',
+    endpoint: 'inbound-proposal',
     status: 'processed',
     attemptCount: 1,
     externalSessionId: null,
@@ -376,6 +379,7 @@ test('composeReplayResponseFromLedger returns null when link row is missing in D
   const ledger: WebsiteWebhookEventRecord = {
     shouldProcess: false,
     eventId: 'evt-w',
+    endpoint: 'inbound-proposal',
     status: 'processed',
     attemptCount: 1,
     externalSessionId: 'sess',

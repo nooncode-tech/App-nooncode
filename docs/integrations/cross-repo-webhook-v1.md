@@ -1,6 +1,6 @@
 # Cross-repo webhook contract — NoonApp ↔ NoonWeb (v1)
 
-> **Status:** v1 is the live, deployed protocol. **No `X-Webhook-Schema-Version` header is enforced yet** — that arrives with v2 (see §10).
+> **Status:** v1 is the live, deployed protocol. **No `X-Webhook-Schema-Version` header is enforced yet** — that arrives with v2 (see §11).
 > **Owners:** App side and Web side change this protocol together. Any change requires simultaneous PRs in both repos and is announced in the daily cross-repo sync.
 > **Audience:** Go dev (will reimplement App side in Go), NoonWeb dev (owns Web side), App Next.js maintainers (current implementation).
 > **Source of truth:** this document. Any divergence between the running code and this doc is a bug — open an issue, do not change the contract by editing one side silently.
@@ -18,18 +18,23 @@ inbound-proposal       ───────────────────
 payment-confirmed      ──────────────────────►  POST /api/integrations/website/payment-confirmed
 prototype-decision     ──────────────────────►  POST /api/integrations/website/prototype-decision
 
+prototype-signed-read  ──────────────────────►  GET  /api/integrations/website/
+(NoonWeb fetches at                                  prototype-signed-read/[token]
+ render time, Pull B.2)
+
 POST /api/integrations/        ◄──────────────  proposal-review-decision
      noon-app/
      proposal-review-decision
 ```
 
-Four message types today:
+Five message types today (four inbound on App + one outbound from App):
 1. **Web → App: `inbound-proposal`** — a client completed Maxwell on the website and a proposal was created. App creates a lead + proposal + inbound link, queues PM review.
 2. **Web → App: `payment-confirmed`** — the client paid for an approved proposal. App activates the project, records payment, kicks off delivery.
 3. **Web → App: `prototype-decision`** — a client accepted or rejected a prototipo at the NoonWeb route `/maxwell/prototipo/[token]`. App records the decision and, on accept, fires a fire-and-forget Maxwell draft propuesta for the seller to complete. See §5.
-4. **App → Web: `proposal-review-decision`** — the PM approved/rejected/requested changes on an inbound proposal. Web updates client UI.
+4. **Web → App: `prototype-signed-read`** — NoonWeb server-side fetches prototipo data from App at render time of `/maxwell/prototipo/[token]` (Pull pattern B.2 per ADR-023 D8 / ADR-024). This is the only **GET** entry; the others are POST. See §6.
+5. **App → Web: `proposal-review-decision`** — the PM approved/rejected/requested changes on an inbound proposal. Web updates client UI.
 
-All four share the same auth + signing protocol. They differ only in URL, payload, and response.
+All five share the same auth + signing protocol. They differ only in URL/method, payload, and response.
 
 ---
 
@@ -44,6 +49,14 @@ signed_payload = `${unix_timestamp_seconds}.${raw_request_body}`
 signature      = hex(hmac_sha256(NOON_WEBSITE_WEBHOOK_SECRET, signed_payload))
 header value   = `sha256=${signature}`
 ```
+
+**Empty-body signing input (GET endpoints).** For GET entries (§6 `prototype-signed-read` is the only GET today), the request body is empty by HTTP convention. The signing input is the **natural extension** of the general form with `bodyText = ""`:
+
+```
+signed_payload (GET) = `${unix_timestamp_seconds}.`     // timestamp + literal dot + empty body
+```
+
+That is, the trailing dot is preserved and the body segment is the empty string. No serialization shim, no canonicalization of the URL path, no inclusion of headers in the signing input. `verifyWebsiteWebhookSignature` in `lib/server/website-webhook-auth.ts` consumes the body text as-read from the request — for a GET the read returns `""` and the verifier computes `hmac_sha256(secret, ${timestamp}.)` byte-identically with the sender. Per ADR-024 D1 this convention is locked; do NOT introduce alternative shims (e.g., signing over the URL path) that would diverge from this rule.
 
 The shared secret is the same string on both sides. It is stored in environment variables:
 - App side: `NOON_WEBSITE_WEBHOOK_SECRET`
@@ -161,7 +174,7 @@ HTTP status: `201` if newly created, `200` if idempotent.
 
 ### 3.5 Error responses
 
-See §7 for common error shape.
+See §8 for common error shape.
 
 | HTTP | Code | When |
 |---|---|---|
@@ -216,7 +229,7 @@ If `link.external_payment_id` is already set to a **different** value, the recei
 
 The receiver requires the proposal's `review_status` to be `approved` before activating the project. If the proposal is still `pending_review`, `changes_requested`, `rejected`, or `cancelled`, the receiver returns `409 Conflict` with code `INBOUND_PAYMENT_REQUIRES_PM_APPROVAL`.
 
-This guarantees: a client cannot bypass PM review by paying directly. The website must enforce this on its side too (do not show the pay button until App webhook confirms the proposal is approved — see §6).
+This guarantees: a client cannot bypass PM review by paying directly. The website must enforce this on its side too (do not show the pay button until App webhook confirms the proposal is approved — see §7).
 
 ### 4.5 Success response
 
@@ -252,7 +265,7 @@ HTTP status: `201` if newly activated, `200` if idempotent (payment already reco
 
 ## 5. Inbound webhook — `prototype-decision` (Web → App)
 
-> **Status:** wire contract firmed by ADR-023 (2026-05-23). Endpoint code lands in a follow-up iteration (C-slice). Persistence (`prototype_decisions` table + `prototype_workspaces.share_token` + `share_token_superseded_at` + `prototype_credit_settings.max_iterations_per_lead`) lands in B-slice. NoonWeb route `/maxwell/prototipo/[token]` lands in D-slice (NoonWeb-side).
+> **Status:** **Implemented 2026-05-25** (iteration `fase-3-adr-023-b-c-slice-prototype-decision-impl`). B-slice + C-slice landed bundled per ADR-025 D3 via migration `supabase/migrations/0060_phase_23a_prototype_decisions.sql` (persistence + RPC) plus route `app/api/integrations/website/prototype-decision/route.ts` and handler `receiveWebsitePrototypeDecision` in `lib/server/website-integration.ts`. NoonWeb route `/maxwell/prototipo/[token]` remains D-slice (NoonWeb-side).
 > **Anchor:** see `docs/adrs/ADR-023-prototype-decision-cross-repo-contract.md` for the rationale behind every shape decision below.
 
 ### 5.1 Endpoint
@@ -280,11 +293,11 @@ HTTP status: `201` if newly activated, `200` if idempotent (payment already reco
 - `token` is the **authoritative** identifier. The handler resolves `token` → `prototype_workspaces.share_token` server-side. The opaque shape and rotation rules are App-internal (see §5.6 lifecycle).
 - `prototype_workspace_id` is **defensive**. NoonWeb already holds this UUID from the Pull B.2 render-time fetch; sending it back lets the handler cross-validate that the token-resolved row matches the workspace NoonWeb rendered. Mismatch → `409 PROTOTYPE_DECISION_IDENTIFIER_MISMATCH`.
 - `decision` MUST be exactly `'accepted'` or `'rejected'`. Any other value → `400 PROTOTYPE_DECISION_INVALID_DECISION`.
-- `notes` is optional but strongly encouraged on `rejected`. Stored verbatim on `prototype_decisions.notes`. No length cap beyond the cross-repo §7 common validation envelope; sender SHOULD truncate to ≤2000 chars to stay within reasonable JSON payload sizes.
+- `notes` is optional but strongly encouraged on `rejected`. Stored verbatim on `prototype_decisions.notes`. No length cap beyond the cross-repo §8 common validation envelope; sender SHOULD truncate to ≤2000 chars to stay within reasonable JSON payload sizes.
 
 ### 5.3 Idempotency
 
-**Transport-level (per ADR-016 / §8.2):** identical to the other two inbound entries. Identity key `(endpoint, signature_hash)` where `endpoint = 'prototype-decision'` and `signature_hash = sha256(${timestamp}.${bodyText})`. Bit-identical replay (same `bodyText`, same `x-noon-timestamp`, same `x-noon-signature`) returns the original wire-shape response with HTTP `200` and `idempotent: true`. The handler MUST sit behind the existing `website_webhook_events` ledger; the `endpoint` CHECK constraint is extended to include `'prototype-decision'` in the B-slice migration.
+**Transport-level (per ADR-016 / §10.2):** identical to the other two inbound entries. Identity key `(endpoint, signature_hash)` where `endpoint = 'prototype-decision'` and `signature_hash = sha256(${timestamp}.${bodyText})`. Bit-identical replay (same `bodyText`, same `x-noon-timestamp`, same `x-noon-signature`) returns the original wire-shape response with HTTP `200` and `idempotent: true`. The handler MUST sit behind the existing `website_webhook_events` ledger; the `endpoint` CHECK constraint is extended to include `'prototype-decision'` in the B-slice migration.
 
 **No payload-level idempotency.** Specifically, a `decision_id` UUID, `Idempotency-Key` header, or any other payload-level dedup mechanism is forbidden per ADR-023 D1. Transport ledger is the single layer.
 
@@ -313,7 +326,7 @@ HTTP status: `201` if newly recorded, `200` if idempotent replay (bit-identical 
 
 ### 5.5 Error responses
 
-Common shape per §7.
+Common shape per §8.
 
 | HTTP | Code | When |
 |---|---|---|
@@ -378,21 +391,241 @@ NoonWeb's signed POST to this endpoint follows the same retry rules as the other
 
 - `2xx` → success; do not retry.
 - `4xx` → terminal failure; do NOT retry. Surface error to the client per the §5.5 code mapping.
-- `5xx` or network error → MAY retry with exponential backoff. Bit-identical retries are detected by the App-side ledger and return `200 idempotent: true` per §5.3 / §9.2 (transport-level idempotency) / ADR-016 D6. Recommended cap: 3 attempts with backoff 1s / 5s / 30s.
+- `5xx` or network error → MAY retry with exponential backoff. Bit-identical retries are detected by the App-side ledger and return `200 idempotent: true` per §5.3 / §10.2 (transport-level idempotency) / ADR-016 D6. Recommended cap: 3 attempts with backoff 1s / 5s / 30s.
 
 A successful response after retry MUST be treated identically to a successful response on first attempt. The `idempotent` flag in the response data is informational; the wire-shape is the same.
 
 ---
 
-## 6. Outbound webhook — `proposal-review-decision` (App → Web)
+## 6. Inbound read endpoint — `prototype-signed-read` (Web → App, GET)
+
+> **Status:** wire contract firmed by ADR-024 (2026-05-25; amended A1 2026-05-26 — lead-context source column mapping correction). **Endpoint shipped 2026-05-26 via PR `feat/g22-prototype-signed-read-handler` (App-side handler).** Persistence (`prototype_workspaces.share_token` + `share_token_superseded_at`) shipped in B-slice per ADR-023 (PR #110, 2026-05-26). NoonWeb route `/maxwell/prototipo/[token]` render against this endpoint lands in D-slice (NoonWeb-side, pending).
+> **Anchor:** see `docs/adrs/ADR-024-prototype-signed-read-cross-repo-contract.md` for the rationale behind every shape decision below. This is the symmetric **read** entry to §5 `prototype-decision`'s **write** entry; together they materialize Pull pattern B.2 from ADR-023 L-2 / D8.
 
 ### 6.1 Endpoint
+
+`GET /api/integrations/website/prototype-signed-read/[token]`
+
+The token is the URL path parameter. App-issued opaque identifier matching `prototype_workspaces.share_token`. Same token NoonWeb received from the workspace creation / regenerate event; same token that authorizes the §5 `prototype-decision` POST.
+
+### 6.2 Direction and trigger
+
+- **Direction:** NoonWeb → App. App responds; App is the system of record for prototipo content + lead context + decision state. NoonWeb is the render layer.
+- **Trigger:** NoonWeb's server (not the client browser) hits this endpoint at render time of `/maxwell/prototipo/[token]` to fetch the data needed to render the page. NoonWeb may revalidate within the cache window (§6.8) without re-hitting App.
+- **NOT triggered by:** the client browser directly. App has no client-authenticated path (ADR-010). All traffic to this endpoint is server-to-server signed by the cross-repo HMAC.
+
+### 6.3 Request — headers and HMAC envelope
+
+Required headers (per §2):
+
+| Header | Value | Notes |
+|---|---|---|
+| `x-noon-timestamp` | Unix seconds (integer string) | Sender's clock at signing time |
+| `x-noon-signature` | `sha256=<hex>` | HMAC-SHA256 of `${timestamp}.` (empty body — see §2.1) |
+
+No `content-type` header is required on a GET (no body). The handler does NOT read or parse a request body.
+
+**Signing input (per §2.1 empty-body convention):**
+
+```
+signed_payload = `${unix_timestamp_seconds}.`     // trailing dot + empty string
+signature      = hex(hmac_sha256(NOON_WEBSITE_WEBHOOK_SECRET, signed_payload))
+header value   = `sha256=${signature}`
+```
+
+Secret: `NOON_WEBSITE_WEBHOOK_SECRET` — the same value used for the three inbound POST entries (§3 / §4 / §5). **No new env var** per ADR-024 D1. Clock-skew window ±5min as in §2.3. URL path is **not** included in the signing input (ADR-024 D1 sub-detail).
+
+### 6.4 Success response (200 OK)
+
+Payload shape per ADR-024 D3 (Choice C: prototipo content + minimal lead context + decision state):
+
+```json
+{
+  "data": {
+    "workspace": {
+      "id": "uuid",
+      "version": 1,
+      "generatedAt": "ISO 8601 string"
+    },
+    "leadContext": {
+      "businessName": "string",
+      "projectTypeLabel": "string"
+    },
+    "prototype": {
+      "deployedUrl": "string | null",
+      "generatedHtml": "string | null"
+    },
+    "decision": {
+      "status": "pending | accepted | rejected",
+      "notes": "string | null",
+      "decidedAt": "ISO 8601 string | null"
+    },
+    "lifecycle": {
+      "tokenSuperseded": false,
+      "iterationNumber": 1
+    },
+    "serverTime": "ISO 8601 string"
+  },
+  "requestId": "string"
+}
+```
+
+**Field semantics (ADR-024 D3):**
+
+- `data.workspace.id` — `prototype_workspaces.id`. NoonWeb forwards this as the `prototype_workspace_id` defensive cross-check in the subsequent §5 `prototype-decision` POST.
+- `data.workspace.version` — integer ≥ 1, derived from iteration history under the same lead (+1 per regenerate). Matches the ADR-023 D7 `max_iterations_per_lead` semantics.
+- `data.workspace.generatedAt` — `prototype_workspaces.created_at` as ISO 8601 (UTC).
+- `data.leadContext.businessName` — handler derives `leads.company ?? leads.name` (always populated). See ADR-024 §Amendments A1 (2026-05-26) for the source-column mapping correction.
+- `data.leadContext.projectTypeLabel` — **derived label** from `leads.maxwell_snapshot ->> 'project_type'` (e.g., `"Landing Page"`, `"Web App"`, `"E-commerce"`) with default `"Sitio Web"` when the snapshot is missing or malformed. The raw source value is NOT exposed. Decouples NoonWeb from App's internal Maxwell snapshot evolution. See ADR-024 §Amendments A1.
+- `data.prototype.deployedUrl` — Vercel-hosted prototipo URL (iframe target). Nullable during the "build in progress" state.
+- `data.prototype.generatedHtml` — fallback static HTML when no iframe URL is available. Nullable. Both may be null simultaneously during the build window; NoonWeb renders "preparando tu prototipo".
+- `data.decision.status` — `'pending'` (no `prototype_decisions` row), `'accepted'`, or `'rejected'`.
+- `data.decision.notes` — non-null only when `status === 'rejected'` AND the client provided rejection notes. For `'accepted'` or `'pending'`, the field is `null` even if a notes column happens to carry a value (sanitizer enforces; §6.11).
+- `data.decision.decidedAt` — ISO 8601 of `prototype_decisions.decided_at`. Null when `status === 'pending'`.
+- `data.lifecycle.tokenSuperseded` — always `false` on a 200 response by definition (a superseded token returns 410 per §6.6). Exposed for forward-compatibility per ADR-024 D3.
+- `data.lifecycle.iterationNumber` — currently equals `workspace.version`; the `lifecycle.*` cluster is the home of forward iteration-related context (Gate B exposure, "you've done X/Y iterations").
+- `data.serverTime` — `now()` at handler time. Always present on 200. Useful for client-side clock anchoring.
+- `requestId` — per §8 common envelope. Trace correlation with App logs.
+
+**The response does NOT include an open `metadata` envelope** (unlike the POST `inbound-proposal` and `payment-confirmed` payloads, per ADR-024 D3). Closed shape is auditable; future extensions go through §16 change control.
+
+### 6.5 Response codes table
+
+Common error shape per §8. The `PROTOTYPE_READ_*` namespace is registered in the handler module's TypeScript union (handler iteration scope).
+
+| HTTP | Code | Trigger | NoonWeb portal UX |
+|---|---|---|---|
+| `200` | (no error code) | Token resolves to a workspace; not superseded; workspace renderable; decision may be pending / accepted / rejected — `data.decision.status` conveys which | Render per `data.decision.status` (CTA pending / accepted-banner / rejected-banner). |
+| `400` | (validation) | Token path-param is empty or contains forbidden characters (e.g., non-URL-safe bytes). Belt-and-suspenders against bad routing | Generic validation error. |
+| `401` | `WEBSITE_WEBHOOK_AUTH_FAILED` | HMAC missing/invalid, stale timestamp (±5min violated), missing secret. **Reused verbatim from §8.** Sender-misconfigured; not client-facing. | NoonWeb logs and surfaces a generic "service temporarily unavailable" page. |
+| `404` | `PROTOTYPE_READ_TOKEN_NOT_FOUND` | Token does not match any `prototype_workspaces.share_token` row | "Este link no es válido." |
+| `410` | `PROTOTYPE_READ_TOKEN_SUPERSEDED` | Token resolves to a workspace with `share_token_superseded_at IS NOT NULL` (regenerated to V2+) | "Este prototipo fue actualizado, pedile al vendedor el nuevo link." |
+| `410` | `PROTOTYPE_READ_LEAD_DELETED` | Parent lead has been hard-deleted (rare; FK cascade should remove the workspace too — defensive code path) | "Este prototipo ya no está disponible." |
+| `429` | (rate limit) | Combined-key rate limit exceeded — see §6.7 | NoonWeb should NOT retry within the 1-min window; surface a generic transient error. |
+| `500` | `PROTOTYPE_READ_INTERNAL_FAILED` | DB error during workspace lookup, decision lookup, or sanitization. Naming: `INTERNAL_FAILED` (no persistence happens on read; "PERSIST" would mislead) | NoonWeb surfaces a generic transient error and may retry per §6.7 rate-limit budget. |
+
+**Naming-symmetry note (ADR-024 D2).** The write entry (§5) uses `PROTOTYPE_DECISION_TOKEN_EXPIRED` (legacy from ADR-023 D5); the read entry uses `PROTOTYPE_READ_TOKEN_SUPERSEDED`. Both codes represent the same workspace state. The "superseded" naming matches the state-driven model (ADR-023 D3, no calendar TTL). Future docs amendment may align the write entry; not blocking. NoonWeb-dev maps both codes to the same UX copy.
+
+**Edge case — post-accept / post-reject (not superseded):** the endpoint returns `200` with `decision.status='accepted'` or `'rejected'` and the decision `notes` / `decidedAt` populated. NoonWeb renders the prototipo read-only with a "Ya aceptaste este prototipo" or "Lo rechazaste — esperá la próxima versión" banner. The `410` is reserved for token-superseded and lead-deleted; the decision state is conveyed inside the 200 payload. See ADR-024 D2.
+
+### 6.6 Lifecycle — token state mapping
+
+The endpoint maps the workspace lifecycle (ADR-023 D3, state-driven, no calendar TTL) to read-appropriate HTTP responses:
+
+| Workspace state | Response |
+|---|---|
+| V1 alive (current artifact under lead, not superseded) | `200` with `decision.status` = current decision (pending / accepted / rejected) |
+| V1 superseded by V2+ (`share_token_superseded_at` non-null) | `410 PROTOTYPE_READ_TOKEN_SUPERSEDED` — terminal for V1 token; client must request the new link |
+| Lead hard-deleted (cascade race or defensive path) | `410 PROTOTYPE_READ_LEAD_DELETED` — terminal |
+| Decision recorded (accept or reject) and token still alive | `200` with `decision.status` reflecting the recorded value; prototipo remains renderable until supersede |
+
+Order of checks (handler iteration): lead-deleted first, then token-superseded, then decision lookup. Deterministic so two concurrent requests racing a cascade do not see different codes. **Bit-identical 200 responses race-free** because the read is non-mutating; cache (§6.8) bounds the worst-case stale window to 90s.
+
+### 6.7 Rate limit — override of §9 defaults
+
+Per ADR-024 D6, the endpoint overrides the §9 defaults with a tighter posture:
+
+- **Namespace:** `prototype-signed-read` (new, independent counter).
+- **Limit:** 60 requests per minute (tighter than §9 default 120).
+- **Window:** 60_000 ms.
+- **Identity key:** `${token}:${remoteIp}` combined (not IP-only). `remoteIp` from `getClientIp(request)` (first hop of `x-forwarded-for`). If `remoteIp` is `'unknown'`, key degrades to `${token}:unknown` (defensive — IP detection failure does not silently disable rate limiting).
+- **Rationale:** legitimate render is 1-2 req/session/token; 60/min/(token,IP) is generous for legitimate traffic. The combined key bounds abuse against a single token from a single IP — the realistic abuse vector at pilot scale.
+
+When exceeded: `429 Too Many Requests` (common shape per §8). NoonWeb edge cache (§6.8) typically keeps actual hit rate well under the budget.
+
+### 6.8 Cache strategy — `Cache-Control` headers
+
+Per ADR-024 D7, the 200 success response includes:
+
+```
+Cache-Control: private, max-age=30, stale-while-revalidate=60
+```
+
+- `private` — token-bound + lead-context content stays in per-tenant edge buckets; never in a shared CDN tier.
+- `max-age=30` — 30 seconds of fresh cache; covers normal scroll / click cycles.
+- `stale-while-revalidate=60` — if the cache entry is stale (30-90s old), serve the stale version and revalidate in background. Upper-bound supersede-visibility window: 90s.
+
+Non-200 responses (4xx / 5xx) include:
+
+```
+Cache-Control: no-store
+```
+
+to prevent caching of error states (especially the `410 PROTOTYPE_READ_TOKEN_SUPERSEDED` which would otherwise pin a stale supersede flag in NoonWeb's edge).
+
+App does **NOT cache the response internally**. The handler is server-rendered at request time from `prototype_workspaces` + `prototype_decisions` reads. The cache headers are advisory for NoonWeb's edge / browser.
+
+**Eventual-consistency window (ADR-024 D7):** during the 30-90s stale window, a client may see "you can still accept" UI for a prototipo that has been superseded server-side. If the client clicks accept during the stale window, the §5 `prototype-decision` POST returns `410 PROTOTYPE_DECISION_TOKEN_EXPIRED`; NoonWeb's UX handles that 410 gracefully ("Este prototipo fue actualizado, pedile el nuevo link al vendedor"). This is the natural cost of the cache layer; the write-side 410 is the authoritative guard.
+
+### 6.9 Transport ledger participation — declined by design
+
+The `website_webhook_events` ledger pattern from ADR-016 (POST entries §3 / §4 / §5) is **NOT** applied to this endpoint. Per ADR-024 D1, the decline is explicit, not an oversight:
+
+1. **GET is HTTP-idempotent by construction.** Replaying the same GET twice produces the same effect (zero side effects) regardless of whether the receiver dedups. The ledger's job — transport-level dedup of replays — has nothing to defend on a read.
+2. **No state mutation → no replay-protection requirement.** ADR-016's ledger guards a forged-but-novel replay slipping past application-layer idempotency and double-writing. A read writes nothing.
+3. **Performance.** Logging every render hit to a ledger table would scale at the rate of (concurrent clients × refresh rate) per workspace — an unbounded read multiplier. The ledger's `INSERT … ON CONFLICT DO NOTHING` is fine for writes (low rate); poor for high-frequency reads.
+4. **Observability via structured logs.** Each request produces a `logger.info('website.prototype_signed_read.served', { token_hash, workspace_id, decision_status, server_time })` line (handler iteration writes this). Vercel runtime logs are the audit trail.
+
+Future Architecture seeing this endpoint without a ledger row in `website_webhook_events` MUST reference ADR-024 §D1 and NOT panic. If a future iteration adds analytics on render-fetch (e.g., "how many times did the client open this prototipo before deciding"), that analytics layer lives in NoonWeb (which already sees the render hit) or in a dedicated read-analytics table — not in the transport ledger.
+
+### 6.10 Idempotency
+
+GET is intrinsically idempotent at the HTTP layer; no application-level idempotency mechanism is needed and none is declared on this surface. Bit-identical replay returns a bit-identical 200 response (the underlying DB reads are non-mutating and deterministic for the cache window). Concurrent reads do not collide.
+
+This is the structural complement of §10 (transport-level idempotency for writes): writes need the ledger, reads do not.
+
+### 6.11 Sanitization — positive allowlist construction
+
+Per ADR-024 D4 (ad-hoc inline allowlist; formal `lib/security/project-isolation.ts` deferred), the handler iteration enforces a **positive allowlist** at egress:
+
+1. The handler constructs the response object **field-by-field from named source values**. No `{ ...workspaceRow }` spreads. No `Object.assign(response, leadRow)`. Pattern: `const response = { workspace: { id: workspaceRow.id, version: workspaceRow.version, generatedAt: workspaceRow.created_at.toISOString() }, leadContext: { ... }, ... }`.
+2. New fields added to upstream tables (`leads`, `prototype_workspaces`, `prototype_decisions`, etc.) default to "not in response" unless explicitly added to the allowlist.
+3. The handler module ships unit tests asserting that for a fixture row decorated with operator-internal fields, **none of those fields appear in the JSON response**.
+
+**Explicit strip-list (operator-internal fields that MUST NEVER appear in the response body):**
+
+- `lead_proposals.*` (no propuesta data on the prototipo surface)
+- `seller_fees.*` (per ADR-013 — seller fee is the seller's commercial decision; client never sees it on the prototipo surface)
+- `user_wallets.*`, `wallet_ledger_entries.*` (credit balance is operator-internal)
+- `user_profiles.*` (seller / PM identity is operator-internal)
+- `leads.notes`, `leads.score`, `leads.next_follow_up_at`, `leads.lead_origin` (CRM-internal)
+- `leads.assigned_to`, `leads.created_by` (operator identity)
+- `prototype_workspaces.created_by`, `prototype_workspaces.updated_at` (audit metadata)
+- `prototype_credit_settings.*` (admin config)
+- `prototype_decisions.client_user_agent` (forensic — client-side already knows their own UA)
+- `prototype_decisions.webhook_event_id` (transport-ledger forensic linkage)
+- The raw `leads.maxwell_snapshot ->> 'project_type'` value (only the derived `leadContext.projectTypeLabel` is exposed; see ADR-024 §Amendments A1)
+- `prototype_workspaces.share_token` (MUST NEVER echo back the token in the response body — defense against log scraping)
+- `share_token_superseded_at` raw timestamp (only the derived boolean `lifecycle.tokenSuperseded` is exposed)
+
+The handler emits a structured warning (`logger.warn('prototype.signed_read.allowlist.unexpected_field', { fieldName })`) if a source row contains a field not on the allowlist AND not on the explicit strip-list — canary for future schema additions that bypass the allowlist by accident.
+
+**E-1 escalation (handler iteration scope):** if sanitization logic requires more than ~2h of expansion (nested object traversal, recursive depth checks, DTO mapping), the handler iteration MUST pause and open a separate iteration to materialize `lib/security/project-isolation.ts` with the formal `sanitizeForClient()` pattern. See ADR-024 D4 for the trigger detail.
+
+### 6.12 Token lifecycle and invalidation semantics
+
+The same state-driven invalidation locked by ADR-023 D3 (and reaffirmed in §5.6 for the write entry) governs this read entry:
+
+- **V1 token is alive** while the V1 prototipo is the current artifact under the lead (no superseding V2).
+- **Regenerate to V2 invalidates V1.** B-slice persistence issues a fresh `share_token` on the new workspace row and sets `share_token_superseded_at = now()` on the prior row. A read against the prior token returns `410 PROTOTYPE_READ_TOKEN_SUPERSEDED`.
+- **Accept is NOT terminal for the read.** Once a `prototype_decisions` row exists with `decision = 'accepted'`, subsequent reads return `200` with `decision.status='accepted'` so the client can still see what they accepted (audit-preservation per ADR-024 D2).
+- **Reject is NOT terminal for the read.** Same as accept — `200` with `decision.status='rejected'` and the client's rejection notes echoed back.
+- **Hard-delete of the parent lead invalidates implicitly** via FK cascade on `prototype_workspaces.lead_id`. Returns `410 PROTOTYPE_READ_LEAD_DELETED` defensively.
+- **No calendar TTL.** A legitimate client opening the URL after weeks/months still sees the current prototipo (or `410` if superseded).
+
+NoonWeb's UX state machine maps cleanly to the union of both endpoints' responses: read-side `200 decision.status` switches the page mode; read-side `410` terminates the page with a copy banner; write-side `410` on POST after a stale 200 read is the safety net for the cache window (§6.8).
+
+---
+
+## 7. Outbound webhook — `proposal-review-decision` (App → Web)
+
+### 7.1 Endpoint
 
 `POST {NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL}`
 
 The URL is configured on the App side via the env var `NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL`. Typical value: `https://noon.example.com/api/integrations/noon-app/proposal-review-decision`. If the URL is empty, App logs and skips (review still recorded internally; Web just does not get notified).
 
-### 6.2 Request payload
+### 7.2 Request payload
 
 ```json
 {
@@ -429,7 +662,7 @@ The URL is configured on the App side via the env var `NOON_WEBSITE_REVIEW_DECIS
 
 The `decision` and `proposal.review_status` always match. They are sent both for redundancy and clarity.
 
-### 6.3 Expected response from Web
+### 7.3 Expected response from Web
 
 Web SHOULD return `2xx` to acknowledge receipt. App treats:
 - `2xx` → `review_webhook_status = 'sent'`
@@ -438,11 +671,11 @@ Web SHOULD return `2xx` to acknowledge receipt. App treats:
 
 App does NOT currently retry failed outbound webhooks automatically. This is tracked as audit finding B9 (Web side) and will be addressed by either side adding a retry queue. Recommended: Go-side rewrite implements exponential backoff retry (3-5 attempts).
 
-### 6.4 Idempotency on Web side
+### 7.4 Idempotency on Web side
 
 Web SHOULD treat the combination `(external_source, external_proposal_id, decision)` as the idempotency key. Receiving the same decision twice MUST NOT create duplicate notifications/state transitions on the client portal.
 
-### 6.5 Decision semantics
+### 7.5 Decision semantics
 
 | Decision | Client portal behavior (Web) |
 |---|---|
@@ -453,9 +686,9 @@ Web SHOULD treat the combination `(external_source, external_proposal_id, decisi
 
 ---
 
-## 7. Common error response shape
+## 8. Common error response shape
 
-All four endpoints (3 inbound on App, 1 outbound from App) return errors in a consistent shape when they fail:
+All endpoints (4 inbound on App — three POST + one GET — and 1 outbound from App) return errors in a consistent shape when they fail:
 
 ```json
 {
@@ -469,14 +702,15 @@ HTTP status reflects the category. The `code` field is stable for programmatic h
 
 ---
 
-## 8. Rate limiting
+## 9. Rate limiting
 
-The three inbound endpoints (on App) enforce:
-- **Limit:** 120 requests per minute per namespace
-- **Namespace `inbound-proposal`:** independent counter per endpoint
-- **Namespace `payment-confirmed`:** independent counter per endpoint
-- **Namespace `prototype-decision`:** independent counter per endpoint
-- **Identity:** by remote IP (current Next.js in-memory rate limiter)
+The four inbound endpoints (on App) enforce:
+
+- **Default limit:** 120 requests per minute per namespace
+- **Namespace `inbound-proposal`:** independent counter per endpoint (default 120 req/min, IP-based identity)
+- **Namespace `payment-confirmed`:** independent counter per endpoint (default 120 req/min, IP-based identity)
+- **Namespace `prototype-decision`:** independent counter per endpoint (default 120 req/min, IP-based identity)
+- **Namespace `prototype-signed-read`:** independent counter per endpoint with **tighter override** — 60 req/min, combined `(token, remoteIp)` identity (per ADR-024 D6 / §6.7). Per-namespace tuning is permitted because counters are independent.
 
 When exceeded: `429 Too Many Requests`.
 
@@ -484,18 +718,19 @@ When exceeded: `429 Too Many Requests`.
 
 ---
 
-## 9. Idempotency model
+## 10. Idempotency model
 
-### 9.1 What guarantees idempotency today
+### 10.1 What guarantees idempotency today
 
 | Webhook | Idempotency key | Where enforced |
 |---|---|---|
 | `inbound-proposal` | `(external_source, external_session_id)` or `(external_source, external_proposal_id)` | Lookup in `website_inbound_links` table |
 | `payment-confirmed` | `(external_source, external_payment_id)` plus fallback to session/proposal id | Same table + unique constraint on `external_payment_id` |
 | `prototype-decision` | Transport-level only — `(endpoint='prototype-decision', signature_hash)` in `website_webhook_events` ledger, plus application-level UNIQUE on `prototype_decisions(prototype_workspace_id)` for one-terminal-decision-per-workspace | Ledger row claim + table UNIQUE; see §5.3 |
-| `proposal-review-decision` (outbound) | App side: stable transition (PM decision is itself idempotent). Web side: see §6.4 | App stores decision in `lead_proposals.review_status` |
+| `prototype-signed-read` (GET) | **Intrinsic HTTP idempotency** — no application-level or transport-level dedup required. Reads are non-mutating; replay returns the same response within the cache window (§6.8). Transport ledger declined by design per ADR-024 D1; see §6.9 / §6.10 | n/a — HTTP semantics suffice |
+| `proposal-review-decision` (outbound) | App side: stable transition (PM decision is itself idempotent). Web side: see §7.4 | App stores decision in `lead_proposals.review_status` |
 
-### 9.2 Transport-level idempotency (B15 — implemented 2026-05-20)
+### 10.2 Transport-level idempotency (B15 — implemented 2026-05-20)
 
 **Status:** implemented in v1 internal. The wire contract is unchanged.
 
@@ -515,15 +750,15 @@ App side now persists every signed inbound request in a `website_webhook_events`
 
 ---
 
-## 10. Versioning strategy (v2 proposal)
+## 11. Versioning strategy (v2 proposal)
 
-### 10.1 Current state (v1)
+### 11.1 Current state (v1)
 
 - No version header
 - Schema changes are made simultaneously on both sides via coordinated PRs
 - Breaking changes require coordinated deploy
 
-### 10.2 Proposed (v2)
+### 11.2 Proposed (v2)
 
 Add header on every request:
 
@@ -537,7 +772,7 @@ When sender bumps to `2`, receiver MUST accept both `1` and `2` during a minimum
 
 ---
 
-## 11. Environment variables reference
+## 12. Environment variables reference
 
 ### App side
 | Env var | Purpose | Required |
@@ -549,15 +784,17 @@ When sender bumps to `2`, receiver MUST accept both `1` and `2` during a minimum
 | Env var | Purpose | Required |
 |---|---|---|
 | `NOON_WEBSITE_WEBHOOK_SECRET` | HMAC shared secret (must match App) | Yes |
-| (App webhook URLs) | URLs for the two inbound webhooks on App side | Yes |
+| (App webhook URLs) | URLs for the inbound webhooks on App side | Yes |
 
 Both repos MUST use the exact same value for `NOON_WEBSITE_WEBHOOK_SECRET`. If they diverge, every webhook fails with `401`.
 
-The `prototype-decision` endpoint (§5) introduces **no new env var**; it reuses `NOON_WEBSITE_WEBHOOK_SECRET` for HMAC verification, same as the other two inbound entries.
+The `prototype-decision` endpoint (§5) introduces **no new env var**; it reuses `NOON_WEBSITE_WEBHOOK_SECRET` for HMAC verification, same as the other two inbound POST entries.
+
+The `prototype-signed-read` endpoint (§6) also introduces **no new env var** per ADR-024 D1. It reuses `NOON_WEBSITE_WEBHOOK_SECRET` exactly as the four POST entries do — same secret, same `x-noon-timestamp` + `x-noon-signature` headers, same ±5min clock-skew window, same secret-rotation procedure (§2.4). The only signing-input difference is the empty-body convention `${timestamp}.` (§2.1).
 
 ---
 
-## 12. Test fixtures
+## 13. Test fixtures
 
 A minimal end-to-end signed payload for unit tests on either side:
 
@@ -586,16 +823,35 @@ The receiver MUST verify the signature using the EXACT raw body bytes received, 
 
 The same fixture pattern applies to the `prototype-decision` endpoint (§5) by swapping the body shape per §5.2 and pointing at `/api/integrations/website/prototype-decision`. No header changes.
 
+**GET fixture for `prototype-signed-read` (§6).** For the read endpoint the body is empty; the signing input is `${timestamp}.` (trailing dot, empty string body). The fixture below produces a valid request:
+
+```js
+const secret = 'unit-secret'
+const token = 'wsp_test_token_001'                       // App-issued share_token
+const timestamp = Math.floor(Date.now() / 1000).toString()
+const signature = crypto.createHmac('sha256', secret)
+  .update(`${timestamp}.`).digest('hex')                  // empty body → trailing dot
+const url = `https://app.example.com/api/integrations/website/prototype-signed-read/${token}`
+const headers = {
+  'x-noon-timestamp': timestamp,
+  'x-noon-signature': `sha256=${signature}`,
+}
+// fetch(url, { method: 'GET', headers })
+```
+
+No `content-type` header is required (no body). URL path is NOT part of the signing input — the handler validates the path implicitly via Next.js routing and resolves the token via DB lookup against `prototype_workspaces.share_token`.
+
 ---
 
-## 13. Reference implementation (Next.js, current)
+## 14. Reference implementation (Next.js, current)
 
 These files implement the v1 contract on the App side. The Go rewrite will reimplement the same contract on the same URLs with the same headers/payloads. The reference is here only for the Go dev to compare; it is NOT part of the contract.
 
 - HMAC sign + verify: `lib/server/website-webhook-auth.ts`
 - Inbound proposal route: `app/api/integrations/website/inbound-proposal/route.ts`
 - Inbound payment route: `app/api/integrations/website/payment-confirmed/route.ts`
-- Inbound prototype-decision route: `app/api/integrations/website/prototype-decision/route.ts` (C-slice — pending implementation as of 2026-05-23; contract firmed by ADR-023 + §5 of this doc)
+- Inbound prototype-decision route: `app/api/integrations/website/prototype-decision/route.ts` (B+C slice implemented 2026-05-25 — migration `0060_phase_23a_prototype_decisions.sql` + handler `receiveWebsitePrototypeDecision` + Maxwell draft `lib/server/maxwell/prototype-decision-draft.ts`; contract per ADR-023 + §5)
+- Inbound prototype-signed-read route: `app/api/integrations/website/prototype-signed-read/[token]/route.ts` (handler shipped 2026-05-26; handler-helper `serveWebsitePrototypeSignedRead` in `lib/server/website-integration.ts`; repository helpers `getPrototypeWorkspaceByShareToken` + `countPrototypeWorkspaceVersionForLead` in `lib/server/prototypes/repository.ts`; contract per ADR-024 + §6)
 - Schema definitions: `lib/server/website-integration.ts`
 - Outbound proposal-review-decision sender: `sendProposalReviewDecisionToWebsite` in `lib/server/website-integration.ts`
 - Idempotency table: `supabase/migrations/0034_phase_14a_website_inbound_integration.sql`
@@ -605,42 +861,48 @@ These files implement the v1 contract on the App side. The Go rewrite will reimp
 
 ---
 
-## 14. Open issues
+## 15. Open issues
 
 | Issue | Severity | Owner | Notes |
 |---|---|---|---|
-| ~~No webhook event ledger / nonce store on App side (audit B15)~~ | ~~Medium~~ | — | **Resolved 2026-05-20 — ADR-016.** Transport-level idempotency ledger `website_webhook_events` implemented and live in production. See §9.2. |
-| No version header enforced yet (§10) | Low | Bilateral | Negotiate v2 cutover during Go rewrite |
+| ~~No webhook event ledger / nonce store on App side (audit B15)~~ | ~~Medium~~ | — | **Resolved 2026-05-20 — ADR-016.** Transport-level idempotency ledger `website_webhook_events` implemented and live in production. See §10.2. |
+| No version header enforced yet (§11) | Low | Bilateral | Negotiate v2 cutover during Go rewrite |
 | Outbound `proposal-review-decision` lacks retry on failure (audit B9 Web) | Medium | Go rewrite | Exponential backoff retry queue |
 | In-memory rate limiter does not scale multi-instance (TDR-002) | Medium | Go rewrite | Distributed rate limiter |
-| Web side B9 retry of inbound when App is down | Medium | NoonWeb | Web should retry inbound-proposal / payment-confirmed / prototype-decision if App returns 5xx (per §5.9 for prototype-decision) |
-| Secret rotation procedure not documented as a runbook | Low | Either repo | Add `docs/runbooks/cross-repo-secret-rotation.md` |
+| Web side B9 retry of inbound when App is down | Medium | NoonWeb | Web should retry inbound-proposal / payment-confirmed / prototype-decision if App returns 5xx (per §5.9 for prototype-decision). `prototype-signed-read` (§6) is GET — Web SHOULD retry on 5xx within the §6.7 rate-limit budget; treat 4xx as terminal per the §6.5 code mapping. |
+| ~~Secret rotation procedure not documented as a runbook~~ | ~~Low~~ | — | **Resolved 2026-05-26** — `docs/runbooks/cross-repo-secret-rotation.md` covers planned + incident-driven rotation for all App-nooncode secrets, with §4 dedicated to cross-repo coordination of `NOON_WEBSITE_WEBHOOK_SECRET`. Codifies the G13 (2026-05-17) `.mcp.json` rotation pattern. |
 | `prototype-decision` endpoint code not yet implemented (C-slice) | Tracking | App | Contract firmed by ADR-023 + §5; route + handler + Maxwell-draft fire-and-forget pending. NoonWeb-dev acknowledgment of §5 required before D-slice (NoonWeb route) builds |
-| `prototype_decisions` table + `prototype_workspaces.share_token` + `prototype_credit_settings.max_iterations_per_lead` migration not yet applied (B-slice) | Tracking | App | Per ADR-023 D4 + D7. Soft prerequisite of C-slice handler |
+| `prototype_decisions` table + `prototype_workspaces.share_token` + `prototype_credit_settings.max_iterations_per_lead` migration not yet applied (B-slice) | Tracking | App | Per ADR-023 D4 + D7. Soft prerequisite of C-slice handler and §6 handler iteration |
+| ~~`prototype-signed-read` endpoint code not yet implemented (handler iteration)~~ | ~~Tracking~~ | — | **Resolved 2026-05-26** — handler shipped per ADR-024 + §6 + ADR-024 §Amendments A1. Route + handler-helper + repository helpers + 10 unit tests landed on branch `feat/g22-prototype-signed-read-handler` (PR pending). NoonWeb-dev acknowledgment of §6 still required before D-slice render-fetch builds against it; wire shape unchanged from §6 firmed contract. |
+| NoonWeb-side render of `/maxwell/prototipo/[token]` against §6 (D-slice render iteration) | Tracking | NoonWeb | Out of this repo. NoonWeb consumes the firmed §6 contract: GET fetch on render, switch UI mode based on `data.decision.status`, render error states per §6.5 (404 / 410 / 401 / 429 / 500), embed iframe at `data.prototype.deployedUrl`. Bilateral smoke test required against the App-side handler before NoonWeb production deploy. |
 
 ---
 
-## 15. Change control
+## 16. Change control
 
 Any change to this document MUST:
 
 1. Be agreed in the daily cross-repo sync between App side and NoonWeb side.
 2. Land via simultaneous PRs in both repos (App: `docs/integrations/cross-repo-webhook-v1.md`; Web: matching path on Web side).
-3. If the change is breaking, bump the document filename to `cross-repo-webhook-v2.md` and follow §10 migration window.
+3. If the change is breaking, bump the document filename to `cross-repo-webhook-v2.md` and follow §11 migration window.
 4. The `v1` filename stays as historical reference until the migration window closes.
 
 The `prototype-decision` §5 addition (2026-05-23) follows this rule with one operational nuance: the App-side §5 PR may land without simultaneous NoonWeb-side acknowledgment because no App-side code lands in the same iteration (the contract publication is the unblocking artifact for both parallel build streams per ADR-023). NoonWeb-dev acknowledgment is required **before** D-slice (NoonWeb route) builds against this section; not before §5 lands here.
 
+The `prototype-signed-read` §6 addition (2026-05-25) follows the same operational nuance per ADR-024 D5: the App-side §6 PR may land without simultaneous NoonWeb-side acknowledgment because no App-side code lands in the same iteration. NoonWeb-dev acknowledgment is required **before** the NoonWeb-side render iteration (D-slice render of `/maxwell/prototipo/[token]`) builds against §6; not before §6 lands here. Bilateral smoke test (NoonWeb → App `GET /api/integrations/website/prototype-signed-read/[token]` round-trip with a real signed request and a known-good token) is required before NoonWeb production deploy of the render route.
+
 ---
 
-## 16. References
+## 17. References
 
 - HMAC implementation: `lib/server/website-webhook-auth.ts`
 - ADR-005 (Maxwell modules shared brand): `docs/adrs/ADR-005-maxwell-modules-shared-brand.md`
-- ADR-010 (client portal lives in NoonWeb — App is operator-only; anchors §5): `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md`
-- ADR-013 (seller-fee additive pricing — anchors §5.8 Option β): `docs/adrs/ADR-013-seller-fee-additive-pricing.md`
-- ADR-016 (transport-level webhook ledger pattern — anchors §5.3, §5.7, §9.2): `docs/adrs/ADR-016-transport-level-webhook-ledger-pattern.md`
+- ADR-010 (client portal lives in NoonWeb — App is operator-only; anchors §5 + §6): `docs/adrs/ADR-010-client-portal-lives-in-noonweb.md`
+- ADR-013 (seller-fee additive pricing — anchors §5.8 Option β + §6.11 strip-list invariant): `docs/adrs/ADR-013-seller-fee-additive-pricing.md`
+- ADR-016 (transport-level webhook ledger pattern — anchors §5.3, §5.7, §10.2; explicitly declined for §6 per ADR-024 D1 — see §6.9): `docs/adrs/ADR-016-transport-level-webhook-ledger-pattern.md`
 - ADR-023 (prototype-decision cross-repo contract — full rationale for §5): `docs/adrs/ADR-023-prototype-decision-cross-repo-contract.md`
+- ADR-024 (prototype-signed-read cross-repo contract — full rationale for §6; discharges ADR-023 D8): `docs/adrs/ADR-024-prototype-signed-read-cross-repo-contract.md`
+- Spec `specs/fase-3-g22-signed-read-spec.md` — Analysis output that ADR-024 resolves; the spec scopes the contract-only iteration.
 - Idempotency table migration: `supabase/migrations/0034_phase_14a_website_inbound_integration.sql`
 - Cross-repo coordination protocol: `docs/business/roadmap-reconciled.md` and the parallel `NoonApp Roadmap.md` (vault) §10
 - Audit findings B9, B11, B15 (NoonWeb Launch.md and NoonApp Launch.md, in user vault)

@@ -75,6 +75,7 @@ export async function ensureWebsiteInboundPrototypeWorkspace(
       generated_content: prototypeReference,
       generated_at: now,
       last_operation_id: randomUUID(),
+      share_token: randomUUID(),
     })
     .select('id')
     .single()

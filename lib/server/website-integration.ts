@@ -8,8 +8,15 @@ import {
 } from '@/lib/server/website-webhook-auth'
 import { activatePaidProposal } from '@/lib/server/payments/activation'
 import { creditActivationEarnings } from '@/lib/server/earnings/activation-credit'
-import { getPrototypeWorkspaceByLeadId } from '@/lib/server/prototypes/repository'
+import {
+  countPrototypeWorkspaceVersionForLead,
+  getPrototypeWorkspaceByLeadId,
+  getPrototypeWorkspaceByShareToken,
+  type PrototypeSignedReadRow,
+} from '@/lib/server/prototypes/repository'
 import { ensureWebsiteInboundPrototypeWorkspace } from '@/lib/server/prototypes/website-inbound'
+import { errorToLogContext, logger } from '@/lib/server/api/logger'
+import { createPrototypeDecisionDraft } from '@/lib/server/maxwell/prototype-decision-draft'
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>
 
@@ -805,6 +812,432 @@ export async function sendProposalReviewDecisionToWebsite(
   }
 }
 
+// ---------------------------------------------------------------------------
+// prototype-decision (inbound POST, ADR-023 + ADR-025, cross-repo §5)
+// ---------------------------------------------------------------------------
+
+const websitePrototypeDecisionNotesSchema = z
+  .string()
+  .trim()
+  .max(2000, 'Prototype decision notes must be 2000 characters or fewer.')
+  .optional()
+  .nullable()
+
+export const websitePrototypeDecisionPayloadSchema = z.object({
+  external_source: z.string().trim().min(1).default('noon_website'),
+  // Authoritative resolver per ADR-023 D2.
+  token: z.string().trim().min(1),
+  // Defensive cross-check per ADR-023 D2.
+  prototype_workspace_id: z.string().uuid(),
+  // Exact-set enum per ADR-023 D5 + cross-repo §5.2 / §5.5
+  // (PROTOTYPE_DECISION_INVALID_DECISION).
+  decision: z.enum(['accepted', 'rejected']),
+  notes: websitePrototypeDecisionNotesSchema,
+  client: z
+    .object({
+      user_agent: z.string().trim().max(500).optional().nullable(),
+    })
+    .optional(),
+  metadata: looseRecordSchema,
+})
+
+export type WebsitePrototypeDecisionPayload = z.infer<
+  typeof websitePrototypeDecisionPayloadSchema
+>
+
+export interface ReceiveWebsitePrototypeDecisionResult {
+  idempotent: false
+  decisionId: string
+  prototypeWorkspaceId: string
+  leadId: string
+  decision: 'accepted' | 'rejected'
+  decidedAt: string
+  draftPropuestaQueued: boolean
+  /** Convenience back-channel for the route handler structured log. */
+  sellerProfileId: string
+}
+
+interface ResolvedPrototypeWorkspace {
+  id: string
+  lead_id: string
+  status: string
+  requested_by_profile_id: string
+  share_token_superseded_at: string | null
+}
+
+async function resolvePrototypeWorkspaceByShareToken(
+  client: SupabaseAdminClient,
+  token: string,
+): Promise<ResolvedPrototypeWorkspace | null> {
+  const { data, error } = await table(client, 'prototype_workspaces')
+    .select('id, lead_id, status, requested_by_profile_id, share_token_superseded_at')
+    .eq('share_token', token)
+    .maybeSingle()
+
+  if (error) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_PERSIST_FAILED',
+      `Prototype workspace lookup by share_token failed: ${error.message}`,
+      500,
+    )
+  }
+
+  return (data as ResolvedPrototypeWorkspace | null) ?? null
+}
+
+async function leadIsHardDeleted(
+  client: SupabaseAdminClient,
+  leadId: string,
+): Promise<boolean> {
+  const { data, error } = await table(client, 'leads')
+    .select('id')
+    .eq('id', leadId)
+    .maybeSingle()
+
+  if (error) {
+    // Treat lookup failure as a server error rather than masking it as 410.
+    throw new ApiError(
+      'PROTOTYPE_DECISION_PERSIST_FAILED',
+      `Lead presence check failed: ${error.message}`,
+      500,
+    )
+  }
+
+  return data === null
+}
+
+async function findExistingPrototypeDecision(
+  client: SupabaseAdminClient,
+  prototypeWorkspaceId: string,
+): Promise<{ id: string; decision: string } | null> {
+  const { data, error } = await table(client, 'prototype_decisions')
+    .select('id, decision')
+    .eq('prototype_workspace_id', prototypeWorkspaceId)
+    .maybeSingle()
+
+  if (error) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_PERSIST_FAILED',
+      `Prototype decision uniqueness check failed: ${error.message}`,
+      500,
+    )
+  }
+
+  return (data as { id: string; decision: string } | null) ?? null
+}
+
+interface InsertedDecisionRow {
+  id: string
+  decided_at: string
+}
+
+async function insertPrototypeDecisionRow(
+  client: SupabaseAdminClient,
+  input: {
+    prototypeWorkspaceId: string
+    leadId: string
+    decision: 'accepted' | 'rejected'
+    notes: string | null
+    clientUserAgent: string | null
+    webhookEventId: string | null
+  },
+): Promise<InsertedDecisionRow> {
+  const { data, error } = await table(client, 'prototype_decisions')
+    .insert({
+      prototype_workspace_id: input.prototypeWorkspaceId,
+      lead_id: input.leadId,
+      decision: input.decision,
+      notes: input.notes,
+      client_user_agent: input.clientUserAgent,
+      webhook_event_id: input.webhookEventId,
+    })
+    .select('id, decided_at')
+    .single()
+
+  if (error || !data?.id) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_PERSIST_FAILED',
+      `Prototype decision insert failed: ${error?.message ?? 'no row returned'}`,
+      500,
+    )
+  }
+
+  return data as InsertedDecisionRow
+}
+
+function buildSellerNotificationCopy(input: {
+  decision: 'accepted' | 'rejected'
+  draftStatus: 'queued' | 'failed' | 'not_applicable'
+  truncatedNotes: string | null
+}): { title: string; body: string } {
+  if (input.decision === 'accepted') {
+    if (input.draftStatus === 'failed') {
+      return {
+        title: 'Cliente aceptó el prototipo (acción manual requerida)',
+        body:
+          'El cliente aceptó tu prototipo. La generación automática del borrador de propuesta falló — ' +
+          'creá la propuesta manualmente desde el detalle del lead.',
+      }
+    }
+    return {
+      title: 'Cliente aceptó el prototipo',
+      body:
+        'El cliente aceptó tu prototipo. Maxwell preparó un borrador de propuesta — ' +
+        'revisalo y elegí tu seller fee antes de enviarlo a PM review.',
+    }
+  }
+
+  const notesSegment = input.truncatedNotes ? ` Nota del cliente: "${input.truncatedNotes}".` : ''
+  return {
+    title: 'Cliente rechazó el prototipo',
+    body:
+      `El cliente rechazó tu prototipo.${notesSegment} ` +
+      `Podés regenerar V2 si el lead lo amerita.`,
+  }
+}
+
+function truncateNotesForNotification(notes: string | null): string | null {
+  if (!notes) return null
+  const trimmed = notes.trim()
+  if (!trimmed) return null
+  return trimmed.length > 240 ? `${trimmed.slice(0, 237)}...` : trimmed
+}
+
+async function insertSellerPrototypeDecisionNotification(
+  client: SupabaseAdminClient,
+  input: {
+    sellerProfileId: string
+    decisionId: string
+    decision: 'accepted' | 'rejected'
+    draftStatus: 'queued' | 'failed' | 'not_applicable'
+    truncatedNotes: string | null
+    leadId: string
+  },
+): Promise<void> {
+  const copy = buildSellerNotificationCopy({
+    decision: input.decision,
+    draftStatus: input.draftStatus,
+    truncatedNotes: input.truncatedNotes,
+  })
+
+  const { error } = await table(client, 'user_notifications').insert({
+    profile_id: input.sellerProfileId,
+    source_kind: 'prototype_decision_received',
+    source_event_id: input.decisionId,
+    domain: 'leads',
+    title: copy.title,
+    body: copy.body,
+    href: `/dashboard/leads/${input.leadId}`,
+  })
+
+  if (error) {
+    // Notification failure must NOT block the decision response. We log it
+    // and continue; the decision row is already persisted and the wire-shape
+    // response is correct. Operator visibility comes from the structured log.
+    logger.warn('prototype.decision.notification_insert_failed', {
+      sellerProfileId: input.sellerProfileId,
+      decisionId: input.decisionId,
+      leadId: input.leadId,
+      decision: input.decision,
+      errorMessage: error.message,
+    })
+  }
+}
+
+/**
+ * Fire-and-forget Maxwell draft scheduler per ADR-023 D6 + OQ-2 resolution
+ * (Backend 2026-05-25): detached promise with explicit `.catch()`. Safe
+ * across Node 20 / 22 / Vercel serverless runtime; runs after the response
+ * has been written to the wire (the awaited callsite returns BEFORE this
+ * function awaits anything).
+ */
+export function scheduleAcceptedPrototypeDecisionSideEffects(input: {
+  adminClient: SupabaseAdminClient
+  decisionId: string
+  prototypeWorkspaceId: string
+  leadId: string
+  sellerProfileId: string
+}): void {
+  void Promise.resolve().then(async () => {
+    try {
+      const draft = await createPrototypeDecisionDraft({
+        client: input.adminClient,
+        leadId: input.leadId,
+        sellerProfileId: input.sellerProfileId,
+        prototypeWorkspaceId: input.prototypeWorkspaceId,
+        decisionId: input.decisionId,
+      })
+
+      logger.info('prototype.decision.accepted.draft_created', {
+        decisionId: input.decisionId,
+        prototypeWorkspaceId: input.prototypeWorkspaceId,
+        leadId: input.leadId,
+        sellerProfileId: input.sellerProfileId,
+        proposalId: draft.proposalId,
+        projectType: draft.projectType,
+        complexity: draft.complexity,
+        amount: draft.amount,
+      })
+
+      await insertSellerPrototypeDecisionNotification(input.adminClient, {
+        sellerProfileId: input.sellerProfileId,
+        decisionId: input.decisionId,
+        decision: 'accepted',
+        draftStatus: 'queued',
+        truncatedNotes: null,
+        leadId: input.leadId,
+      })
+    } catch (draftError) {
+      logger.error('prototype.decision.accepted.draft_creation_failed', {
+        decisionId: input.decisionId,
+        prototypeWorkspaceId: input.prototypeWorkspaceId,
+        leadId: input.leadId,
+        sellerProfileId: input.sellerProfileId,
+        ...errorToLogContext(draftError),
+      })
+
+      // Escalated notification: tell the seller to create the draft manually.
+      await insertSellerPrototypeDecisionNotification(input.adminClient, {
+        sellerProfileId: input.sellerProfileId,
+        decisionId: input.decisionId,
+        decision: 'accepted',
+        draftStatus: 'failed',
+        truncatedNotes: null,
+        leadId: input.leadId,
+      }).catch((notifError) => {
+        logger.error('prototype.decision.accepted.escalation_notification_failed', {
+          decisionId: input.decisionId,
+          ...errorToLogContext(notifError),
+        })
+      })
+    }
+  }).catch((unexpected) => {
+    // Top-level guardrail. The inner `.then(async () => ...)` body has its
+    // own try/catch above, so reaching this branch means the promise pipeline
+    // itself failed (extremely rare). Log so the operator can detect.
+    logger.error('prototype.decision.accepted.side_effect_pipeline_failed', {
+      decisionId: input.decisionId,
+      ...errorToLogContext(unexpected),
+    })
+  })
+}
+
+/**
+ * Synchronous business handler for `POST /api/integrations/website/prototype-decision`.
+ * The route file owns HMAC verify + ledger claim + replay-path branching +
+ * `markWebsiteWebhookEventProcessed`; this handler executes the persistence
+ * flow once the route has accepted the request for processing.
+ *
+ * 8-step flow per spec §C-slice (handler):
+ *   1. Token → workspace lookup (404 PROTOTYPE_DECISION_TOKEN_NOT_FOUND on miss).
+ *   2. Defensive cross-check workspace_id matches resolved id
+ *      (409 PROTOTYPE_DECISION_IDENTIFIER_MISMATCH on mismatch).
+ *   3. Lifecycle checks: 410 PROTOTYPE_DECISION_TOKEN_EXPIRED if superseded;
+ *      410 PROTOTYPE_DECISION_LEAD_DELETED if lead cascade left a stale row.
+ *   4. Uniqueness check (409 PROTOTYPE_DECISION_ALREADY_DECIDED for conflicting
+ *      NEW requests; bit-identical replay is handled by the route before reaching
+ *      this handler).
+ *   5. INSERT `prototype_decisions` row (500 PROTOTYPE_DECISION_PERSIST_FAILED on DB error).
+ *   6. Return wire-shape (caller writes the response).
+ *   7. On `decision === 'accepted'`, the CALLER schedules the Maxwell draft
+ *      fire-and-forget via `scheduleAcceptedPrototypeDecisionSideEffects`.
+ *   8. On `decision === 'rejected'`, this function inserts the seller
+ *      notification synchronously (no draft side effect).
+ */
+export async function receiveWebsitePrototypeDecision(
+  payload: WebsitePrototypeDecisionPayload,
+  webhookEventId: string | null,
+  clientOverride?: SupabaseAdminClient,
+): Promise<ReceiveWebsitePrototypeDecisionResult> {
+  const client = clientOverride ?? createSupabaseAdminClient()
+
+  // Step 1 — resolve token.
+  const workspace = await resolvePrototypeWorkspaceByShareToken(client, payload.token)
+
+  if (!workspace) {
+    throw new NotFoundApiError(
+      'No prototype workspace matches the supplied share token.',
+      'PROTOTYPE_DECISION_TOKEN_NOT_FOUND',
+    )
+  }
+
+  // Step 2 — defensive cross-check.
+  if (workspace.id !== payload.prototype_workspace_id) {
+    logger.warn('prototype.decision.identifier_mismatch', {
+      resolvedWorkspaceId: workspace.id,
+      payloadWorkspaceId: payload.prototype_workspace_id,
+      leadId: workspace.lead_id,
+    })
+    throw new ConflictApiError(
+      'The supplied prototype_workspace_id does not match the workspace resolved from the token.',
+      'PROTOTYPE_DECISION_IDENTIFIER_MISMATCH',
+    )
+  }
+
+  // Step 3a — superseded token.
+  if (workspace.share_token_superseded_at !== null) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_TOKEN_EXPIRED',
+      'This prototype share token has been superseded by a newer iteration.',
+      410,
+    )
+  }
+
+  // Step 3b — defensive lead-deleted check (FK cascade should have removed
+  // the workspace too, but the cascade race is possible).
+  if (await leadIsHardDeleted(client, workspace.lead_id)) {
+    throw new ApiError(
+      'PROTOTYPE_DECISION_LEAD_DELETED',
+      'The lead this prototype belonged to no longer exists.',
+      410,
+    )
+  }
+
+  // Step 4 — uniqueness check.
+  const existingDecision = await findExistingPrototypeDecision(client, workspace.id)
+  if (existingDecision) {
+    throw new ConflictApiError(
+      'This prototype workspace already has a recorded terminal decision.',
+      'PROTOTYPE_DECISION_ALREADY_DECIDED',
+    )
+  }
+
+  // Step 5 — INSERT.
+  const clientUserAgent = payload.client?.user_agent?.trim() ?? null
+  const trimmedNotes = payload.notes?.trim() ?? null
+  const decisionRow = await insertPrototypeDecisionRow(client, {
+    prototypeWorkspaceId: workspace.id,
+    leadId: workspace.lead_id,
+    decision: payload.decision,
+    notes: trimmedNotes && trimmedNotes.length > 0 ? trimmedNotes : null,
+    clientUserAgent,
+    webhookEventId,
+  })
+
+  // Step 8 — reject path: inline seller notification (no draft side effect).
+  if (payload.decision === 'rejected') {
+    await insertSellerPrototypeDecisionNotification(client, {
+      sellerProfileId: workspace.requested_by_profile_id,
+      decisionId: decisionRow.id,
+      decision: 'rejected',
+      draftStatus: 'not_applicable',
+      truncatedNotes: truncateNotesForNotification(trimmedNotes),
+      leadId: workspace.lead_id,
+    })
+  }
+
+  return {
+    idempotent: false,
+    decisionId: decisionRow.id,
+    prototypeWorkspaceId: workspace.id,
+    leadId: workspace.lead_id,
+    decision: payload.decision,
+    decidedAt: decisionRow.decided_at,
+    draftPropuestaQueued: payload.decision === 'accepted',
+    sellerProfileId: workspace.requested_by_profile_id,
+  }
+}
+
 export async function listInboundPmQueue() {
   const client = createSupabaseAdminClient()
   const { data, error } = await table(client, 'website_inbound_links')
@@ -834,4 +1267,297 @@ export async function listInboundPmQueue() {
   }
 
   return data ?? []
+}
+
+// ----------------------------------------------------------------------------
+// G22 — GET /api/integrations/website/prototype-signed-read/[token]
+// Per ADR-024 + cross-repo-webhook-v1.md §6 + spec
+// fase-3-g22-prototype-signed-read-handler-impl.
+// ----------------------------------------------------------------------------
+
+// Inline humanization map per spec §"Project-type label derivation" + ADR-024
+// §Amendments A1 (OQ-1 resolution). Small / closed; <=5 expected values. A
+// future iteration may extract to `lib/maxwell/project-type-labels.ts` if the
+// table grows or requires localization.
+const PROTOTYPE_PROJECT_TYPE_LABELS: Record<string, string> = {
+  landing: 'Landing Page',
+  landing_page: 'Landing Page',
+  webapp: 'Web App',
+  web_app: 'Web App',
+  ecommerce: 'E-commerce',
+  e_commerce: 'E-commerce',
+  sitio_web: 'Sitio Web',
+  website: 'Sitio Web',
+}
+
+function humanizePrototypeProjectType(raw: string | null | undefined): string {
+  if (!raw || typeof raw !== 'string') return 'Sitio Web'
+  return PROTOTYPE_PROJECT_TYPE_LABELS[raw.trim().toLowerCase()] ?? 'Sitio Web'
+}
+
+function extractMaxwellProjectType(snapshot: unknown): string | null {
+  if (!snapshot || typeof snapshot !== 'object') return null
+  const value = (snapshot as Record<string, unknown>).project_type
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+// Cache header values are byte-exact per ADR-024 D7 / AC-9. Do not mutate.
+const PROTOTYPE_SIGNED_READ_CACHE_CONTROL_OK =
+  'private, max-age=30, stale-while-revalidate=60'
+const PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR = 'no-store'
+
+export interface PrototypeSignedReadSuccessBody {
+  data: {
+    workspace: {
+      id: string
+      version: number
+      generatedAt: string
+    }
+    leadContext: {
+      businessName: string
+      projectTypeLabel: string
+    }
+    prototype: {
+      deployedUrl: string | null
+      generatedHtml: string | null
+    }
+    decision: {
+      status: 'pending' | 'accepted' | 'rejected'
+      notes: string | null
+      decidedAt: string | null
+    }
+    lifecycle: {
+      tokenSuperseded: boolean
+      iterationNumber: number
+    }
+    serverTime: string
+  }
+}
+
+export interface PrototypeSignedReadErrorBody {
+  error: string
+  code: 'PROTOTYPE_READ_TOKEN_NOT_FOUND' | 'PROTOTYPE_READ_TOKEN_SUPERSEDED' | 'PROTOTYPE_READ_LEAD_DELETED' | 'PROTOTYPE_READ_INTERNAL_FAILED'
+}
+
+export type PrototypeSignedReadServeResult =
+  | {
+      kind: 'ok'
+      status: 200
+      cacheControl: typeof PROTOTYPE_SIGNED_READ_CACHE_CONTROL_OK
+      body: PrototypeSignedReadSuccessBody
+      log: {
+        level: 'info'
+        event: 'website.prototype_signed_read.served'
+        fields: {
+          workspaceId: string
+          decisionStatus: 'pending' | 'accepted' | 'rejected'
+          workspaceVersion: number
+        }
+      }
+    }
+  | {
+      kind: 'error'
+      status: 404 | 410 | 500
+      cacheControl: typeof PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR
+      body: PrototypeSignedReadErrorBody
+      log: {
+        level: 'warn'
+        event: 'website.prototype_signed_read.rejected'
+        fields: {
+          code: PrototypeSignedReadErrorBody['code']
+          tokenPrefix: string
+        }
+      }
+    }
+
+/**
+ * Synchronous business handler for `GET /api/integrations/website/prototype-signed-read/[token]`.
+ *
+ * The route file owns HMAC verify + rate-limit + response wrapping (NextResponse
+ * + `x-request-id` + `Cache-Control` header). This helper owns lifecycle
+ * resolution and the response-body construction via the positive allowlist
+ * (ADR-024 D4 §"Sanitization") — no `{ ...workspaceRow }` spreads, every field
+ * is named explicitly.
+ *
+ * Lifecycle check order per ADR-024 D2 §"Tombstone case":
+ *   1. Token resolves to workspace row? Otherwise `404 PROTOTYPE_READ_TOKEN_NOT_FOUND`.
+ *   2. Parent `leads` row missing on the join? `410 PROTOTYPE_READ_LEAD_DELETED`.
+ *   3. `share_token_superseded_at` non-null? `410 PROTOTYPE_READ_TOKEN_SUPERSEDED`.
+ *   4. Compute version + build response.
+ */
+export async function serveWebsitePrototypeSignedRead(
+  token: string,
+  clientOverride?: SupabaseAdminClient,
+): Promise<PrototypeSignedReadServeResult> {
+  const client = clientOverride ?? createSupabaseAdminClient()
+  const tokenPrefix = token.slice(0, 8)
+
+  let row: PrototypeSignedReadRow | null
+  try {
+    row = await getPrototypeWorkspaceByShareToken(client, token)
+  } catch (err) {
+    logger.error('website.prototype_signed_read.lookup_failed', {
+      tokenPrefix,
+      ...errorToLogContext(err),
+    })
+    return {
+      kind: 'error',
+      status: 500,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'Internal server error resolving prototype share token.',
+        code: 'PROTOTYPE_READ_INTERNAL_FAILED',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_INTERNAL_FAILED', tokenPrefix },
+      },
+    }
+  }
+
+  if (!row) {
+    return {
+      kind: 'error',
+      status: 404,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'No prototype matches the supplied share token.',
+        code: 'PROTOTYPE_READ_TOKEN_NOT_FOUND',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_TOKEN_NOT_FOUND', tokenPrefix },
+      },
+    }
+  }
+
+  if (!row.lead) {
+    return {
+      kind: 'error',
+      status: 410,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'The prototype is no longer available.',
+        code: 'PROTOTYPE_READ_LEAD_DELETED',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_LEAD_DELETED', tokenPrefix },
+      },
+    }
+  }
+
+  if (row.workspace.share_token_superseded_at !== null) {
+    return {
+      kind: 'error',
+      status: 410,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'This prototype has been replaced by a newer version.',
+        code: 'PROTOTYPE_READ_TOKEN_SUPERSEDED',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_TOKEN_SUPERSEDED', tokenPrefix },
+      },
+    }
+  }
+
+  // 200 path — compute version + build response via positive allowlist.
+  let version: number
+  try {
+    version = await countPrototypeWorkspaceVersionForLead(
+      client,
+      row.lead.id,
+      row.workspace.id,
+    )
+  } catch (err) {
+    logger.error('website.prototype_signed_read.version_count_failed', {
+      tokenPrefix,
+      workspaceId: row.workspace.id,
+      ...errorToLogContext(err),
+    })
+    return {
+      kind: 'error',
+      status: 500,
+      cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_ERROR,
+      body: {
+        error: 'Internal server error resolving prototype iteration number.',
+        code: 'PROTOTYPE_READ_INTERNAL_FAILED',
+      },
+      log: {
+        level: 'warn',
+        event: 'website.prototype_signed_read.rejected',
+        fields: { code: 'PROTOTYPE_READ_INTERNAL_FAILED', tokenPrefix },
+      },
+    }
+  }
+
+  const businessName = row.lead.company ?? row.lead.name
+  const projectTypeLabel = humanizePrototypeProjectType(
+    extractMaxwellProjectType(row.lead.maxwell_snapshot),
+  )
+
+  const decisionStatus: 'pending' | 'accepted' | 'rejected' =
+    row.decision === null
+      ? 'pending'
+      : row.decision.decision === 'accepted'
+        ? 'accepted'
+        : 'rejected'
+
+  // Sanitizer rule per ADR-024 D3: `decision.notes` is non-null ONLY when
+  // status === 'rejected' AND the row has a notes value. Even if 'accepted'
+  // rows carried a notes value, we strip it here.
+  const decisionNotes =
+    decisionStatus === 'rejected' && row.decision !== null ? row.decision.notes : null
+  const decisionDecidedAt =
+    decisionStatus !== 'pending' && row.decision !== null ? row.decision.decided_at : null
+
+  const body: PrototypeSignedReadSuccessBody = {
+    data: {
+      workspace: {
+        id: row.workspace.id,
+        version,
+        generatedAt: row.workspace.created_at,
+      },
+      leadContext: {
+        businessName,
+        projectTypeLabel,
+      },
+      prototype: {
+        deployedUrl: row.workspace.demo_url,
+        generatedHtml: row.workspace.generated_content,
+      },
+      decision: {
+        status: decisionStatus,
+        notes: decisionNotes,
+        decidedAt: decisionDecidedAt,
+      },
+      lifecycle: {
+        tokenSuperseded: row.workspace.share_token_superseded_at !== null,
+        iterationNumber: version,
+      },
+      serverTime: new Date().toISOString(),
+    },
+  }
+
+  return {
+    kind: 'ok',
+    status: 200,
+    cacheControl: PROTOTYPE_SIGNED_READ_CACHE_CONTROL_OK,
+    body,
+    log: {
+      level: 'info',
+      event: 'website.prototype_signed_read.served',
+      fields: {
+        workspaceId: row.workspace.id,
+        decisionStatus,
+        workspaceVersion: version,
+      },
+    },
+  }
 }

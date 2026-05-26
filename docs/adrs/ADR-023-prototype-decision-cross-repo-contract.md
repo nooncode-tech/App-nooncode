@@ -51,7 +51,7 @@ A new endpoint `POST /api/integrations/website/prototype-decision` is added to A
 
 - Reuses the v1 HMAC-SHA256 protocol of `docs/integrations/cross-repo-webhook-v1.md` §2 (same shared secret `NOON_WEBSITE_WEBHOOK_SECRET`, same `x-noon-timestamp` + `x-noon-signature` headers, same ±5min clock-skew window, same byte-fidelity signing input `${timestamp}.${bodyText}`).
 - Sits behind the existing `website_webhook_events` ledger per ADR-016, with the discriminator value `'prototype-decision'` added to the table's `CHECK (endpoint in (...))` constraint and to the helper's `WebsiteWebhookEndpoint` union type. Identity key is the same shape `(endpoint, signature_hash)`; bit-identical replay returns the same wire response with HTTP 200 (`idempotent: true`).
-- Reuses the v1 error envelope per §6 (`{ error, code, requestId }`) and the v1 rate limit shape per §7 (120 req/min) with a new independent counter namespace `prototype-decision`.
+- Reuses the v1 error envelope per §8 (`{ error, code, requestId }`) and the v1 rate limit shape per §9 (120 req/min by default) with a new independent counter namespace `prototype-decision`. (Section numbers reflect the post-ADR-024 cascade 2026-05-25; pre-cascade these were §6 / §7 respectively. The wire shape is unchanged.)
 
 **No variant idempotency scheme is invented.** A `decision_id` UUID in the payload, a `Idempotency-Key` header, or any other payload-level dedup mechanism is explicitly forbidden — the transport ledger is the single idempotency layer per ADR-016 D2. This closes R5 in the iteration spec.
 
@@ -121,7 +121,7 @@ RLS scope (final design lives in B-slice migration): admin / sales_manager see a
 
 **Note on `prototype_workspaces` evolution:** B-slice also adds `share_token text unique` and `share_token_superseded_at timestamptz` to `prototype_workspaces` to model the lifecycle in D3, plus extends `prototype_credit_settings` with `max_iterations_per_lead integer not null default 3 check (max_iterations_per_lead > 0)` for Gate B. Architecture flags these for B-slice; the migration itself is not in this iteration.
 
-### D5 — Q-arch-4 resolved: 5 prototype-specific error codes, all reuse §6 error envelope
+### D5 — Q-arch-4 resolved: 5 prototype-specific error codes, all reuse §8 error envelope (post-ADR-024 cascade; pre-cascade §6)
 
 The new endpoint surfaces exactly five prototipo-specific error codes plus the inherited common codes. Each maps to a deterministic NoonWeb-portal UX state.
 
@@ -133,7 +133,7 @@ The new endpoint surfaces exactly five prototipo-specific error codes plus the i
 | `410` | `PROTOTYPE_DECISION_TOKEN_EXPIRED` | The resolved workspace has `share_token_superseded_at` non-null (regenerated to V2+) | "Este prototipo fue actualizado. Pedile al vendedor el nuevo link." |
 | `410` | `PROTOTYPE_DECISION_LEAD_DELETED` | The parent lead row has been hard-deleted (rare; FK cascade should already have removed the workspace, but defensive code path) | "Este prototipo ya no está disponible." |
 | `400` | `PROTOTYPE_DECISION_INVALID_DECISION` | `decision` field not in `{'accepted', 'rejected'}` after Zod validation. Belt-and-suspenders against schema drift | Generic validation error rendered to NoonWeb. |
-| Inherited from §6 | `WEBSITE_WEBHOOK_AUTH_FAILED` (401), `(validation)` (400), `(rate limit)` (429), `INBOUND_*_FAILED` analogue → reuse the namespace pattern: `PROTOTYPE_DECISION_PERSIST_FAILED` (500) for DB write errors |  |  |
+| Inherited from §8 (post-ADR-024 cascade; pre-cascade §6) | `WEBSITE_WEBHOOK_AUTH_FAILED` (401), `(validation)` (400), `(rate limit)` (429), `INBOUND_*_FAILED` analogue → reuse the namespace pattern: `PROTOTYPE_DECISION_PERSIST_FAILED` (500) for DB write errors |  |  |
 
 **Bit-identical replay rule:** before returning `409 PROTOTYPE_DECISION_ALREADY_DECIDED`, the handler checks if the inbound request is a bit-identical replay of the original (same `(endpoint, signature_hash)` already in the ledger with terminal status). If yes, the handler returns the same wire-shape `200` response the original run produced, per ADR-016 D6. The `409` triggers only for **conflicting** new decisions or non-identical retries (e.g., NoonWeb re-sending with a refreshed timestamp).
 
@@ -229,7 +229,7 @@ The four operator decisions (L-1 to L-4) and the five Q-arch decisions (D2 to D6
 Three reasons:
 
 1. **Decoupling.** NoonWeb-dev and App-dev can build in parallel against the firmed contract. Without the contract, every NoonWeb-side design decision risks needing rework when App-side reality emerges, and vice versa.
-2. **Cross-repo coordination cost.** Per `docs/integrations/cross-repo-webhook-v1.md` §14, contract changes require simultaneous PRs. Firming the contract once, ahead of build, means the build slices land independently without further cross-repo sync.
+2. **Cross-repo coordination cost.** Per `docs/integrations/cross-repo-webhook-v1.md` §16 (post-ADR-024 cascade 2026-05-25; pre-cascade §14), contract changes require simultaneous PRs. Firming the contract once, ahead of build, means the build slices land independently without further cross-repo sync.
 3. **Architectural decisions need ADR durability.** The 5 Q-arch decisions are the kind that produce subtle bugs if redecided per-iteration. ADR-023 freezes them.
 
 ### Why dual gates instead of one
@@ -295,7 +295,7 @@ The spec's R4 assumed `lead_proposals.seller_fee_amount` exists. It doesn't. The
 
 - **Active risk:** until C-slice lands a queue infrastructure, the post-accept Maxwell draft is fire-and-forget. Operator notification is the fallback for draft failures. Acceptable at pilot scale; revisit at v3 Phase 5 if Maxwell pipeline complexity grows.
 - **Active risk:** until D-slice ships, the contract is inert (no decisions arrive). Acceptable per iteration spec R3 (forward-investment contract).
-- **Active risk:** NoonWeb-dev acknowledgment of the contract is bilateral coordination per §14. Without acknowledgment the contract is published but not adopted. Mitigation: contract doc PR tags NoonWeb-dev explicitly.
+- **Active risk:** NoonWeb-dev acknowledgment of the contract is bilateral coordination per §16 (post-ADR-024 cascade 2026-05-25; pre-cascade §14). Without acknowledgment the contract is published but not adopted. Mitigation: contract doc PR tags NoonWeb-dev explicitly.
 
 ### Re-evaluation triggers
 
@@ -309,7 +309,7 @@ This ADR must be revisited when:
 
 ### Reactivation / migration triggers
 
-- If v2 of the cross-repo contract introduces a schema version header (per `cross-repo-webhook-v1.md` §9), the `prototype-decision` entry migrates with the other two; no special handling.
+- If v2 of the cross-repo contract introduces a schema version header (per `cross-repo-webhook-v1.md` §11 post-ADR-024 cascade 2026-05-25; pre-cascade §9), the `prototype-decision` entry migrates with the other two; no special handling.
 - If a deletion is needed (e.g., the prototipo-decision flow is abandoned), the endpoint becomes a `410 Gone` redirect and the `prototype_decisions` table stays as historical record per ADR-014 conservative-deletion convention.
 
 ---
