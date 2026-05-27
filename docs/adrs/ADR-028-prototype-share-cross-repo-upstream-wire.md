@@ -1,8 +1,8 @@
 # ADR-028: Prototype-share cross-repo upstream wire — Web→App lead/workspace create + share_token emit
 
-**Status:** Proposed
-**Date:** 2026-05-26
-**Deciders:** Pedro (Engineering owner), Piedra (App owner) — pending review; system-architecture
+**Status:** Accepted
+**Date:** 2026-05-26 (proposed) / 2026-05-27 (accepted)
+**Deciders:** Pedro (Engineering owner) — reviewed 2026-05-27; Piedra (App owner) — reviewed 2026-05-27; system-architecture
 **Supersedes:** None
 **Related:**
 - ADR-023 (prototype-decision cross-repo contract — defines the downstream POST decision wire that consumes the token this ADR proposes to emit)
@@ -254,7 +254,7 @@ Responsibilities:
 4. On `ok`: persist the result (`share_token`, `share_token_url`, `prototype_workspace_id`, `prototype_shared_at`) on the studio_session row; transition state `prototype_ready → prototype_shared` via `assertValidTransition`; revalidate the studio page; return `{ uxState: { kind: 'success', shareUrl } }`.
 5. On `error`: log structured event `studio.share.error` with the App `requestId` (if present); return `{ uxState: mapShareResultToUxState(...) }`.
 
-URL composition (the value stored in `share_token_url`): `<canonical-locale-prefixed-noonweb-base>/maxwell/prototipo/<token>`. The base is read from a new env var `NOON_WEBSITE_PUBLIC_BASE_URL` (defaults to `https://noon-main.vercel.app` on Production, the request origin in Preview/Development). Locale is the seller's current studio locale.
+URL composition (the value stored in `share_token_url`): `<base>/<locale>/maxwell/prototipo/<token>`. The base is resolved via the existing `resolvePublicBaseUrl(request)` helper in `lib/maxwell/public-url.ts`, which already chains `MAXWELL_PUBLIC_BASE_URL → NEXT_PUBLIC_SITE_URL → VERCEL_PROJECT_PRODUCTION_URL → VERCEL_URL → request origin`. No new env var is introduced (Q-pedro-6 resolved — the existing helper covers Production/Preview/Development with the same pattern already used by `buildWorkspaceUrl`). Locale is the seller's current studio locale.
 
 ### D10 — UI integration point
 
@@ -374,14 +374,35 @@ The expand-migrate-contract pattern does NOT apply here because no schema shape 
 
 Paths repo-relative. Web = `noon-web-main` repo; App = `App-nooncode` repo.
 
-**App-side (this PR or a sibling PR — los devs to confirm with Piedra):**
+**App-side (bundled in a single PR per Q-piedra resolutions 2026-05-27):**
 
 - `docs/adrs/ADR-028-prototype-share-cross-repo-upstream-wire.md` (this file)
-- `docs/integrations/cross-repo-webhook-v1.md` — new §6 entry `prototype-share` mirroring §3/§4/§5 structure
-- `app/api/integrations/website/prototype-share/route.ts` (new)
-- `lib/server/website-integration.ts` — new exported `receiveWebsitePrototypeShare(input)` handler
-- `supabase/migrations/<next>_prototype_share_endpoint.sql` — extends `website_webhook_events.endpoint` CHECK constraint to include `'prototype-share'`; ensures `prototype_workspaces.share_token` is UNIQUE and generated on workspace creation (verify against B-slice via Q-piedra-1)
+- `docs/integrations/cross-repo-webhook-v1.md` — new §6 entry `prototype-share` mirroring §3/§4/§5 structure (rename existing §6 signed-read to §7 if needed; los devs to confirm current numbering)
+- `app/api/integrations/website/prototype-share/route.ts` (new) — HMAC verify, `assertRateLimit({ namespace: 'website-prototype-share', limit: 120, windowMs: 60_000 })`, ledger record/replay per ADR-016, `jsonWithRequestId` on every response (success + error)
+- `lib/server/website-integration.ts` — new exported `receiveWebsitePrototypeShare(input, ledgerEvent)` handler + `websitePrototypeSharePayloadSchema` Zod schema; reuses existing `findLinkByExternalRef` for lead resolution (Q-piedra-3)
+- `supabase/migrations/0063_phase_23a_prototype_share_endpoint.sql` (next sequential after `0062_phase_3r5_outbound_webhook_events.sql`):
+  ```sql
+  alter table public.prototype_workspaces
+    add column if not exists external_session_id text,
+    add column if not exists v0_chat_id text,
+    add column if not exists generated_html text;
+
+  create unique index ux_prototype_workspaces_session_chat
+    on public.prototype_workspaces(external_session_id, v0_chat_id)
+    where external_session_id is not null and v0_chat_id is not null;
+
+  alter table public.website_webhook_events
+    drop constraint website_webhook_events_endpoint_check;
+  alter table public.website_webhook_events
+    add constraint website_webhook_events_endpoint_check
+    check (endpoint in (
+      'inbound-proposal','payment-confirmed','prototype-decision','prototype-share'
+    ));
+  ```
+  Reuses existing `demo_url` (for payload `deployed_url`) and `generated_at` from migrations `0046` and `0033`. `share_token` UNIQUE already in `0060:140`.
+- `app/api/integrations/website/prototype-signed-read/[token]/route.ts` — bugfix: swap `NextResponse.json` calls for `jsonWithRequestId` so `requestId` is included on every response body per Q-piedra-5
 - App-side error logging conventions per ADR-016 D8
+- Tests: `tests/server/api/integrations/website/prototype-share.test.ts` (new), `tests/server/website-integration.test.ts` (extend) — happy path, idempotent replay (transport + application), each D5 error code, rate-limit overflow, HMAC reject. Signed-read test extended to assert `requestId` presence on every error body.
 
 **Web-side (separate feature branch + PR per `feedback_feature_branches_always`):**
 
@@ -409,22 +430,38 @@ Paths repo-relative. Web = `noon-web-main` repo; App = `App-nooncode` repo.
 
 ## Open questions
 
-**For Piedra (App owner):**
+**For Piedra (App owner) — RESOLVED 2026-05-27:**
 
-- **Q-piedra-1.** Does App's existing B-slice persistence (migration `0060_phase_23a_prototype_decisions.sql` per ADR-025 D3) already generate `share_token` on `prototype_workspaces` row creation? If yes, what is the trigger path today (which code path creates the workspace, and where is the token issued)? If no, this ADR's `prototype-share` endpoint must own the workspace creation AND the token issuance.
-- **Q-piedra-2.** What is the resolution path for `(external_session_id, v0_chat_id)` → existing `prototype_workspaces` row (D4 application-level dedup)? Does App have a stable resolver, or does this ADR's handler need to define one?
-- **Q-piedra-3.** When the payload's `lead.business_name` + `lead.customer.email` resolve to an existing `leads` row (e.g., a prior `inbound-proposal` ran for the same customer), should the new workspace attach to that existing lead, or should App always create a fresh lead? Coordination with `inbound-proposal`'s lead-resolution path is required.
-- **Q-piedra-4.** Rate limit namespace `prototype-share`: confirm that adding it to the v1 rate limiter config is in scope of this iteration's App-side PR.
-- **Q-piedra-5.** `requestId` inclusion on error responses: during the 2026-05-26 bilateral smoke against App `develop`, the `prototype-signed-read` 404 response omitted `requestId`. Per `docs/integrations/cross-repo-webhook-v1.md` §8 the field SHOULD be present on all error responses. Confirm the new `prototype-share` handler includes it consistently.
+- **Q-piedra-1.** ✅ The existing B-slice RPC `request_lead_prototype(uuid)` (migration `0060:281-505`) IS the only path that today emits `share_token` on `prototype_workspaces`. It is `security definer` with `auth.uid()` required (line 294, raises `UNAUTHENTICATED` at line 311) and role-gated to admin/sales_manager/sales (line 324) — **not invokable from the service_role context the new endpoint runs in**. Therefore the new `prototype-share` handler owns workspace creation AND token issuance directly via INSERT, reusing the same `gen_random_uuid()::text` mechanism (matches RPC line 303). The UNIQUE constraint on `share_token` already exists (migration `0060:140`); no additional uniqueness work is needed for the token itself.
 
-**For Pedro (Web owner):**
+  **Column reuse decision (hybrid):** the App-side migration adds **three** new columns to `prototype_workspaces`: `external_session_id text`, `v0_chat_id text`, `generated_html text`. It does **not** add `deployed_url` (reuses existing `demo_url` from migration `0046` — identical semantic: v0-hosted preview URL) and does not add `generated_at` (already exists since migration `0033:7`). Rationale for keeping `generated_html` separate from existing `generated_content`: migration `0046` documents that overloading `generated_content` was the original problem 0046 was created to fix; `generated_content` is now "v0 source code for audit", whereas `generated_html` is "srcdoc fallback for client-portal render" — distinct audiences, lifecycles, and update triggers. The handler maps payload field names → column names internally (wire stays as ADR D2 specifies).
 
-- **Q-pedro-1.** Confirm `prototype_shared` as a new state machine phase (D7 recommends a real state vs. a derived state via column nullability).
-- **Q-pedro-2.** Confirm ADDITIVE coexistence with legacy proposal-send (D12 recommends; defers deprecation decision to a later iteration).
-- **Q-pedro-3.** Confirm feature flag reuse `MAXWELL_PROTOTIPO_DECISION_ROUTE` (D11 recommends single flag).
-- **Q-pedro-4.** Confirm Web-side migration number `019` (or next sequential against `supabase/migrations/`).
-- **Q-pedro-5.** Confirm Server Action path (D9 proposes `app/[locale]/maxwell/studio/_actions/share-prototype.ts`; los devs may pick a different convention).
-- **Q-pedro-6.** Confirm `NOON_WEBSITE_PUBLIC_BASE_URL` is the right env var name for URL composition (D9), vs. reusing an existing var.
+- **Q-piedra-2.** ✅ No stable resolver exists for `(external_session_id, v0_chat_id) → prototype_workspaces`. The only resolver today, `findLinkByExternalRef` (`lib/server/website-integration.ts:228-271`), operates on `website_inbound_links`, not `prototype_workspaces`. The new handler defines the resolver inline:
+
+  ```sql
+  select * from public.prototype_workspaces
+   where external_session_id = $1
+     and v0_chat_id = $2
+     and share_token_superseded_at is null
+   limit 1
+  ```
+
+  Backed by a new UNIQUE partial index on `(external_session_id, v0_chat_id)` (where both are non-null) in the same migration. Without the index this query is a seq scan; with it, the dedup is O(log n).
+
+- **Q-piedra-3.** ✅ Lead resolution follows the `inbound-proposal` precedent: lookup `website_inbound_links` by `(external_source, external_session_id)` first (mirrors `lib/server/website-integration.ts:259-268`). If a match exists, the new workspace attaches to that `link.lead_id` — the lead is not modified and no `lead_proposals` row is created. If no match exists, a fresh lead is created with `status = 'prospect'` (NOT `'proposal'`), and no `lead_proposals` row. The proposal-review path (`inbound-proposal`'s domain) is reached later if/when the seller picks the legacy CTA per D12. **Rejected alternative:** email-based dedup on `leads.email`. The payload's `lead.customer.email` is optional (D2) and email-based lookup is ambiguous (one customer may have multiple leads).
+
+- **Q-piedra-4.** ✅ In scope of this iteration's App-side PR. The route file declares `assertRateLimit(request, { namespace: 'website-prototype-share', limit: 120, windowMs: 60_000 })` — two-line addition mirroring the three sibling routes. Note: namespace uses the `website-` prefix for consistency with the existing siblings (`website-prototype-decision`, `website-inbound-proposal`, `website-payment-confirmed`) — not the bare `prototype-share` originally referenced in D5.
+
+- **Q-piedra-5.** ✅ Bug confirmed in `app/api/integrations/website/prototype-signed-read/[token]/route.ts`: line 60 reads `requestId` via `getRequestId(request)`, but `serveWebsitePrototypeSignedRead(token)` (line 90) does not receive it, and the response bodies on lines 97, 107, and 120 omit it. The fix uses the existing helper `jsonWithRequestId` (defined in `lib/server/api/request.ts:20`, already imported by `prototype-decision/route.ts:6`): swap every `NextResponse.json(...)` in the signed-read route for `jsonWithRequestId(...)`. The new `prototype-share` route uses `jsonWithRequestId` from the start. The signed-read fix is bundled into the same App-side PR — it is not in the ADR-028 D16 "files NOT touched" list (that list scopes the prototipo-share feature, not bugfixes in adjacent routes).
+
+**For Pedro (Web owner) — RESOLVED 2026-05-27:**
+
+- **Q-pedro-1.** ✅ Confirmed `prototype_shared` as a new explicit state machine phase per D7. Rationale: explicit transitions are testable in `state-machine.test.ts` and the UI branches on `phase` cleanly without every consumer recomputing the same boolean.
+- **Q-pedro-2.** ✅ Confirmed ADDITIVE coexistence with the legacy proposal-send flow per D12. Both CTAs remain available from `prototype_ready`. Deprecation decision deferred until ≥2 weeks of seller usage data is available — out of scope for this iteration.
+- **Q-pedro-3.** ✅ Confirmed reuse of the single flag `MAXWELL_PROTOTIPO_DECISION_ROUTE` per D11. Atomic enable/disable of the upstream CTA and the downstream public route avoids partial-state windows and keeps rollback simple.
+- **Q-pedro-4.** ✅ Confirmed migration number `019`. Verified against the current head of `noon-web-main/supabase/migrations/`: `20260521_018_project_types_unify.sql`. The new file lands as `20260527_019_studio_session_share_token.sql`.
+- **Q-pedro-5.** ✅ Confirmed Server Action path `app/[locale]/maxwell/studio/_actions/share-prototype.ts`. Matches the established `_actions/` convention (precedents: `app/[locale]/maxwell/prototipo/[token]/_actions/submit-decision.ts`, `app/[locale]/maxwell/review/_actions/auth.ts`). The directory does not exist yet under `studio/`; this iteration creates it.
+- **Q-pedro-6.** ✅ Resolved with override: **no new env var is introduced.** The ADR's original proposal of `NOON_WEBSITE_PUBLIC_BASE_URL` is superseded. The Server Action calls the existing `resolvePublicBaseUrl(request)` helper in `lib/maxwell/public-url.ts`, which already covers Production/Preview/Development via the chain `MAXWELL_PUBLIC_BASE_URL → NEXT_PUBLIC_SITE_URL → VERCEL_PROJECT_PRODUCTION_URL → VERCEL_URL → request origin`. This is the same pattern `buildWorkspaceUrl` uses. D9 above has been updated to reflect this.
 
 Architecture proceeds on the clear part and explicitly marks these as blocked-pending-answer. Implementation cannot begin until Q-piedra-1 is resolved (the App-side surface depends on it).
 
@@ -432,9 +469,13 @@ Architecture proceeds on the clear part and explicitly marks these as blocked-pe
 
 ## Architecture outcome
 
-**Needs clarification.** This ADR is ready for Pedro + Piedra review. Implementation readiness requires answers to Q-piedra-1, Q-piedra-2, Q-piedra-3 (which determine whether the App-side handler creates the workspace + token or delegates to an existing internal path) and Q-pedro-1 through Q-pedro-3 (which determine the Web-side state machine and flag strategy).
+**Ready for parallel implementation.** All eleven open questions (Q-pedro-1..6 + Q-piedra-1..5) were resolved 2026-05-27. The architectural surface is fully bound on both repos:
 
-Once Q-piedra-1/2/3 are resolved and Pedro confirms the Web-side architectural decisions, the outcome flips to **Ready** for Backend (App side) and Frontend (Web side) implementation in parallel feature branches per `feedback_feature_branches_always`.
+- **App side (this repo):** new `prototype-share` POST route + handler + Zod schema + migration `0063_phase_23a_prototype_share_endpoint.sql` (3 new columns to `prototype_workspaces`, 1 UNIQUE partial index, CHECK extension). The handler owns workspace creation and token issuance (the existing `request_lead_prototype` RPC is not reachable from service_role per Q-piedra-1). Lead reconciliation reuses `findLinkByExternalRef` against `website_inbound_links` per Q-piedra-3. Rate-limit namespace `website-prototype-share` per Q-piedra-4. Bundled bugfix: `prototype-signed-read` route swaps to `jsonWithRequestId` so error bodies always include `requestId` per Q-piedra-5.
+
+- **Web side (noon-web-main):** `prototype_shared` state machine phase per Q-pedro-1, ADDITIVE coexistence with legacy proposal-send per Q-pedro-2, single feature flag `MAXWELL_PROTOTIPO_DECISION_ROUTE` per Q-pedro-3, migration `20260527_019_studio_session_share_token.sql` per Q-pedro-4, Server Action at `app/[locale]/maxwell/studio/_actions/share-prototype.ts` per Q-pedro-5, URL composition via existing `resolvePublicBaseUrl()` (no new env var) per Q-pedro-6.
+
+Backend (App) and Frontend (Web) can proceed in parallel feature branches per `feedback_feature_branches_always`. The wire contract is symmetric to the existing three inbound entries; no further architecture work is required.
 
 ---
 
