@@ -17,6 +17,7 @@ NoonWeb (sitio publico)                          NoonApp (workspace interno)
 inbound-proposal       ──────────────────────►  POST /api/integrations/website/inbound-proposal
 payment-confirmed      ──────────────────────►  POST /api/integrations/website/payment-confirmed
 prototype-decision     ──────────────────────►  POST /api/integrations/website/prototype-decision
+prototype-share        ──────────────────────►  POST /api/integrations/website/prototype-share
 
 prototype-signed-read  ──────────────────────►  GET  /api/integrations/website/
 (NoonWeb fetches at                                  prototype-signed-read/[token]
@@ -27,14 +28,15 @@ POST /api/integrations/        ◄──────────────  pr
      proposal-review-decision
 ```
 
-Five message types today (four inbound on App + one outbound from App):
+Six message types today (five inbound on App — four POST + one GET — plus one outbound from App):
 1. **Web → App: `inbound-proposal`** — a client completed Maxwell on the website and a proposal was created. App creates a lead + proposal + inbound link, queues PM review.
 2. **Web → App: `payment-confirmed`** — the client paid for an approved proposal. App activates the project, records payment, kicks off delivery.
 3. **Web → App: `prototype-decision`** — a client accepted or rejected a prototipo at the NoonWeb route `/maxwell/prototipo/[token]`. App records the decision and, on accept, fires a fire-and-forget Maxwell draft propuesta for the seller to complete. See §5.
-4. **Web → App: `prototype-signed-read`** — NoonWeb server-side fetches prototipo data from App at render time of `/maxwell/prototipo/[token]` (Pull pattern B.2 per ADR-023 D8 / ADR-024). This is the only **GET** entry; the others are POST. See §6.
-5. **App → Web: `proposal-review-decision`** — the PM approved/rejected/requested changes on an inbound proposal. Web updates client UI.
+4. **Web → App: `prototype-share`** — a NoonWeb seller in `/maxwell/studio` clicks "Compartir prototipo con el cliente"; NoonWeb POSTs the studio session + V0 build context + lead context; App creates (or returns the existing) `prototype_workspaces` row, issues an opaque `share_token`, and returns it for NoonWeb to compose the public URL `/maxwell/prototipo/<token>` the seller forwards to the client. See §5A. This is the upstream that materializes the token consumed by §5 `prototype-decision` and §6 `prototype-signed-read`.
+5. **Web → App: `prototype-signed-read`** — NoonWeb server-side fetches prototipo data from App at render time of `/maxwell/prototipo/[token]` (Pull pattern B.2 per ADR-023 D8 / ADR-024). This is the only **GET** entry; the others are POST. See §6.
+6. **App → Web: `proposal-review-decision`** — the PM approved/rejected/requested changes on an inbound proposal. Web updates client UI.
 
-All five share the same auth + signing protocol. They differ only in URL/method, payload, and response.
+All six share the same auth + signing protocol. They differ only in URL/method, payload, and response.
 
 ---
 
@@ -397,6 +399,148 @@ A successful response after retry MUST be treated identically to a successful re
 
 ---
 
+## 5A. Inbound webhook — `prototype-share` (Web → App)
+
+> **Status:** **Pending implementation** (App-side iteration `feat/adr-028-prototype-share`, contract accepted 2026-05-27). Section number `5A` is the non-disruptive insertion convention: this entry sits between the §5 POST family (`prototype-decision`) and §6 GET (`prototype-signed-read`) without renumbering downstream cross-references. The endpoint shape and rationale are firmed by ADR-028.
+> **Anchor:** see `docs/adrs/ADR-028-prototype-share-cross-repo-upstream-wire.md` for the rationale behind every shape decision below. This is the **upstream** of the token consumed by §5 (POST decision) and §6 (GET render-time fetch).
+
+### 5A.1 Endpoint
+
+`POST /api/integrations/website/prototype-share`
+
+### 5A.2 Request payload
+
+Payload shape per ADR-028 D2:
+
+```json
+{
+  "external_source": "noon_website",
+  "external_session_id": "string (required, non-empty, NoonWeb studio_session.id)",
+  "lead": {
+    "business_name": "string (required, non-empty, trimmed)",
+    "project_type_label": "string (required, non-empty, e.g. 'Landing Page')",
+    "customer": {
+      "name": "string | null (optional, may be unknown at share time)",
+      "email": "string | null (optional, valid email if present, lowercased on receive)",
+      "phone": "string | null (optional)",
+      "whatsapp": "string | null (optional)",
+      "company": "string | null (optional)"
+    }
+  },
+  "prototype": {
+    "v0_chat_id": "string (required, non-empty, identifies the V0 chat that built this artifact)",
+    "version_number": "integer >= 1 (required)",
+    "deployed_url": "string (required, https URL of the V0 deploy)",
+    "generated_html": "string | null (optional, srcdoc fallback if deployed_url is unreachable)",
+    "generated_at": "ISO 8601 string (required, when V0 produced the build)"
+  },
+  "metadata": "<record, optional, NoonWeb may forward additional context; App preserves but does not interpret>"
+}
+```
+
+**Field semantics:**
+
+- `external_session_id` ties the share to the NoonWeb studio session — half of the application-level dedup pair (§5A.3) and the trace-correlation key in App-side logs.
+- `lead.business_name` + `lead.project_type_label` are required because App may materialize a new lead row (per §5A.8) or reconcile against an existing one.
+- `lead.customer.*` fields are optional — the share moment may precede full customer capture. App tolerates NULLs and the lead-resolution path (§5A.8) does not require them.
+- `prototype.v0_chat_id` is the upstream-of-token identity: regenerate ⇒ new V0 chat ⇒ new workspace ⇒ new token. The `(external_session_id, v0_chat_id)` pair is the application-level resource-dedup key.
+- `prototype.deployed_url` MUST be a valid `https://` URL. Persisted on `prototype_workspaces.demo_url` (existing column from migration `0046`, identical semantic).
+- `prototype.generated_html` is the srcdoc fallback when `deployed_url` is unreachable. If BOTH `deployed_url` and `generated_html` are NULL → `400 PROTOTYPE_SHARE_INVALID_PROTOTYPE`. Persisted on new column `prototype_workspaces.generated_html` (semantically distinct from existing `generated_content` per ADR-028 Q-piedra-1).
+- `prototype.generated_at` is the V0 build timestamp; persisted on the existing `prototype_workspaces.generated_at` column (migration `0033:7`). Falls back to `now()` if absent (defensive).
+
+### 5A.3 Idempotency
+
+**Transport-level (per ADR-016 / §10.2):** identical to the other inbound POST entries. Identity key `(endpoint, signature_hash)` where `endpoint = 'prototype-share'` and `signature_hash = sha256(${timestamp}.${bodyText})`. Bit-identical replay returns the original wire-shape response with HTTP `200` and `idempotent: true`. The handler MUST sit behind the existing `website_webhook_events` ledger; the `endpoint` CHECK constraint is extended to include `'prototype-share'` in the App-side migration (`0063_phase_23a_prototype_share_endpoint.sql`).
+
+**Application-level (resource dedup):** keyed on `(external_session_id, v0_chat_id)`. If a request arrives with a pair that maps to an existing `prototype_workspaces` row whose `share_token_superseded_at IS NULL`, App returns the existing `share_token` with HTTP `200` and `idempotent: true`. Backed by a new UNIQUE partial index on `(external_session_id, v0_chat_id)` (where both are non-null) in the same migration. This handles the case where NoonWeb retries after a network blip with a slightly different `bodyText` (e.g., updated customer email) — transport-level would not detect this as a replay, but the resource is the same.
+
+**No payload-level idempotency.** No `share_request_id` UUID, no `Idempotency-Key` header. Per ADR-016 D2 / ADR-028 D4, the transport ledger is the single explicit idempotency layer; application-level dedup is an internal optimization, not part of the contract surface.
+
+### 5A.4 Success response
+
+```json
+{
+  "data": {
+    "idempotent": "boolean",
+    "share_token": "string (opaque, App-issued, matches prototype_workspaces.share_token)",
+    "prototype_workspace_id": "uuid (the workspace row that owns this token)",
+    "lead_id": "uuid (the lead row that owns the workspace)",
+    "version_number": "integer >= 1 (echo of the version this share refers to)",
+    "issued_at": "ISO 8601 string (when App emitted or last-validated the token)",
+    "superseded_workspace_ids": "uuid[] (zero or more prior workspace ids whose tokens this share invalidates; empty array on first share)"
+  },
+  "requestId": "string"
+}
+```
+
+HTTP status: `201` if newly created, `200` if idempotent replay (transport OR application-level dedup hit).
+
+**Why token-only, not URL:** the client-facing URL `https://<noonweb-host>/<locale>/maxwell/prototipo/<token>` is composed by NoonWeb. App does not know NoonWeb's deployment topology (Preview vs Production hosts) or the active locale. Composition is the receiver's responsibility (per ADR-010 / ADR-028 D3).
+
+**Why include `superseded_workspace_ids`:** when a seller regenerates V2 from a session that previously shared V1, App invalidates the V1 token (per ADR-023 D3). NoonWeb needs to know the V1 token is dead so its own `studio_session.share_token` column can be updated and the prior URL flagged superseded. Returning the list avoids a second roundtrip. On V1 (first share), the array is empty.
+
+**Wire-vs-storage mapping (App-side, informational):** `share_token` mirrors `prototype_workspaces.share_token` (UNIQUE since migration `0060:140`). App issues the value via `gen_random_uuid()::text` — the same mechanism used by the `request_lead_prototype` RPC at `0060:303`. The handler issues the token directly via INSERT, NOT via the RPC (which is `security definer` with `auth.uid()` required and not reachable from the service_role context this endpoint runs in — see ADR-028 Q-piedra-1).
+
+### 5A.5 Error responses
+
+Common shape per §8.
+
+| HTTP | Code | When |
+|---|---|---|
+| `401` | `WEBSITE_WEBHOOK_AUTH_FAILED` | Missing/invalid signature, stale timestamp (±5min window violated), missing secret |
+| `400` | (validation) | Body is not JSON, schema violation per §5A.2 |
+| `400` | `PROTOTYPE_SHARE_INVALID_PROTOTYPE` | `prototype.deployed_url` not `https://`, or both `deployed_url` and `generated_html` are NULL, or `version_number < 1` |
+| `400` | `PROTOTYPE_SHARE_INVALID_LEAD` | `lead.business_name` or `lead.project_type_label` empty after trim |
+| `409` | `PROTOTYPE_SHARE_WORKSPACE_TERMINAL` | The resource-dedup found an existing workspace whose decision state is `accepted` or whose workspace status is `archived`. The seller must regenerate (new `v0_chat_id`) to share a new version |
+| `429` | (rate limit) | More than 120 requests/minute from sender — namespace `website-prototype-share`, independent counter per §9 |
+| `500` | `PROTOTYPE_SHARE_PERSIST_FAILED` | DB error during INSERT or workspace lookup |
+| `500` | `PROTOTYPE_SHARE_TOKEN_GENERATION_FAILED` | App could not generate a unique `share_token` after retries on `prototype_workspaces.share_token UNIQUE` (extremely rare with UUID-v4 entropy) |
+
+Each `PROTOTYPE_SHARE_*` code maps to a deterministic NoonWeb-studio UX state. See ADR-028 D10 for the suggested copy per code.
+
+### 5A.6 Token lifecycle and supersede semantics
+
+State-driven, identical to §5.6 (the decision write entry) — no calendar TTL:
+
+- **V1 token is alive** while the V1 prototipo is the current artifact under the lead (workspace status not `archived`, no superseding V2).
+- **Regenerate to V2 invalidates V1.** The new share creates a fresh `prototype_workspaces` row with a fresh `share_token`. The handler marks the prior workspace's `share_token_superseded_at = now()` **before** INSERT of the new row (transactionally, mirroring the pattern at `0060:392-396` from the `request_lead_prototype` RPC). The returned `superseded_workspace_ids` lists the prior workspace ids.
+- **Accept is terminal.** Once a `prototype_decisions` row exists with `decision = 'accepted'`, a new share against the same `(external_session_id, v0_chat_id)` pair returns `409 PROTOTYPE_SHARE_WORKSPACE_TERMINAL`. The seller must regenerate (new `v0_chat_id`) to share again.
+- **Reject does NOT block reshare.** A rejected V1 may still be reshared bit-identically against the same pair (returns `200 idempotent: true` with the existing token); regenerate is a separate operator action.
+- **Hard-delete of the parent lead invalidates implicitly** via FK cascade on `prototype_workspaces.lead_id`. A subsequent share request against a stale session id would create a fresh lead per §5A.8.
+
+### 5A.7 Ledger row shape
+
+The `website_webhook_events` row written for a `prototype-share` request mirrors the existing inbound POST entries per ADR-016 D7:
+
+- `endpoint`: `'prototype-share'`. The App-side migration extends the CHECK constraint to include this value and the helper's TypeScript `WebsiteWebhookEndpoint` union.
+- `external_session_id`: the payload's `external_session_id`. This is the **first inbound entry where the ledger column carries the studio session id at ledger level** — earlier entries (e.g., `prototype-decision`) leave it NULL per §5.7 because their identity is the token, not the session.
+- `external_proposal_id`: NULL (no proposal in this payload).
+- `external_payment_id`: NULL.
+- `link_id`: populated if the lead-resolution path (§5A.8) found an existing `website_inbound_links` row; otherwise NULL.
+
+Post-processing on success: the handler calls `markWebsiteWebhookEventProcessed`. The structured log line (`logger.info('website.prototype_share.received', {...})`) carries `prototype_workspace_id`, `share_token_hash` (NEVER the raw token — defense against log scraping, mirroring the §6.11 invariant), `lead_id`, and `version_number`.
+
+### 5A.8 Lead resolution
+
+The handler resolves `lead_id` deterministically (ADR-028 Q-piedra-3):
+
+1. **First lookup:** `findLinkByExternalRef` on `website_inbound_links` keyed by `(external_source='noon_website', external_session_id=payload.external_session_id)` — the same resolver used by §3 `inbound-proposal` (see `lib/server/website-integration.ts:259-268`). If a row exists, attach the new workspace to `link.lead_id`. The lead row itself is NOT modified; no `lead_proposals` row is created. This is the typical path when `inbound-proposal` ran first for the same customer.
+2. **No match → fresh lead.** Insert a new `leads` row with `status = 'prospect'` (NOT `'proposal'` — proposal review is the legacy path per ADR-028 D12). Populate `name = lead.customer.name`, `email = lower(lead.customer.email)` when present, `company = lead.business_name`, `source = 'website'`. NO `lead_proposals` row is created here; the proposal-review path is reached later if/when the seller picks the legacy CTA.
+
+**Why not email-based dedup on `leads.email`:** rejected per ADR-028 Q-piedra-3 — `lead.customer.email` is optional in the payload (the share moment may precede customer capture), and email-based lookup is ambiguous (one customer may have multiple leads under different sessions).
+
+### 5A.9 Retry semantics (NoonWeb-side guidance)
+
+Identical to §5.9:
+
+- `2xx` → success; do not retry.
+- `4xx` → terminal failure; do NOT retry. Surface error to the seller per §5A.5 code mapping.
+- `5xx` or network error → MAY retry with exponential backoff. Bit-identical retries are detected by the App-side ledger and return `200 idempotent: true` per §5A.3 / §10.2. Recommended cap: 3 attempts with backoff 1s / 5s / 30s.
+
+The Web-side helper `lib/maxwell/prototipo-share.ts` (NoonWeb) inherits retry from `postNoonAppWebhook` (3 attempts with 1s+2s backoff ±20% jitter; retry on 5xx + network, never on 4xx) per ADR-028 D8.
+
+---
+
 ## 6. Inbound read endpoint — `prototype-signed-read` (Web → App, GET)
 
 > **Status:** wire contract firmed by ADR-024 (2026-05-25; amended A1 2026-05-26 — lead-context source column mapping correction). **Endpoint shipped 2026-05-26 via PR `feat/g22-prototype-signed-read-handler` (App-side handler).** Persistence (`prototype_workspaces.share_token` + `share_token_superseded_at`) shipped in B-slice per ADR-023 (PR #110, 2026-05-26). NoonWeb route `/maxwell/prototipo/[token]` render against this endpoint lands in D-slice (NoonWeb-side, pending).
@@ -747,13 +891,14 @@ HTTP status reflects the category. The `code` field is stable for programmatic h
 
 ## 9. Rate limiting
 
-The four inbound endpoints (on App) enforce:
+The five inbound endpoints (on App) enforce:
 
 - **Default limit:** 120 requests per minute per namespace
-- **Namespace `inbound-proposal`:** independent counter per endpoint (default 120 req/min, IP-based identity)
-- **Namespace `payment-confirmed`:** independent counter per endpoint (default 120 req/min, IP-based identity)
-- **Namespace `prototype-decision`:** independent counter per endpoint (default 120 req/min, IP-based identity)
-- **Namespace `prototype-signed-read`:** independent counter per endpoint with **tighter override** — 60 req/min, combined `(token, remoteIp)` identity (per ADR-024 D6 / §6.7). Per-namespace tuning is permitted because counters are independent.
+- **Namespace `website-inbound-proposal`:** independent counter per endpoint (default 120 req/min, IP-based identity)
+- **Namespace `website-payment-confirmed`:** independent counter per endpoint (default 120 req/min, IP-based identity)
+- **Namespace `website-prototype-decision`:** independent counter per endpoint (default 120 req/min, IP-based identity)
+- **Namespace `website-prototype-share`:** independent counter per endpoint (default 120 req/min, IP-based identity) — added 2026-05-27 with §5A
+- **Namespace `prototype-signed-read`:** independent counter per endpoint with **tighter override** — 60 req/min, combined `(token, remoteIp)` identity (per ADR-024 D6 / §6.7). Per-namespace tuning is permitted because counters are independent. Note: this namespace omits the `website-` prefix as a historical artifact of the §6 handler iteration; consistency-pass deferred (not breaking).
 
 When exceeded: `429 Too Many Requests`.
 
@@ -770,6 +915,7 @@ When exceeded: `429 Too Many Requests`.
 | `inbound-proposal` | `(external_source, external_session_id)` or `(external_source, external_proposal_id)` | Lookup in `website_inbound_links` table |
 | `payment-confirmed` | `(external_source, external_payment_id)` plus fallback to session/proposal id | Same table + unique constraint on `external_payment_id` |
 | `prototype-decision` | Transport-level only — `(endpoint='prototype-decision', signature_hash)` in `website_webhook_events` ledger, plus application-level UNIQUE on `prototype_decisions(prototype_workspace_id)` for one-terminal-decision-per-workspace | Ledger row claim + table UNIQUE; see §5.3 |
+| `prototype-share` | Transport-level — `(endpoint='prototype-share', signature_hash)` in `website_webhook_events` ledger — plus application-level resource dedup on `(external_session_id, v0_chat_id)` via UNIQUE partial index on `prototype_workspaces` | Ledger row claim + table UNIQUE partial index; see §5A.3 |
 | `prototype-signed-read` (GET) | **Intrinsic HTTP idempotency** — no application-level or transport-level dedup required. Reads are non-mutating; replay returns the same response within the cache window (§6.8). Transport ledger declined by design per ADR-024 D1; see §6.9 / §6.10 | n/a — HTTP semantics suffice |
 | `proposal-review-decision` (outbound) | App side: stable transition (PM decision is itself idempotent). Web side: see §7.4 | App stores decision in `lead_proposals.review_status` |
 
@@ -833,7 +979,9 @@ Both repos MUST use the exact same value for `NOON_WEBSITE_WEBHOOK_SECRET`. If t
 
 The `prototype-decision` endpoint (§5) introduces **no new env var**; it reuses `NOON_WEBSITE_WEBHOOK_SECRET` for HMAC verification, same as the other two inbound POST entries.
 
-The `prototype-signed-read` endpoint (§6) also introduces **no new env var** per ADR-024 D1. It reuses `NOON_WEBSITE_WEBHOOK_SECRET` exactly as the four POST entries do — same secret, same `x-noon-timestamp` + `x-noon-signature` headers, same ±5min clock-skew window, same secret-rotation procedure (§2.4). The only signing-input difference is the empty-body convention `${timestamp}.` (§2.1).
+The `prototype-share` endpoint (§5A) also introduces **no new env var** per ADR-028. It reuses `NOON_WEBSITE_WEBHOOK_SECRET` like every other inbound entry. Web-side URL composition is handled by the existing `resolvePublicBaseUrl()` helper in `lib/maxwell/public-url.ts` (chain `MAXWELL_PUBLIC_BASE_URL → NEXT_PUBLIC_SITE_URL → VERCEL_PROJECT_PRODUCTION_URL → VERCEL_URL → request origin`) per ADR-028 Q-pedro-6; no NoonWeb-side env var is introduced either.
+
+The `prototype-signed-read` endpoint (§6) also introduces **no new env var** per ADR-024 D1. It reuses `NOON_WEBSITE_WEBHOOK_SECRET` exactly as the five POST entries do — same secret, same `x-noon-timestamp` + `x-noon-signature` headers, same ±5min clock-skew window, same secret-rotation procedure (§2.4). The only signing-input difference is the empty-body convention `${timestamp}.` (§2.1).
 
 ---
 
