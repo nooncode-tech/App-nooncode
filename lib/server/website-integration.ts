@@ -2042,6 +2042,382 @@ export async function receiveWebsitePrototypeDecision(
   }
 }
 
+// ============================================================================
+// prototype-share — Inbound webhook (Web → App)
+// Contract: ADR-028 + docs/integrations/cross-repo-webhook-v1.md §5A
+// Migration: supabase/migrations/0063_phase_23a_prototype_share_endpoint.sql
+// ============================================================================
+
+const optionalEmailSchema = z.preprocess(
+  (v) => {
+    if (typeof v !== 'string') return v ?? null
+    const trimmed = v.trim()
+    if (trimmed.length === 0) return null
+    return trimmed.toLowerCase()
+  },
+  z.string().email().nullable().optional(),
+)
+
+const websitePrototypeShareCustomerSchema = z.object({
+  name: optionalTextSchema,
+  email: optionalEmailSchema,
+  phone: optionalTextSchema,
+  whatsapp: optionalTextSchema,
+  company: optionalTextSchema,
+})
+
+const websitePrototypeShareLeadSchema = z.object({
+  business_name: z.string().trim().min(1, 'lead.business_name is required.'),
+  project_type_label: z
+    .string()
+    .trim()
+    .min(1, 'lead.project_type_label is required.'),
+  customer: websitePrototypeShareCustomerSchema.optional().default({}),
+})
+
+const optionalHttpsUrlSchema = z.preprocess(
+  (v) => {
+    if (typeof v !== 'string') return v ?? null
+    const trimmed = v.trim()
+    if (trimmed.length === 0) return null
+    return trimmed
+  },
+  z
+    .string()
+    .url()
+    .startsWith('https://', 'prototype.deployed_url must be https://')
+    .nullable()
+    .optional(),
+)
+
+const optionalHtmlSchema = z.preprocess(
+  (v) => {
+    if (typeof v !== 'string') return v ?? null
+    if (v.trim().length === 0) return null
+    return v
+  },
+  z.string().nullable().optional(),
+)
+
+const websitePrototypeSharePrototypeSchema = z
+  .object({
+    v0_chat_id: z.string().trim().min(1, 'prototype.v0_chat_id is required.'),
+    version_number: z.coerce
+      .number()
+      .int()
+      .min(1, 'prototype.version_number must be >= 1.'),
+    deployed_url: optionalHttpsUrlSchema,
+    generated_html: optionalHtmlSchema,
+    generated_at: z.string().datetime().optional(),
+  })
+  .refine(
+    (v) => Boolean(v.deployed_url) || Boolean(v.generated_html),
+    {
+      message:
+        'prototype.deployed_url or prototype.generated_html must be provided.',
+      path: ['deployed_url'],
+    },
+  )
+
+export const websitePrototypeSharePayloadSchema = z.object({
+  external_source: z.string().trim().min(1).default('noon_website'),
+  external_session_id: z
+    .string()
+    .trim()
+    .min(1, 'external_session_id is required.'),
+  lead: websitePrototypeShareLeadSchema,
+  prototype: websitePrototypeSharePrototypeSchema,
+  metadata: looseRecordSchema,
+})
+
+export type WebsitePrototypeSharePayload = z.infer<
+  typeof websitePrototypeSharePayloadSchema
+>
+
+export interface ReceiveWebsitePrototypeShareResult {
+  idempotent: boolean
+  shareToken: string
+  prototypeWorkspaceId: string
+  leadId: string
+  versionNumber: number
+  issuedAt: string
+  supersededWorkspaceIds: string[]
+}
+
+interface ExistingPrototypeShareWorkspace {
+  id: string
+  lead_id: string
+  status: string
+  share_token: string
+  share_token_superseded_at: string | null
+  created_at: string
+  updated_at: string | null
+}
+
+async function findPrototypeWorkspaceBySessionChat(
+  client: SupabaseAdminClient,
+  input: { externalSessionId: string; v0ChatId: string },
+): Promise<ExistingPrototypeShareWorkspace | null> {
+  const { data, error } = await table(client, 'prototype_workspaces')
+    .select(
+      'id, lead_id, status, share_token, share_token_superseded_at, created_at, updated_at',
+    )
+    .eq('external_session_id', input.externalSessionId)
+    .eq('v0_chat_id', input.v0ChatId)
+    .is('share_token_superseded_at', null)
+    .maybeSingle()
+
+  if (error) {
+    throw new ApiError(
+      'PROTOTYPE_SHARE_PERSIST_FAILED',
+      `Prototype workspace lookup by (session, chat) failed: ${error.message}`,
+      500,
+    )
+  }
+
+  return (data as ExistingPrototypeShareWorkspace | null) ?? null
+}
+
+async function existingWorkspaceIsTerminal(
+  client: SupabaseAdminClient,
+  workspace: ExistingPrototypeShareWorkspace,
+): Promise<boolean> {
+  if (workspace.status === 'archived') return true
+
+  const { data, error } = await table(client, 'prototype_decisions')
+    .select('id, decision')
+    .eq('prototype_workspace_id', workspace.id)
+    .maybeSingle()
+
+  if (error) {
+    throw new ApiError(
+      'PROTOTYPE_SHARE_PERSIST_FAILED',
+      `Prototype decision terminal-state check failed: ${error.message}`,
+      500,
+    )
+  }
+
+  return (data as { decision: string } | null)?.decision === 'accepted'
+}
+
+async function supersedePriorWorkspacesUnderLead(
+  client: SupabaseAdminClient,
+  leadId: string,
+): Promise<string[]> {
+  const nowIso = new Date().toISOString()
+  const { data, error } = await table(client, 'prototype_workspaces')
+    .update({
+      share_token_superseded_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('lead_id', leadId)
+    .is('share_token_superseded_at', null)
+    .select('id')
+
+  if (error) {
+    throw new ApiError(
+      'PROTOTYPE_SHARE_PERSIST_FAILED',
+      `Failed to supersede prior workspaces under lead: ${error.message}`,
+      500,
+    )
+  }
+
+  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id)
+}
+
+async function insertFreshLeadForShare(
+  client: SupabaseAdminClient,
+  input: {
+    payload: WebsitePrototypeSharePayload
+    actorId: string
+  },
+): Promise<{ id: string }> {
+  const customer = input.payload.lead.customer
+  const phone = customer.phone ?? customer.whatsapp ?? null
+  const { data, error } = await table(client, 'leads')
+    .insert({
+      name: customer.name ?? input.payload.lead.business_name,
+      email: customer.email ?? null,
+      phone,
+      company: customer.company ?? input.payload.lead.business_name,
+      source: 'website',
+      status: 'prospect',
+      created_by: input.actorId,
+      assigned_to: null,
+      tags: ['inbound', 'website', 'maxwell', 'prototype-share'],
+      lead_origin: 'inbound',
+    })
+    .select('id')
+    .single()
+
+  if (error || !data?.id) {
+    throw new ApiError(
+      'PROTOTYPE_SHARE_PERSIST_FAILED',
+      `Lead creation failed for prototype share: ${error?.message ?? 'no row returned'}`,
+      500,
+    )
+  }
+
+  return data as { id: string }
+}
+
+interface InsertedShareWorkspaceRow {
+  id: string
+  share_token: string
+  created_at: string
+}
+
+async function insertPrototypeShareWorkspace(
+  client: SupabaseAdminClient,
+  input: {
+    leadId: string
+    requestedByProfileId: string
+    payload: WebsitePrototypeSharePayload
+    webhookEventId: string | null
+  },
+): Promise<InsertedShareWorkspaceRow> {
+  const shareToken = randomUUID()
+  const generatedAt = input.payload.prototype.generated_at ?? new Date().toISOString()
+
+  const { data, error } = await table(client, 'prototype_workspaces')
+    .insert({
+      lead_id: input.leadId,
+      requested_by_profile_id: input.requestedByProfileId,
+      current_stage: 'sales',
+      status: 'ready',
+      last_operation_id: randomUUID(),
+      share_token: shareToken,
+      external_session_id: input.payload.external_session_id,
+      v0_chat_id: input.payload.prototype.v0_chat_id,
+      demo_url: input.payload.prototype.deployed_url ?? null,
+      generated_html: input.payload.prototype.generated_html ?? null,
+      generated_content: input.payload.prototype.deployed_url ?? null,
+      generation_prompt: null,
+      generated_at: generatedAt,
+      webhook_event_id: input.webhookEventId,
+    })
+    .select('id, share_token, created_at')
+    .single()
+
+  if (error) {
+    // 23505 = unique_violation. The `share_token UNIQUE` collision is the
+    // documented PROTOTYPE_SHARE_TOKEN_GENERATION_FAILED case (§5A.5).
+    if (error.code === '23505' && /share_token/i.test(error.message ?? '')) {
+      throw new ApiError(
+        'PROTOTYPE_SHARE_TOKEN_GENERATION_FAILED',
+        'Failed to generate a unique share_token after retries.',
+        500,
+      )
+    }
+    throw new ApiError(
+      'PROTOTYPE_SHARE_PERSIST_FAILED',
+      `Prototype workspace insert failed: ${error.message}`,
+      500,
+    )
+  }
+
+  if (!data?.id || !data.share_token) {
+    throw new ApiError(
+      'PROTOTYPE_SHARE_PERSIST_FAILED',
+      'Prototype workspace insert returned no row.',
+      500,
+    )
+  }
+
+  return data as InsertedShareWorkspaceRow
+}
+
+/**
+ * Receive handler for the `prototype-share` Web → App webhook.
+ *
+ * Flow per ADR-028 + cross-repo-webhook-v1.md §5A:
+ *   1. Application-level resource dedup on (external_session_id, v0_chat_id).
+ *      Hit + non-terminal → return existing token (idempotent: true).
+ *      Hit + terminal (accepted decision OR status archived) → 409.
+ *   2. No existing workspace → resolve lead:
+ *      a. `findLinkByExternalRef` by (external_source, external_session_id)
+ *         — same path as §3 inbound-proposal. Match → attach to link.lead_id.
+ *      b. No match → INSERT fresh lead with status='prospect'.
+ *   3. Supersede all prior non-superseded workspaces under the lead
+ *      (mirrors the regenerate semantics from request_lead_prototype RPC).
+ *   4. INSERT new prototype_workspaces row with fresh share_token via
+ *      randomUUID(); store webhook_event_id for replay-path FK-join.
+ *
+ * Token issuance: handler-owned per ADR-028 Q-piedra-1. The existing
+ * `request_lead_prototype` RPC is `security definer` with `auth.uid()`
+ * required and NOT reachable from service_role.
+ */
+export async function receiveWebsitePrototypeShare(
+  payload: WebsitePrototypeSharePayload,
+  webhookEventId: string | null,
+  clientOverride?: SupabaseAdminClient,
+): Promise<ReceiveWebsitePrototypeShareResult> {
+  const client = clientOverride ?? createSupabaseAdminClient()
+
+  // Step 1 — application-level resource dedup.
+  const existing = await findPrototypeWorkspaceBySessionChat(client, {
+    externalSessionId: payload.external_session_id,
+    v0ChatId: payload.prototype.v0_chat_id,
+  })
+
+  if (existing) {
+    if (await existingWorkspaceIsTerminal(client, existing)) {
+      throw new ConflictApiError(
+        'This prototype workspace has already been accepted or archived. Regenerate to share a new version.',
+        'PROTOTYPE_SHARE_WORKSPACE_TERMINAL',
+      )
+    }
+
+    return {
+      idempotent: true,
+      shareToken: existing.share_token,
+      prototypeWorkspaceId: existing.id,
+      leadId: existing.lead_id,
+      versionNumber: payload.prototype.version_number,
+      issuedAt: existing.updated_at ?? existing.created_at,
+      supersededWorkspaceIds: [],
+    }
+  }
+
+  // Step 2 — resolve lead.
+  const existingLink = await findLinkByExternalRef(client, {
+    external_source: payload.external_source,
+    external_session_id: payload.external_session_id,
+  })
+
+  const actorId = await resolveIntegrationActorId(client)
+  const leadId: string = existingLink
+    ? existingLink.lead_id
+    : (await insertFreshLeadForShare(client, { payload, actorId })).id
+
+  // Step 3 — supersede prior workspaces under this lead. The handler is the
+  // single writer of `share_token_superseded_at` for the prototype-share
+  // path (mirroring the `request_lead_prototype` RPC's exclusive ownership
+  // of the same column per ADR-023 D3 forbidden rule).
+  const supersededWorkspaceIds = await supersedePriorWorkspacesUnderLead(
+    client,
+    leadId,
+  )
+
+  // Step 4 — INSERT new workspace with fresh share_token.
+  const inserted = await insertPrototypeShareWorkspace(client, {
+    leadId,
+    requestedByProfileId: actorId,
+    payload,
+    webhookEventId,
+  })
+
+  return {
+    idempotent: false,
+    shareToken: inserted.share_token,
+    prototypeWorkspaceId: inserted.id,
+    leadId,
+    versionNumber: payload.prototype.version_number,
+    issuedAt: inserted.created_at,
+    supersededWorkspaceIds,
+  }
+}
+
 export async function listInboundPmQueue() {
   const client = createSupabaseAdminClient()
   const { data, error } = await table(client, 'website_inbound_links')

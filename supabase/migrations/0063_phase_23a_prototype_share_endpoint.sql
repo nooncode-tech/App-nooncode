@@ -7,9 +7,9 @@
 -- replace the previously-missing upstream that issues `share_token` on
 -- workspace creation from a NoonWeb studio session.
 --
--- Three atomic elements (single-file migration per ADR-014):
+-- Four atomic elements (single-file migration per ADR-014):
 --
---   1. Add three new columns to `public.prototype_workspaces`:
+--   1. Add four new columns to `public.prototype_workspaces`:
 --      - `external_session_id text` — the NoonWeb `studio_session.id` that
 --        triggered the share. First column on this table that carries the
 --        upstream session id; ties the workspace to its origin for trace
@@ -21,6 +21,13 @@
 --        when `demo_url` is unreachable. Semantically distinct from the
 --        existing `generated_content` (which is v0 source code for audit
 --        per migration 0046) per ADR-028 Q-piedra-1.
+--      - `webhook_event_id uuid` — soft FK to `website_webhook_events.id`
+--        (on delete set null). Enables the ledger-replay reconstruction
+--        path symmetric with `prototype_decisions.webhook_event_id` from
+--        migration 0060 element 4 (`composePrototypeShareReplayResponseFromLedger`
+--        joins on this column). NULL on rows created outside the
+--        `prototype-share` endpoint — legacy RPC-created workspaces and
+--        any future ingestion path are unaffected.
 --
 --      All three are NULLABLE. The existing `prototype_workspaces` rows
 --      created via the `request_lead_prototype` RPC (legacy seller flow)
@@ -73,8 +80,11 @@
 --   --
 --   -- Reverse element 2:
 --   drop index if exists public.ux_prototype_workspaces_session_chat;
+--   drop index if exists public.idx_prototype_workspaces_webhook_event_id;
 --   --
 --   -- Reverse element 1:
+--   alter table public.prototype_workspaces
+--     drop column if exists webhook_event_id;
 --   alter table public.prototype_workspaces
 --     drop column if exists generated_html;
 --   alter table public.prototype_workspaces
@@ -97,16 +107,26 @@ begin;
 alter table public.prototype_workspaces
   add column if not exists external_session_id text,
   add column if not exists v0_chat_id text,
-  add column if not exists generated_html text;
+  add column if not exists generated_html text,
+  add column if not exists webhook_event_id uuid
+    references public.website_webhook_events(id) on delete set null;
 
 -- ------------------------------------------------------------------------
--- Element 2: UNIQUE partial index for (external_session_id, v0_chat_id)
+-- Element 2: indexes for resource dedup + replay-path FK-join
 -- ------------------------------------------------------------------------
 
+-- Resource-dedup index per ADR-028 D4 / §5A.3. PARTIAL because legacy rows
+-- with NULL on either column would otherwise block any future row.
 create unique index if not exists ux_prototype_workspaces_session_chat
   on public.prototype_workspaces (external_session_id, v0_chat_id)
   where external_session_id is not null
     and v0_chat_id is not null;
+
+-- Replay-path FK-join index. Matches the partial-index pattern used for
+-- `prototype_decisions.webhook_event_id` (migration 0060 element 4).
+create index if not exists idx_prototype_workspaces_webhook_event_id
+  on public.prototype_workspaces (webhook_event_id)
+  where webhook_event_id is not null;
 
 -- ------------------------------------------------------------------------
 -- Element 3: extend website_webhook_events.endpoint CHECK constraint
