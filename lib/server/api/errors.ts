@@ -51,45 +51,56 @@ function buildHeaders(error: unknown, options: ErrorResponseOptions) {
   return headers
 }
 
+// Cross-repo-webhook-v1.md §8 specifies `{ error, code, requestId }` as the
+// canonical error body shape. Per ADR-028 Q-piedra-5 (2026-05-26 smoke
+// finding), `requestId` MUST be present in the response body — not only in
+// the `x-request-id` header. This helper injects it consistently when the
+// caller supplied `options.requestId`. Callers that omit `requestId` keep
+// the prior behavior (no body-level field) for backward compatibility.
+function withRequestIdField<T extends Record<string, unknown>>(
+  body: T,
+  options: ErrorResponseOptions,
+): T & { requestId?: string } {
+  if (!options.requestId) return body
+  return { ...body, requestId: options.requestId }
+}
+
 export function toErrorResponse(error: unknown, options: ErrorResponseOptions = {}) {
   const headers = buildHeaders(error, options)
 
   if (error instanceof AuthGuardError) {
     return NextResponse.json(
-      {
-        error: error.message,
-        code: error.code,
-      },
+      withRequestIdField({ error: error.message, code: error.code }, options),
       { status: error.status, headers }
     )
   }
 
   if (error instanceof ApiError) {
     return NextResponse.json(
-      {
-        error: error.message,
-        code: error.code,
-      },
+      withRequestIdField({ error: error.message, code: error.code }, options),
       { status: error.status, headers }
     )
   }
 
   if (error instanceof ZodError) {
     return NextResponse.json(
-      {
-        error: 'Invalid request payload.',
-        code: 'INVALID_REQUEST',
-        issues: error.flatten(),
-      },
+      withRequestIdField(
+        {
+          error: 'Invalid request payload.',
+          code: 'INVALID_REQUEST',
+          issues: error.flatten(),
+        },
+        options,
+      ),
       { status: 400, headers }
     )
   }
 
   return NextResponse.json(
-    {
-      error: 'Unexpected server error.',
-      code: 'INTERNAL_ERROR',
-    },
+    withRequestIdField(
+      { error: 'Unexpected server error.', code: 'INTERNAL_ERROR' },
+      options,
+    ),
     { status: 500, headers }
   )
 }

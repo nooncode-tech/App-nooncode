@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { assertRateLimit, RateLimitExceededError } from '@/lib/server/api/rate-limit'
 import { errorToLogContext, logger } from '@/lib/server/api/logger'
-import { getRequestId } from '@/lib/server/api/request'
+import { getRequestId, jsonWithRequestId } from '@/lib/server/api/request'
 import { serveWebsitePrototypeSignedRead } from '@/lib/server/website-integration'
 import {
   verifyWebsiteWebhookSignature,
@@ -31,9 +31,8 @@ function getClientIp(request: Request): string {
   )
 }
 
-function applyErrorHeaders(response: NextResponse, requestId: string): NextResponse {
-  response.headers.set('x-request-id', requestId)
-  response.headers.set(CACHE_CONTROL_HEADER, NO_STORE)
+function applyCacheControl(response: NextResponse, cacheControl: string): NextResponse {
+  response.headers.set(CACHE_CONTROL_HEADER, cacheControl)
   return response
 }
 
@@ -41,9 +40,9 @@ function applyErrorHeaders(response: NextResponse, requestId: string): NextRespo
  * Inbound prototype-signed-read endpoint (NoonWeb → App, GET).
  *
  * Symmetric read entry to the inbound POST handlers (`inbound-proposal`,
- * `payment-confirmed`, `prototype-decision`). NoonWeb fetches this at render
- * time from `/maxwell/prototipo/[token]` (Pull pattern B.2 per ADR-023 D8 →
- * ADR-024 discharge).
+ * `payment-confirmed`, `prototype-decision`, `prototype-share`). NoonWeb
+ * fetches this at render time from `/maxwell/prototipo/[token]` (Pull
+ * pattern B.2 per ADR-023 D8 → ADR-024 discharge).
  *
  * Authoritative references:
  *   - ADR-024 (D1-D7 + Amendments A1) — wire contract, auth, cache, sanitization.
@@ -52,6 +51,10 @@ function applyErrorHeaders(response: NextResponse, requestId: string): NextRespo
  *
  * Transport ledger participation: declined-by-design per ADR-024 D1. GET is
  * HTTP-idempotent; no replay-protection state needs tracking.
+ *
+ * `requestId` injection: every response body includes `requestId` at the top
+ * level per cross-repo-webhook-v1.md §6.4 / §8 (fix per ADR-028 Q-piedra-5;
+ * 2026-05-26 bilateral smoke exposed the original omission on 404 bodies).
  */
 export async function GET(
   request: Request,
@@ -63,12 +66,13 @@ export async function GET(
     const { token } = await context.params
 
     if (!token || typeof token !== 'string' || token.trim().length === 0) {
-      return applyErrorHeaders(
-        NextResponse.json(
-          { error: 'Missing prototype token.', code: 'INVALID_REQUEST' },
+      return applyCacheControl(
+        jsonWithRequestId(
+          { error: 'Missing prototype token.', code: 'INVALID_REQUEST', requestId },
           { status: 400 },
+          requestId,
         ),
-        requestId,
+        NO_STORE,
       )
     }
 
@@ -94,20 +98,28 @@ export async function GET(
         requestId,
         ...result.log.fields,
       })
-      const response = NextResponse.json(result.body, { status: result.status })
-      response.headers.set('x-request-id', requestId)
-      response.headers.set(CACHE_CONTROL_HEADER, result.cacheControl)
-      return response
+      return applyCacheControl(
+        jsonWithRequestId(
+          { ...result.body, requestId },
+          { status: result.status },
+          requestId,
+        ),
+        result.cacheControl,
+      )
     }
 
     logger.warn(result.log.event, {
       requestId,
       ...result.log.fields,
     })
-    const response = NextResponse.json(result.body, { status: result.status })
-    response.headers.set('x-request-id', requestId)
-    response.headers.set(CACHE_CONTROL_HEADER, result.cacheControl)
-    return response
+    return applyCacheControl(
+      jsonWithRequestId(
+        { ...result.body, requestId },
+        { status: result.status },
+        requestId,
+      ),
+      result.cacheControl,
+    )
   } catch (error) {
     if (error instanceof WebsiteWebhookError) {
       logger.warn('website.prototype_signed_read.rejected', {
@@ -116,12 +128,13 @@ export async function GET(
         code: 'WEBSITE_WEBHOOK_AUTH_FAILED',
         ...errorToLogContext(error),
       })
-      return applyErrorHeaders(
-        NextResponse.json(
-          { error: error.message, code: 'WEBSITE_WEBHOOK_AUTH_FAILED' },
+      return applyCacheControl(
+        jsonWithRequestId(
+          { error: error.message, code: 'WEBSITE_WEBHOOK_AUTH_FAILED', requestId },
           { status: error.status },
+          requestId,
         ),
-        requestId,
+        NO_STORE,
       )
     }
 
@@ -130,13 +143,13 @@ export async function GET(
         requestId,
         retryAfterSeconds: error.retryAfterSeconds,
       })
-      return applyErrorHeaders(toErrorResponse(error, { requestId }), requestId)
+      return applyCacheControl(toErrorResponse(error, { requestId }), NO_STORE)
     }
 
     logger.error('website.prototype_signed_read.failed', {
       requestId,
       ...errorToLogContext(error),
     })
-    return applyErrorHeaders(toErrorResponse(error, { requestId }), requestId)
+    return applyCacheControl(toErrorResponse(error, { requestId }), NO_STORE)
   }
 }
