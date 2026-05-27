@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getPhase1AAdminEnv } from '../lib/env'
 import { mockLeads } from '../lib/mock-data'
 import type { Database } from '../lib/server/supabase/database.types'
+import type { LeadStatus } from '../lib/types'
 
 loadEnvConfig(process.cwd())
 
@@ -57,7 +58,10 @@ async function seedPhase2ALeads() {
         phone: mockLead.phone ?? null,
         company: mockLead.company ?? null,
         source: mockLead.source,
-        status: mockLead.status,
+        // Cast bridges 'prospect' (added to LeadStatus by ADR-028) until
+        // database.types.ts is regenerated. The seed fixture never produces
+        // 'prospect' so this cast is safe.
+        status: mockLead.status as Exclude<LeadStatus, 'prospect'>,
         score: mockLead.score,
         value: mockLead.value,
         assigned_to: assignedProfile.id,

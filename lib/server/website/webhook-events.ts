@@ -8,6 +8,7 @@ export type WebsiteWebhookEndpoint =
   | 'inbound-proposal'
   | 'payment-confirmed'
   | 'prototype-decision'
+  | 'prototype-share'
 
 export type WebsiteWebhookEventStatus = 'processing' | 'processed' | 'failed'
 
@@ -134,11 +135,17 @@ export async function recordWebsiteWebhookEvent(
   // `website_inbound_links` row by design — §5.7 of cross-repo-webhook-v1.md
   // / D1 ledger row shape). Its "processed" signal is `status = 'processed'`
   // alone; the replay-path helper resolves the recorded `prototype_decisions`
-  // row via the `webhook_event_id` FK-join. The other two endpoints retain
-  // the original `link_id` check (preserves their behavior unchanged).
+  // row via the `webhook_event_id` FK-join. Per ADR-028 §5A.7, the
+  // `prototype-share` endpoint follows the same rule: link_id may be NULL
+  // when the lead-resolution path created a fresh lead (no inbound link
+  // row exists); its replay-path helper resolves `prototype_workspaces`
+  // via `webhook_event_id` FK-join. The other two endpoints retain the
+  // original `link_id` check (preserves their behavior unchanged).
   const isProcessed =
     currentStatus === 'processed' &&
-    (existingEndpoint === 'prototype-decision' || linkId !== null)
+    (existingEndpoint === 'prototype-decision' ||
+      existingEndpoint === 'prototype-share' ||
+      linkId !== null)
 
   if (isProcessed) {
     return {
@@ -322,6 +329,74 @@ export async function composePrototypeDecisionReplayResponseFromLedger(
     decision: decisionValue,
     decidedAt: decision.decided_at,
     draftPropuestaQueued: false,
+  }
+}
+
+/**
+ * Replay-response reconstruction for the `prototype-share` endpoint
+ * (ADR-028 §5A.3). Mirrors `composePrototypeDecisionReplayResponseFromLedger`
+ * one-for-one: joins `prototype_workspaces` to the ledger via the
+ * `webhook_event_id` soft-FK declared in migration 0063 element 1.
+ *
+ * Wire-shape rules (per ADR-028 D3 + cross-repo-webhook-v1.md §5A.4):
+ *   - `idempotent: true` always on replay.
+ *   - `superseded_workspace_ids: []` always on replay — the original
+ *     processing already invalidated whichever prior workspaces it needed
+ *     to; replays do not re-emit that list (the receiver already acted
+ *     on it the first time).
+ *
+ * Defensive null fallback (mirrors ADR-025 D1 reasoning): if the matched
+ * `prototype_workspaces` row's `webhook_event_id` is NULL (the FK is
+ * `on delete set null`, so a ledger row purge can orphan the link), return
+ * null so the handler falls through to "re-run business logic" per ADR-016 D6.
+ * Re-running is safe because the handler's `(external_session_id, v0_chat_id)`
+ * application-level dedup will hit and return the existing workspace.
+ */
+export interface WebsitePrototypeShareReplayResponse {
+  idempotent: true
+  shareToken: string
+  prototypeWorkspaceId: string
+  leadId: string
+  versionNumber: number | null
+  issuedAt: string
+  supersededWorkspaceIds: never[]
+}
+
+export async function composePrototypeShareReplayResponseFromLedger(
+  client: DatabaseClient,
+  ledger: WebsiteWebhookEventRecord,
+): Promise<WebsitePrototypeShareReplayResponse | null> {
+  if (ledger.endpoint !== 'prototype-share') {
+    return null
+  }
+
+  // The `webhook_event_id` column is added by migration 0063 (ADR-028);
+  // the generated Supabase types may lag the migration. Cast the column
+  // name to the broad union the typed builder expects — runtime behavior
+  // is unchanged. Same pattern used elsewhere in this repo when types
+  // trail a migration (see `lib/server/website-integration.ts:41`).
+  const { data: workspace, error } = await client
+    .from('prototype_workspaces')
+    .select('id, lead_id, share_token, created_at, updated_at')
+    .eq('webhook_event_id' as never, ledger.eventId)
+    .maybeSingle()
+
+  if (error || !workspace || !workspace.share_token) {
+    return null
+  }
+
+  return {
+    idempotent: true,
+    shareToken: workspace.share_token,
+    prototypeWorkspaceId: workspace.id,
+    leadId: workspace.lead_id,
+    // `version_number` is not stored on `prototype_workspaces` today — see
+    // ADR-028 D2 + Q-piedra-1 (the wire field is informational; the
+    // workspace row identity is the token, not the version). Replay returns
+    // null so NoonWeb-side mappers can fall back to their own tracking.
+    versionNumber: null,
+    issuedAt: workspace.updated_at ?? workspace.created_at,
+    supersededWorkspaceIds: [],
   }
 }
 

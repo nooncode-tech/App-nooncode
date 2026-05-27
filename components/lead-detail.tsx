@@ -103,6 +103,7 @@ function formatCheckoutLinkExpiry(expiresAt: Date, now: Date = new Date()): stri
 }
 
 const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
+  prospect: { label: 'Prospecto', color: 'bg-sky-500/10 text-sky-700' },
   new: { label: 'Nuevo', color: 'bg-blue-500/10 text-blue-700' },
   contacted: { label: 'Contactado', color: 'bg-amber-500/10 text-amber-700' },
   qualified: { label: 'Calificado', color: 'bg-primary/10 text-primary' },
@@ -111,6 +112,14 @@ const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
   won: { label: 'Ganado', color: 'bg-emerald-500/10 text-emerald-700' },
   lost: { label: 'Perdido', color: 'bg-red-500/10 text-red-700' },
 }
+
+// Defensive fallback for unknown lead_status values (DB enum can drift
+// ahead of the TS union — see 2026-05-27 prospect crash). Returns the raw
+// status as the label so the operator can identify the missing mapping.
+const unknownStatusInfo = (status: string) => ({
+  label: status,
+  color: 'bg-muted text-muted-foreground',
+})
 
 const sourceLabels: Record<string, string> = {
   website: 'Sitio Web',
@@ -279,8 +288,12 @@ function formatActivityTitle(activity: LeadActivity) {
 
   if (activity.type === 'status_changed') {
     const { fromStatus, toStatus } = getStatusTransition(activity.metadata)
-    const fromLabel = fromStatus ? statusConfig[fromStatus].label : 'Sin estado'
-    const toLabel = toStatus ? statusConfig[toStatus].label : 'Actualizado'
+    const fromLabel = fromStatus
+      ? (statusConfig[fromStatus] ?? unknownStatusInfo(fromStatus)).label
+      : 'Sin estado'
+    const toLabel = toStatus
+      ? (statusConfig[toStatus] ?? unknownStatusInfo(toStatus)).label
+      : 'Actualizado'
     return `Estado: ${fromLabel} -> ${toLabel}`
   }
 
@@ -1051,8 +1064,11 @@ Total: 8 semanas
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-end sm:gap-1 sm:text-right">
           <p className="metric-value text-primary">${lead.value.toLocaleString()}</p>
-          <Badge variant="outline" className={statusConfig[lead.status].color}>
-            {statusConfig[lead.status].label}
+          <Badge
+            variant="outline"
+            className={(statusConfig[lead.status] ?? unknownStatusInfo(lead.status)).color}
+          >
+            {(statusConfig[lead.status] ?? unknownStatusInfo(lead.status)).label}
           </Badge>
         </div>
       </div>

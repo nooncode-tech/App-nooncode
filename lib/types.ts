@@ -37,7 +37,7 @@ export interface SettingsUser {
 }
 
 // Lead Types
-export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost'
+export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost' | 'prospect'
 export type LeadSource = 'website' | 'referral' | 'cold_call' | 'social' | 'event' | 'other' | 'maxwell'
 export type LeadSourceInput = LeadSource | 'cold_outreach' | 'social_media'
 export type LeadOrigin = 'inbound' | 'outbound'
