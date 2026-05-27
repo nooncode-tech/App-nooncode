@@ -39,6 +39,7 @@ interface LeadCardProps {
 }
 
 const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
+  prospect: { label: 'Prospecto', color: 'bg-sky-500/10 text-sky-700 border-sky-200' },
   new: { label: 'Nuevo', color: 'bg-blue-500/10 text-blue-700 border-blue-200' },
   contacted: { label: 'Contactado', color: 'bg-amber-500/10 text-amber-700 border-amber-200' },
   qualified: { label: 'Calificado', color: 'bg-primary/10 text-primary border-primary/20' },

@@ -14,6 +14,7 @@ import { formatProjectActivityBody, formatProjectActivityTitle } from '@/lib/pro
 import { formatTaskActivityBody, formatTaskActivityTitle } from '@/lib/tasks/activity-copy'
 
 const leadStatusLabels: Record<LeadStatus, string> = {
+  prospect: 'Prospecto',
   new: 'Nuevo',
   contacted: 'Contactado',
   qualified: 'Calificado',

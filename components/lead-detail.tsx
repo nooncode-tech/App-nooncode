@@ -103,6 +103,7 @@ function formatCheckoutLinkExpiry(expiresAt: Date, now: Date = new Date()): stri
 }
 
 const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
+  prospect: { label: 'Prospecto', color: 'bg-sky-500/10 text-sky-700' },
   new: { label: 'Nuevo', color: 'bg-blue-500/10 text-blue-700' },
   contacted: { label: 'Contactado', color: 'bg-amber-500/10 text-amber-700' },
   qualified: { label: 'Calificado', color: 'bg-primary/10 text-primary' },

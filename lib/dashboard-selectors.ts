@@ -234,6 +234,7 @@ export function getRadiusKmForWonLeads(wonCount: number): number | null {
 }
 
 export const leadStatusLabels: Record<Lead['status'], string> = {
+  prospect: 'Prospecto',
   new: 'Nuevo',
   contacted: 'Contactado',
   qualified: 'Calificado',
