@@ -49,6 +49,20 @@ const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
   lost: { label: 'Perdido', color: 'bg-red-500/10 text-red-700 border-red-200' },
 }
 
+// Defensive fallback used when the DB returns a lead_status the TS union
+// does not yet cover (real cause of the 2026-05-27 crash on `/dashboard/leads`
+// after the first 'prospect' lead landed via prototype-share). Keeps the raw
+// status visible so the operator can identify which mapping is missing.
+const UNKNOWN_STATUS = (status: string) => ({
+  label: status,
+  color: 'bg-muted text-muted-foreground border-muted-foreground/20',
+})
+
+const UNKNOWN_ASSIGNMENT = (status: string) => ({
+  label: status,
+  color: 'bg-muted text-muted-foreground border-muted-foreground/20',
+})
+
 const priorityLabels = {
   high: 'Alta prioridad',
   medium: 'Oportunidad valida',
@@ -94,8 +108,9 @@ function buildGmailComposeUrl(email: string): string {
 
 export function LeadCard({ lead, onClick, onStatusChange, onDelete, distanceKm }: LeadCardProps) {
   const { authMode, user } = useAuth()
-  const statusInfo = statusConfig[lead.status]
-  const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
+  const statusInfo = statusConfig[lead.status] ?? UNKNOWN_STATUS(lead.status)
+  const assignmentInfo =
+    assignmentStatusConfig[lead.assignmentStatus] ?? UNKNOWN_ASSIGNMENT(lead.assignmentStatus)
   const next = nextStatus[lead.status]
   const isSupabaseMode = authMode === 'supabase'
   const hasValidEmail = isValidLeadEmail(lead.email)
