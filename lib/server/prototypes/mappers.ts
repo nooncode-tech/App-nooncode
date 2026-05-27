@@ -6,6 +6,7 @@ import type {
   PrototypeWorkspaceRow,
   PrototypeWorkspaceRowWithRelations,
 } from '@/lib/server/prototypes/types'
+import { buildPrototypeShareUrl } from '@/lib/server/prototypes/share-url'
 
 export function mapPrototypeWorkspaceRowToWire(row: PrototypeWorkspaceRow): PrototypeWorkspaceWire {
   return {
@@ -27,6 +28,23 @@ export function mapPrototypeWorkspaceRowToWire(row: PrototypeWorkspaceRow): Prot
 export function mapPrototypeWorkspaceListItemRowToWire(
   row: PrototypeWorkspaceRowWithRelations
 ): PrototypeWorkspaceListItemWire {
+  // Surface the client-facing share URL only when the workspace is in
+  // `ready` (renderable prototipo) AND the token has not been superseded by
+  // a regenerated newer version. Pending-generation workspaces have a token
+  // by construction (RPC writes it pre-completion), but the iframe target
+  // (`demo_url`) is null until v0 returns — sharing a `pending_generation`
+  // URL would render an empty NoonWeb portal. Superseded tokens 410 on the
+  // signed-read fetch (per ADR-024 §6.6) and would surface an error page.
+  const rowWithShare = row as PrototypeWorkspaceRowWithRelations & {
+    share_token: string | null
+    share_token_superseded_at: string | null
+  }
+  const shareToken = rowWithShare.share_token ?? null
+  const isSuperseded = rowWithShare.share_token_superseded_at !== null
+  const isReady = row.status === 'ready' || row.status === 'delivery_active'
+  const shareUrl =
+    isReady && !isSuperseded ? buildPrototypeShareUrl(shareToken) : null
+
   return {
     ...mapPrototypeWorkspaceRowToWire(row),
     leadName: row.lead?.name ?? 'Lead sin nombre',
@@ -36,5 +54,7 @@ export function mapPrototypeWorkspaceListItemRowToWire(
     generatedContent: row.generated_content,
     demoUrl: row.demo_url,
     chatUrl: row.chat_url,
+    shareToken,
+    shareUrl,
   }
 }

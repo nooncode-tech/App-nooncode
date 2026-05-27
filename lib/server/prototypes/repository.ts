@@ -60,6 +60,8 @@ const prototypeWorkspaceListSelect = `
   generated_content,
   demo_url,
   chat_url,
+  share_token,
+  share_token_superseded_at,
   created_at,
   updated_at,
   lead:leads!prototype_workspaces_lead_id_fkey(id, name),

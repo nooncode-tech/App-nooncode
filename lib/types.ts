@@ -470,6 +470,8 @@ export interface PrototypeWorkspaceListItem extends PrototypeWorkspace {
   generatedContent?: string
   demoUrl?: string
   chatUrl?: string
+  shareToken?: string
+  shareUrl?: string
 }
 
 // Payment Types
