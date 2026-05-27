@@ -10,8 +10,14 @@ import type { PrototypeWorkspaceRowWithRelations } from '@/lib/server/prototypes
 // + non-superseded). Stays in scope for the slice that exposed `shareUrl` on
 // `/api/prototypes` and the "Copiar link" button on `/dashboard/prototypes`.
 
+// `share_token` is NOT NULL in DB (migration 0060), so the generated
+// `PrototypeWorkspaceRowWithRelations` types it as `string`. Tests want to
+// exercise the null-token defensive branch in the mapper anyway, so we omit
+// the column from Partial and redeclare it as nullable here.
 function workspaceRow(
-  overrides: Partial<PrototypeWorkspaceRowWithRelations> & {
+  overrides: Partial<
+    Omit<PrototypeWorkspaceRowWithRelations, 'share_token' | 'share_token_superseded_at'>
+  > & {
     share_token?: string | null
     share_token_superseded_at?: string | null
   } = {},
