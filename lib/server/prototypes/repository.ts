@@ -44,6 +44,8 @@ const prototypeWorkspaceSelect = `
   generated_content,
   demo_url,
   chat_url,
+  share_token,
+  share_token_superseded_at,
   created_at,
   updated_at
 `
