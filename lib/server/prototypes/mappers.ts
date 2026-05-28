@@ -21,6 +21,7 @@ export function mapPrototypeWorkspaceRowToWire(row: PrototypeWorkspaceRow): Prot
     generatedAt: row.generated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    sellerBrief: row.seller_brief ?? null,
   }
 }
 

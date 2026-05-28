@@ -17,7 +17,7 @@ export async function POST(
     // Load workspace
     const { data: workspace, error: wsError } = await client
       .from('prototype_workspaces')
-      .select('id, lead_id, status')
+      .select('id, lead_id, status, seller_brief')
       .eq('id', prototypeWorkspaceId)
       .maybeSingle()
 
@@ -54,6 +54,9 @@ export async function POST(
       lead?.notes ? `- Descripción del proyecto: ${lead.notes}` : null,
       proposal?.amount ? `- Presupuesto estimado: $${proposal.amount} USD` : null,
       proposal?.body ? `- Detalles de la propuesta: ${proposal.body}` : null,
+      workspace.seller_brief
+        ? `- Indicaciones adicionales del vendedor: ${workspace.seller_brief}`
+        : null,
       '',
       'El prototipo debe ser un componente React moderno con Tailwind CSS.',
       'Enfócate en la pantalla principal / dashboard del producto.',

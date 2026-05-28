@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { startTransition, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Blocks, CheckCircle2, Coins, FolderKanban, Loader2, Sparkles, Wallet } from 'lucide-react'
+import { AlertTriangle, Blocks, CheckCircle2, Coins, FolderKanban, Loader2, RefreshCw, Sparkles, Wallet } from 'lucide-react'
 import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
 import type { PrototypeWorkspace, WalletSummary } from '@/lib/types'
 import { deserializeWalletSummary, type WalletSummaryWire } from '@/lib/wallet/serialization'
@@ -17,6 +17,7 @@ import {
 } from '@/lib/dashboard-navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   AlertDialog,
@@ -34,6 +35,9 @@ interface LeadPrototypeResponse {
   meta: {
     prototypeRequestCost: number | null
     prototypeRequestsEnabled: boolean
+    maxIterationsPerLead: number | null
+    iterationsUsed: number
+    iterationsRemaining: number | null
   }
 }
 
@@ -91,6 +95,10 @@ export function LeadPrototypeCard({
   const [isRequesting, setIsRequesting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [sellerBrief, setSellerBrief] = useState('')
+  const [maxIterationsPerLead, setMaxIterationsPerLead] = useState<number | null>(null)
+  const [iterationsUsed, setIterationsUsed] = useState(0)
+  const [iterationsRemaining, setIterationsRemaining] = useState<number | null>(null)
 
   useEffect(() => {
     let isActive = true
@@ -101,6 +109,9 @@ export function LeadPrototypeCard({
         setPrototype(null)
         setPrototypeRequestCost(null)
         setPrototypeRequestsEnabled(false)
+        setMaxIterationsPerLead(null)
+        setIterationsUsed(0)
+        setIterationsRemaining(null)
         setErrorMessage(null)
         setIsLoading(false)
       })
@@ -156,8 +167,12 @@ export function LeadPrototypeCard({
             ? deserializePrototypeWorkspace((prototypePayload as LeadPrototypeResponse).data as PrototypeWorkspaceWire)
             : null
         )
-        setPrototypeRequestCost((prototypePayload as LeadPrototypeResponse).meta.prototypeRequestCost)
-        setPrototypeRequestsEnabled((prototypePayload as LeadPrototypeResponse).meta.prototypeRequestsEnabled)
+        const meta = (prototypePayload as LeadPrototypeResponse).meta
+        setPrototypeRequestCost(meta.prototypeRequestCost)
+        setPrototypeRequestsEnabled(meta.prototypeRequestsEnabled)
+        setMaxIterationsPerLead(meta.maxIterationsPerLead ?? null)
+        setIterationsUsed(meta.iterationsUsed ?? 0)
+        setIterationsRemaining(meta.iterationsRemaining ?? null)
       } catch (error) {
         if (!isActive) {
           return
@@ -167,6 +182,9 @@ export function LeadPrototypeCard({
         setPrototype(null)
         setPrototypeRequestCost(null)
         setPrototypeRequestsEnabled(false)
+        setMaxIterationsPerLead(null)
+        setIterationsUsed(0)
+        setIterationsRemaining(null)
         setErrorMessage(
           error instanceof Error
             ? error.message
@@ -189,6 +207,7 @@ export function LeadPrototypeCard({
   const hasConfiguredCost = prototypeRequestCost !== null
   const totalAvailable = wallet?.totalAvailable ?? 0
   const hasSufficientBalance = hasConfiguredCost && totalAvailable >= prototypeRequestCost
+  const hasIterationsLeft = iterationsRemaining === null || iterationsRemaining > 0
   const canRequestPrototype =
     authMode === 'supabase'
     && !isDisabled
@@ -198,15 +217,33 @@ export function LeadPrototypeCard({
     && prototypeRequestsEnabled
     && hasConfiguredCost
     && hasSufficientBalance
+    && hasIterationsLeft
+  // Regenerate reuses the same request RPC (it supersedes prior versions and
+  // creates a fresh one); it is only offered when a workspace already exists,
+  // there is iteration budget left, and credits/balance allow it.
+  const canRegenerate =
+    authMode === 'supabase'
+    && !isDisabled
+    && !isLoading
+    && !errorMessage
+    && Boolean(prototype)
+    && prototypeRequestsEnabled
+    && hasConfiguredCost
+    && hasSufficientBalance
+    && hasIterationsLeft
   const canOpenPrototypes = user ? canAccessDashboardPath(user.role, '/dashboard/prototypes') : false
   const canOpenProjects = user ? canAccessDashboardPath(user.role, '/dashboard/projects') : false
 
   const handleConfirmRequest = async () => {
+    const isRegenerate = Boolean(prototype)
     setIsRequesting(true)
 
     try {
+      const trimmedBrief = sellerBrief.trim()
       const response = await fetch(`/api/leads/${leadId}/prototype`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(trimmedBrief ? { sellerBrief: trimmedBrief } : {}),
       })
       const payload = await response.json().catch(() => null)
 
@@ -227,9 +264,18 @@ export function LeadPrototypeCard({
         prototypeRequestCost: currentWallet?.prototypeRequestCost,
         entries: currentWallet?.entries ?? [],
       }))
+      // The request consumed one iteration: reflect it locally so the counter
+      // and the regenerate affordance update without a refetch.
+      setIterationsUsed((used) => used + 1)
+      setIterationsRemaining((remaining) =>
+        remaining === null ? null : Math.max(0, remaining - 1)
+      )
+      setSellerBrief('')
       setConfirmOpen(false)
       toast.success(
-        `Solicitud registrada. Se consumieron ${formatEntryCountLabel(result.data.consumed.total)} y el prototipo quedo pendiente.`
+        isRegenerate
+          ? `Nueva versión solicitada. Se consumieron ${formatEntryCountLabel(result.data.consumed.total)} y quedó pendiente de generación.`
+          : `Solicitud registrada. Se consumieron ${formatEntryCountLabel(result.data.consumed.total)} y el prototipo quedo pendiente.`
       )
     } catch (error) {
       toast.error(
@@ -317,7 +363,38 @@ export function LeadPrototypeCard({
                   <p className="text-xs text-muted-foreground">
                     El admin o PM puede generar el contenido desde la vista de Prototipos usando v0.
                   </p>
+                  {maxIterationsPerLead !== null ? (
+                    <p className="text-xs text-muted-foreground">
+                      Versiones: <span className="font-medium text-foreground">{iterationsUsed} de {maxIterationsPerLead}</span>
+                      {iterationsRemaining !== null
+                        ? hasIterationsLeft
+                          ? ` · te quedan ${iterationsRemaining}`
+                          : ' · límite alcanzado'
+                        : ''}
+                    </p>
+                  ) : null}
+                  {prototype.sellerBrief ? (
+                    <div className="rounded-md border bg-background p-3">
+                      <p className="text-xs font-medium text-foreground">Brief del vendedor</p>
+                      <p className="text-xs text-muted-foreground whitespace-pre-wrap">{prototype.sellerBrief}</p>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2 pt-1">
+                    {canRegenerate ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => setConfirmOpen(true)}
+                        disabled={isRequesting}
+                      >
+                        {isRequesting ? (
+                          <Loader2 className="size-4 mr-2 animate-spin" />
+                        ) : (
+                          <RefreshCw className="size-4 mr-2" />
+                        )}
+                        Generar nueva versión
+                      </Button>
+                    ) : null}
                     {canOpenPrototypes ? (
                       <Button asChild size="sm" variant="outline">
                         <Link href={buildPrototypeWorkspaceHref(leadId)}>
@@ -335,6 +412,15 @@ export function LeadPrototypeCard({
                       </Button>
                     ) : null}
                   </div>
+                  {!hasIterationsLeft ? (
+                    <p className="text-xs text-amber-700">
+                      Este lead alcanzó el límite de versiones de prototipo.
+                    </p>
+                  ) : !hasSufficientBalance ? (
+                    <p className="text-xs text-amber-700">
+                      Saldo insuficiente para generar otra versión ({prototypeRequestCost} créditos).
+                    </p>
+                  ) : null}
                 </div>
               ) : !prototypeRequestsEnabled ? (
                 <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -396,11 +482,32 @@ export function LeadPrototypeCard({
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Solicitar prototipo</AlertDialogTitle>
+            <AlertDialogTitle>
+              {prototype ? 'Generar nueva versión' : 'Solicitar prototipo'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Esta accion consume {prototypeRequestCost ?? 0} creditos de tu saldo interno. El workspace quedara listo para que el admin o PM genere el contenido con v0.
+              Esta accion consume {prototypeRequestCost ?? 0} creditos de tu saldo interno.{' '}
+              {prototype
+                ? 'Se creará una nueva versión del prototipo (las versiones anteriores quedan invalidadas) lista para generar con v0.'
+                : 'El workspace quedara listo para que el admin o PM genere el contenido con v0.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="seller-brief" className="text-sm font-medium">
+              Detalle para el prototipo (opcional)
+            </label>
+            <Textarea
+              id="seller-brief"
+              value={sellerBrief}
+              onChange={(event) => setSellerBrief(event.target.value.slice(0, 2000))}
+              placeholder="Ej: enfócate en el panel de reservas, tono sobrio, incluir métricas de ventas..."
+              rows={4}
+              disabled={isRequesting}
+            />
+            <p className="text-xs text-muted-foreground">
+              Se suma al prompt automático del lead para guiar la generación con v0. {sellerBrief.length}/2000
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isRequesting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction disabled={isRequesting} onClick={handleConfirmRequest}>
