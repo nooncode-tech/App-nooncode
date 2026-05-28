@@ -1828,10 +1828,16 @@ async function insertSellerPrototypeDecisionNotification(
     profile_id: input.sellerProfileId,
     source_kind: 'prototype_decision_received',
     source_event_id: input.decisionId,
-    domain: 'leads',
+    // `domain` is constrained to ('sales','delivery') by migration 0018. A
+    // prototype decision is a sales-pipeline event, so it must be 'sales' —
+    // the prior 'leads' value violated the CHECK constraint and the insert
+    // failed silently (caught below), so the seller never got notified.
+    domain: 'sales',
     title: copy.title,
     body: copy.body,
-    href: `/dashboard/leads/${input.leadId}`,
+    // Lead detail opens via the `?leadId=` query param on the list route;
+    // there is no `/dashboard/leads/[leadId]` path segment.
+    href: `/dashboard/leads?leadId=${input.leadId}`,
   })
 
   if (error) {

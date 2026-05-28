@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { startTransition, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Blocks, CheckCircle2, Coins, FolderKanban, Loader2, Sparkles, Wallet } from 'lucide-react'
+import { AlertTriangle, Blocks, CheckCircle2, Coins, Copy, ExternalLink, FolderKanban, Loader2, Sparkles, Wallet } from 'lucide-react'
 import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
 import type { PrototypeWorkspace, WalletSummary } from '@/lib/types'
 import { deserializeWalletSummary, type WalletSummaryWire } from '@/lib/wallet/serialization'
@@ -242,6 +242,19 @@ export function LeadPrototypeCard({
     }
   }
 
+  const handleCopyShareUrl = async (url: string) => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        toast.success('Link copiado — pegalo en WhatsApp o email para enviarlo al cliente.')
+        return
+      }
+      window.prompt('Copiá manualmente el link para enviarlo al cliente:', url)
+    } catch {
+      window.prompt('Copiá manualmente el link para enviarlo al cliente:', url)
+    }
+  }
+
   return (
     <>
       <Card className="gap-4 py-4">
@@ -317,6 +330,30 @@ export function LeadPrototypeCard({
                   <p className="text-xs text-muted-foreground">
                     El admin o PM puede generar el contenido desde la vista de Prototipos usando v0.
                   </p>
+                  {prototype.shareUrl ? (
+                    <div className="rounded-md border border-primary/20 bg-background p-3 space-y-2">
+                      <p className="text-xs font-medium text-foreground">Link para el cliente</p>
+                      <p className="text-xs text-muted-foreground">
+                        Compartilo con el cliente para que vea el prototipo y lo acepte o rechace.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleCopyShareUrl(prototype.shareUrl!)}
+                        >
+                          <Copy className="size-4 mr-2" />
+                          Copiar link
+                        </Button>
+                        <Button asChild type="button" size="sm" variant="outline">
+                          <a href={prototype.shareUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="size-4 mr-2" />
+                            Abrir
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2 pt-1">
                     {canOpenPrototypes ? (
                       <Button asChild size="sm" variant="outline">

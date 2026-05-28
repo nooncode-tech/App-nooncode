@@ -460,6 +460,8 @@ export interface PrototypeWorkspace {
   generatedAt?: Date
   createdAt: Date
   updatedAt: Date
+  shareToken?: string
+  shareUrl?: string
 }
 
 export interface PrototypeWorkspaceListItem extends PrototypeWorkspace {
@@ -470,8 +472,6 @@ export interface PrototypeWorkspaceListItem extends PrototypeWorkspace {
   generatedContent?: string
   demoUrl?: string
   chatUrl?: string
-  shareToken?: string
-  shareUrl?: string
 }
 
 // Payment Types

@@ -13,6 +13,14 @@ export interface PrototypeWorkspaceWire {
   generatedAt: string | null
   createdAt: string
   updatedAt: string
+  shareToken: string | null
+  /**
+   * Full client-facing URL for sharing the prototipo. Composed server-side
+   * by `buildPrototypeShareUrl` only when the workspace is ready/delivery
+   * and the token is not superseded — `null` otherwise so the UI can hide
+   * the "Copiar link" affordance without recomputing the rule client-side.
+   */
+  shareUrl: string | null
 }
 
 export interface PrototypeWorkspaceListItemWire extends PrototypeWorkspaceWire {
@@ -23,14 +31,6 @@ export interface PrototypeWorkspaceListItemWire extends PrototypeWorkspaceWire {
   generatedContent: string | null
   demoUrl: string | null
   chatUrl: string | null
-  shareToken: string | null
-  /**
-   * Full client-facing URL for sharing the prototipo. Composed server-side
-   * by `buildPrototypeShareUrl` only when the workspace is ready/delivery
-   * and the token is not superseded — `null` otherwise so the UI can hide
-   * the "Copiar link" affordance without recomputing the rule client-side.
-   */
-  shareUrl: string | null
 }
 
 export function deserializePrototypeWorkspace(workspace: PrototypeWorkspaceWire): PrototypeWorkspace {
@@ -47,6 +47,8 @@ export function deserializePrototypeWorkspace(workspace: PrototypeWorkspaceWire)
     generatedAt: workspace.generatedAt ? new Date(workspace.generatedAt) : undefined,
     createdAt: new Date(workspace.createdAt),
     updatedAt: new Date(workspace.updatedAt),
+    shareToken: workspace.shareToken ?? undefined,
+    shareUrl: workspace.shareUrl ?? undefined,
   }
 }
 
@@ -62,7 +64,5 @@ export function deserializePrototypeWorkspaceListItem(
     generatedContent: workspace.generatedContent ?? undefined,
     demoUrl: workspace.demoUrl ?? undefined,
     chatUrl: workspace.chatUrl ?? undefined,
-    shareToken: workspace.shareToken ?? undefined,
-    shareUrl: workspace.shareUrl ?? undefined,
   }
 }
