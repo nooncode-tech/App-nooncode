@@ -75,6 +75,7 @@
   - `/api/leads/[leadId]/proposals/[proposalId]`
   - durable proposal records linked to leads with `handoff_ready` state
   - `components/lead-detail.tsx` now saves and tracks commercial proposals
+  - `supabase/migrations/0064_lead_value_on_proposal_approval.sql` syncs `leads.value` to the approved proposal `amount` when a proposal's `review_status` transitions to `approved` (PM/admin approval), so the Leads board card price reflects the accepted commercial figure
 - Lead assignment locking/release/claim now has a real code path:
   - `supabase/migrations/0010_phase_2h_lead_locking.sql`
   - `supabase/migrations/0011_phase_2h_lead_assignment_policy_fix.sql`
