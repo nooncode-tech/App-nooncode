@@ -18,9 +18,12 @@ import type {
   LeadProposal,
   LeadStatus,
   ProjectStatus,
-  ProposalReviewStatus,
   ProposalStatus,
 } from '@/lib/types'
+import {
+  deriveEffectiveProposalState,
+  manualProposalStatusOptions,
+} from '@/lib/leads/proposal-presentation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -152,22 +155,6 @@ const proposalStatusConfig: Record<ProposalStatus, { label: string; color: strin
   accepted: { label: 'Aceptada', color: 'bg-emerald-500/10 text-emerald-700' },
   rejected: { label: 'Rechazada', color: 'bg-red-500/10 text-red-700' },
   handoff_ready: { label: 'Lista para hand-off', color: 'bg-primary/10 text-primary' },
-}
-
-const paymentStatusConfig: Record<string, { label: string; color: string }> = {
-  pending:   { label: 'Pago pendiente',   color: 'bg-yellow-500/10 text-yellow-700' },
-  succeeded: { label: 'Pagado',           color: 'bg-emerald-500/10 text-emerald-700' },
-  failed:    { label: 'Pago fallido',     color: 'bg-red-500/10 text-red-700' },
-  refunded:  { label: 'Reembolsado',      color: 'bg-slate-500/10 text-slate-500' },
-}
-
-const reviewStatusConfig: Record<ProposalReviewStatus, { label: string; color: string }> = {
-  pending_review: { label: 'Pendiente revisión', color: 'bg-yellow-500/10 text-yellow-700' },
-  approved:       { label: 'Aprobada',           color: 'bg-emerald-500/10 text-emerald-700' },
-  rejected:       { label: 'Rechazada',          color: 'bg-red-500/10 text-red-700' },
-  changes_requested: { label: 'Ajustes solicitados', color: 'bg-amber-500/10 text-amber-700' },
-  expired:        { label: 'Expirada',           color: 'bg-slate-500/10 text-slate-500' },
-  cancelled:      { label: 'Cancelada',          color: 'bg-slate-500/10 text-slate-500' },
 }
 
 const speechVariantLabels = {
@@ -1848,7 +1835,21 @@ Total: 8 semanas
                     (user?.role === 'admin' || user?.role === 'pm') &&
                     (proposal.reviewStatus === 'pending_review' || proposal.reviewStatus === 'approved') &&
                     !proposal.linkedProject
-                  const reviewCfg = reviewStatusConfig[proposal.reviewStatus ?? 'pending_review']
+                  const effectiveState = deriveEffectiveProposalState(proposal, lead.leadOrigin)
+                  // Manual status control: in supabase mode the operator may
+                  // only drive the origin-appropriate transitions (inbound: none
+                  // — the web owns it; outbound: draft/sent/rejected). Mock mode
+                  // keeps the full set so demos can walk every state by hand.
+                  const statusSelectOptions = isSupabaseMode
+                    ? manualProposalStatusOptions(lead.leadOrigin)
+                    : (Object.keys(proposalStatusConfig) as ProposalStatus[])
+                  // Only render the select when the current value is one of the
+                  // options, so a payment-driven status (accepted/handoff_ready)
+                  // never leaves a Radix select rendering an empty value.
+                  const showStatusSelect =
+                    !proposal.linkedProject && statusSelectOptions.includes(proposal.status)
+                  const showInboundStatusHint =
+                    isSupabaseMode && lead.leadOrigin === 'inbound' && !proposal.linkedProject
                   return (
                   <div key={proposal.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
@@ -1858,30 +1859,25 @@ Total: 8 semanas
                           {proposal.currency} ${proposal.amount.toLocaleString()} · v{proposal.versionNumber} · {proposal.createdAt.toLocaleDateString('es-MX')}
                         </p>
                       </div>
+                      {/* Single "effective state" chip — collapses the
+                          status / reviewStatus / paymentStatus axes into the
+                          most advanced fact. A secondary chip appears only for
+                          a payment anomaly the primary does not already imply. */}
                       <div className="flex flex-wrap gap-1 sm:justify-end shrink-0">
-                        {proposal.linkedProject ? (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700">
-                            Convertida
+                        <Badge variant="outline" className={effectiveState.primary.color}>
+                          {effectiveState.primary.label}
+                        </Badge>
+                        {effectiveState.secondary && (
+                          <Badge variant="outline" className={effectiveState.secondary.color}>
+                            {effectiveState.secondary.label}
                           </Badge>
-                        ) : (
-                          <>
-                            <Badge variant="outline" className={proposalStatusConfig[proposal.status].color}>
-                              {proposalStatusConfig[proposal.status].label}
-                            </Badge>
-                            {isSupabaseMode && (
-                              <Badge variant="outline" className={reviewCfg.color}>
-                                {reviewCfg.label}
-                              </Badge>
-                            )}
-                            {proposal.paymentStatus && paymentStatusConfig[proposal.paymentStatus] && (
-                              <Badge variant="outline" className={paymentStatusConfig[proposal.paymentStatus].color}>
-                                {paymentStatusConfig[proposal.paymentStatus].label}
-                              </Badge>
-                            )}
-                          </>
                         )}
                       </div>
                     </div>
+
+                    {effectiveState.hint && (
+                      <p className="text-xs text-muted-foreground">{effectiveState.hint}</p>
+                    )}
 
                     {/* Vigencia countdown */}
                     {vigencia && (
@@ -1956,24 +1952,30 @@ Total: 8 semanas
                               ? `Enviada el ${proposal.sentAt.toLocaleString('es-MX')}`
                               : 'Aun en preparacion comercial'}
                       </div>
-                      <Select
-                        value={proposal.status}
-                        disabled={isReleasedLeadPendingClaim || Boolean(proposal.linkedProject)}
-                        onValueChange={(value) =>
-                          handleProposalStatusChange(proposal.id, value as ProposalStatus)
-                        }
-                      >
-                        <SelectTrigger className="w-full md:w-[220px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(proposalStatusConfig).map(([status, config]) => (
-                            <SelectItem key={status} value={status}>
-                              {config.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {showStatusSelect ? (
+                        <Select
+                          value={proposal.status}
+                          disabled={isReleasedLeadPendingClaim}
+                          onValueChange={(value) =>
+                            handleProposalStatusChange(proposal.id, value as ProposalStatus)
+                          }
+                        >
+                          <SelectTrigger className="w-full md:w-[220px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {statusSelectOptions.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {proposalStatusConfig[status].label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : showInboundStatusHint ? (
+                        <p className="text-xs text-muted-foreground md:w-[220px] md:text-right">
+                          El cliente gestiona la aceptación y el pago desde la web.
+                        </p>
+                      ) : null}
                     </div>
 
                     {proposal.status === 'handoff_ready' && proposal.paymentStatus === 'succeeded' && (
