@@ -1,10 +1,42 @@
 # ADR-012: NoonWeb is single owner of client-facing email
 
-**Status:** Accepted (default; formal event catalog deferred to v3 Phase 2 scoping)
+**Status:** Accepted — proposal-approval email is live since 2026-05-29; remaining event catalog deferred to v3 Phase 2 scoping
 **Date:** 2026-05-13
 **Deciders:** Pedro (Engineering owner)
 **Closes:** roadmap §11.3 cross-repo decision #10 (default registered; full sign-off deferred)
 **Related:** ADR-010 (client portal lives in NoonWeb), `docs/integrations/cross-repo-webhook-v1.md`, `nooncode-org/noon-web-main` at `lib/maxwell/proposal-email.ts`
+
+---
+
+## Update — 2026-05-29 (wiring is live)
+
+The Context and Consequences below describe `sendProposalEmail` as reachable
+only from a dead SLA branch and state that "no client receives automated
+email." **That is no longer accurate for the proposal-approval path**, which is
+now wired end-to-end:
+
+- App emits `proposal_review_decision` on PM approval
+  (`app/api/proposals/[proposalId]/review/route.ts` → `sendProposalReviewDecisionToWebsite`).
+- NoonWeb receives it at
+  `app/api/integrations/noon-app/proposal-review-decision/route.ts` and, on
+  `decision === 'approved'`, calls `sendProposalEmail` (Resend) to the client,
+  publishes the proposal, and records delivery/audit events. Email failure is
+  logged as delivery debt and never rolls back the approval.
+
+The **decision itself is unchanged**: NoonWeb remains the single owner of
+client-facing email and App still ships no email provider. What changed is
+purely factual — the wiring exists and runs. Delivery depends on env config in
+both repos (`NOON_WEBSITE_REVIEW_DECISION_WEBHOOK_URL` + shared secret on App;
+`RESEND_API_KEY` / `MAIL_FROM` on NoonWeb), which is confirmed configured.
+
+Remaining items are enhancements, not blockers:
+- **Locale-aware copy** — the approval email is English-only despite NoonWeb
+  storing the client's locale.
+- **Idempotency** — NoonWeb dedups on proposal status plus a Resend idempotency
+  key, and does not yet honor the `X-Noon-Idempotency-Key` header App sends.
+
+The historical Context/Consequences below are kept as-written for the record;
+read them through this update.
 
 ---
 
