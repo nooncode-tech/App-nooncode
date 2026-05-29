@@ -1,6 +1,6 @@
 # ADR-012: NoonWeb is single owner of client-facing email
 
-**Status:** Accepted — proposal-approval email is live since 2026-05-29; remaining event catalog deferred to v3 Phase 2 scoping
+**Status:** Accepted — proposal-approval email live since 2026-05-29; payment-confirmation + workspace-ready emails live in NoonWeb since 2026-05-25; remaining event catalog deferred to v3 Phase 2 scoping
 **Date:** 2026-05-13
 **Deciders:** Pedro (Engineering owner)
 **Closes:** roadmap §11.3 cross-repo decision #10 (default registered; full sign-off deferred)
@@ -37,6 +37,46 @@ Remaining items are enhancements, not blockers:
 
 The historical Context/Consequences below are kept as-written for the record;
 read them through this update.
+
+---
+
+## Update — 2026-05-29 (payment-confirmation + workspace-ready emails are live in NoonWeb)
+
+The Decision §5 and the "Operational gap" consequence below state that the full
+email catalog (including payment confirmation) is **deferred to v3 Phase 2** and
+that "no client receives automated email." **That is no longer accurate for the
+post-payment path.** Verified against the `nooncode-org/noon-web-main` working
+copy on 2026-05-29:
+
+- NoonWeb sends the client a **"Payment received" receipt** email and a
+  **"Workspace ready"** email after a successful inbound Stripe payment.
+  Senders: `sendPaymentReceivedEmail` / `sendWorkspaceReadyEmail` in
+  `lib/maxwell/lifecycle-emails.ts`, both backed by Resend via the shared
+  `sendViaResend` primitive.
+- Wiring: NoonWeb's Stripe webhook `app/api/stripe/webhook/route.ts`
+  (`checkout.session.completed`) → `confirmProposalPayment`
+  (`lib/maxwell/payment-activation.ts`) → fire-and-forget
+  `sendLifecycleEmailsForPayment`. Email failure never blocks activation.
+- Merged to NoonWeb `main` (templates + wiring commits `a1db89f` / `a0dbe60`).
+- Gated by `MAXWELL_LIFECYCLE_EMAILS=1`, which NoonWeb enabled in its Vercel
+  Production env on **2026-05-25** (recorded in NoonWeb's own
+  `project.context.core.md`). The receipt has been delivering since that flip.
+
+The **ownership decision is unchanged**: NoonWeb is still the single owner of
+client-facing email and App still ships no email provider. What changed is
+factual — the payment-confirmation and workspace-ready emails are no longer a
+deferred catalog item; they shipped and are enabled.
+
+Two boundaries to keep in mind:
+
+- **Email only — no chatbot delivery.** The payment detail is delivered by email;
+  there is no Maxwell-chat surfacing of payment/receipt details today.
+- **Fires only on the inbound NoonWeb checkout.** App's operator-driven
+  **outbound** checkout link (`/api/payments/checkout`, ADR-010 amendment) lands
+  at App's own Stripe webhook and does **not** trigger any client receipt — App
+  sends no client email by this ADR. A client receipt for the outbound path, if
+  ever wanted, is a separate decision (it would still have to originate in
+  NoonWeb under this ADR, fed by an App domain event).
 
 ---
 
