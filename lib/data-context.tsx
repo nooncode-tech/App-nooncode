@@ -503,7 +503,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     authMode === 'supabase' ? null : buildMockLeadsPagination(mockLeads.length)
   )
   const [isLeadsLoading, setIsLeadsLoading] = useState(authMode === 'supabase')
-  const isLeadsLoadingRef = useRef(isLeadsLoading)
+  // Overlap guard for `setLeadsPage`. Tracks an actual in-flight `/api/leads`
+  // fetch — NOT the `isLeadsLoading` UI flag. The flag initializes to `true`
+  // in supabase mode (a "we expect to load" placeholder), so mirroring it
+  // here would wrongly block the page's first `setLeadsPage(1)` on a hard
+  // reload: the page (child) effect fires the load before the provider
+  // (parent) effect can sync a state-derived ref down to `false`, so the
+  // guard would read a stale `true` and bail, leaving leads empty with no
+  // retry. This ref is owned exclusively by `setLeadsPage` and flipped
+  // synchronously at call/finish time.
+  const leadsRequestInFlightRef = useRef(false)
   const [leadActivityByLeadId, setLeadActivityByLeadId] = useState<Record<string, LeadActivity[]>>(
     () => (authMode === 'supabase' ? {} : buildInitialMockLeadActivity(mockLeads))
   )
@@ -602,10 +611,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     taskActivityByTaskIdRef.current = taskActivityByTaskId
   }, [taskActivityByTaskId])
 
-  useEffect(() => {
-    isLeadsLoadingRef.current = isLeadsLoading
-  }, [isLeadsLoading])
-
   const loadLeads = useCallback(async (page: number = 1, limit: number = LEADS_PAGE_SIZE) => {
     const response = await fetch(`/api/leads?page=${page}&limit=${limit}`, {
       method: 'GET',
@@ -634,11 +639,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     // Guard against overlapping requests when the user double-clicks prev/next.
-    if (isLeadsLoadingRef.current) {
+    // Uses a dedicated in-flight ref flipped synchronously here — not the
+    // `isLeadsLoading` state — so the initial `true` placeholder never blocks
+    // the page's first load on a hard reload.
+    if (leadsRequestInFlightRef.current) {
       return
     }
 
     const targetPage = Math.max(1, Math.floor(page))
+    leadsRequestInFlightRef.current = true
     setIsLeadsLoading(true)
     try {
       await loadLeads(targetPage)
@@ -646,6 +655,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Loader-level error: leave state untouched so the UI can retry.
     } finally {
       setIsLeadsLoading(false)
+      leadsRequestInFlightRef.current = false
     }
   }, [authMode, loadLeads])
 
