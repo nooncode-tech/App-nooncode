@@ -14,12 +14,14 @@ import {
   mapPrototypeWorkspaceRowToWire,
 } from '@/lib/server/prototypes/mappers'
 import {
+  countPrototypeWorkspacesByLeadId,
   getPrototypeWorkspaceById,
   getPrototypeWorkspaceByLeadId,
   handoffPrototypeWorkspaceToDelivery,
   linkLeadPrototypeWorkspaceToProject,
   listPrototypeWorkspaces,
 } from '@/lib/server/prototypes/repository'
+import { logger } from '@/lib/server/api/logger'
 import { bootstrapPrototypeDeliveryFollowUp } from '@/lib/server/prototypes/handoff-follow-up'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 import {
@@ -43,6 +45,13 @@ function mapPrototypeRpcError(error: unknown): never {
 
   if (message.includes('INSUFFICIENT_CREDITS')) {
     throw new ConflictApiError('The current wallet balance is insufficient for this prototype request.', 'INSUFFICIENT_CREDITS')
+  }
+
+  if (message.includes('ITERATION_CAP_REACHED')) {
+    throw new ConflictApiError(
+      'This lead has reached its prototype version limit. No more versions can be generated.',
+      'ITERATION_CAP_REACHED'
+    )
   }
 
   if (message.includes('PROTOTYPE_WORKSPACE_EXISTS')) {
@@ -110,6 +119,9 @@ export async function getVisibleLeadPrototypeState(
   prototype: PrototypeWorkspaceWire | null
   prototypeRequestCost: number | null
   prototypeRequestsEnabled: boolean
+  maxIterationsPerLead: number | null
+  iterationsUsed: number
+  iterationsRemaining: number | null
 }> {
   const lead = await getLeadById(client, leadId)
 
@@ -119,15 +131,23 @@ export async function getVisibleLeadPrototypeState(
 
   assertSalesLeadOwnership(principal, lead)
 
-  const [workspace, settings] = await Promise.all([
+  const [workspace, settings, iterationsUsed] = await Promise.all([
     getPrototypeWorkspaceByLeadId(client, leadId),
     getPrototypeCreditSettings(client),
+    countPrototypeWorkspacesByLeadId(client, leadId),
   ])
+
+  const maxIterationsPerLead = settings?.max_iterations_per_lead ?? null
+  const iterationsRemaining =
+    maxIterationsPerLead !== null ? Math.max(0, maxIterationsPerLead - iterationsUsed) : null
 
   return {
     prototype: workspace ? mapPrototypeWorkspaceRowToWire(workspace) : null,
     prototypeRequestCost: settings?.request_cost ?? null,
     prototypeRequestsEnabled: Boolean(settings?.request_cost),
+    maxIterationsPerLead,
+    iterationsUsed,
+    iterationsRemaining,
   }
 }
 
@@ -179,7 +199,8 @@ export async function listVisiblePrototypeWorkspaces(
 export async function requestVisibleLeadPrototype(
   client: DatabaseClient,
   principal: AuthenticatedPrincipal,
-  leadId: string
+  leadId: string,
+  sellerBrief?: string | null
 ): Promise<{
   prototype: PrototypeWorkspaceWire
   wallet: Pick<WalletSummaryWire, 'freeAvailable' | 'earnedAvailable' | 'totalAvailable'>
@@ -203,6 +224,29 @@ export async function requestVisibleLeadPrototype(
     requestResult = await requestLeadPrototype(client, leadId)
   } catch (error) {
     mapPrototypeRpcError(error)
+  }
+
+  // Persist the optional seller brief AFTER the credits RPC created the
+  // workspace, via the admin client (the RPC is left untouched, so the
+  // credit / iteration-cap surface is unchanged). Best-effort: the workspace
+  // and credit consumption already succeeded, so a brief write failure must
+  // not fail the request — that would mislead the seller into retrying and
+  // double-spending. Logged for operator visibility instead.
+  const trimmedBrief = sellerBrief?.trim()
+  if (trimmedBrief) {
+    const adminClient = createSupabaseAdminClient()
+    const { error: briefError } = await adminClient
+      .from('prototype_workspaces')
+      .update({ seller_brief: trimmedBrief })
+      .eq('id', requestResult.prototype_workspace_id)
+
+    if (briefError) {
+      logger.warn('prototype.request.seller_brief_update_failed', {
+        prototypeWorkspaceId: requestResult.prototype_workspace_id,
+        leadId,
+        errorMessage: briefError.message,
+      })
+    }
   }
 
   const [workspace, wallet] = await Promise.all([

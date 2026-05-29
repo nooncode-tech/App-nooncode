@@ -90,7 +90,7 @@ export async function getPrototypeCreditSettings(
 ): Promise<PrototypeCreditSettingsRow | null> {
   const { data, error } = await client
     .from('prototype_credit_settings')
-    .select('singleton_key, request_cost, updated_by_profile_id, created_at, updated_at')
+    .select('singleton_key, request_cost, max_iterations_per_lead, updated_by_profile_id, created_at, updated_at')
     .eq('singleton_key', true)
     .maybeSingle()
 

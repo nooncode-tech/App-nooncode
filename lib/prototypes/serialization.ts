@@ -13,6 +13,12 @@ export interface PrototypeWorkspaceWire {
   generatedAt: string | null
   createdAt: string
   updatedAt: string
+  /**
+   * Optional free-text brief the seller attached at request time to steer v0
+   * generation. Surfaced read-only in the lead card; merged into the composed
+   * prompt by the generate endpoint.
+   */
+  sellerBrief: string | null
   shareToken: string | null
   /**
    * Full client-facing URL for sharing the prototipo. Composed server-side
@@ -47,6 +53,7 @@ export function deserializePrototypeWorkspace(workspace: PrototypeWorkspaceWire)
     generatedAt: workspace.generatedAt ? new Date(workspace.generatedAt) : undefined,
     createdAt: new Date(workspace.createdAt),
     updatedAt: new Date(workspace.updatedAt),
+    sellerBrief: workspace.sellerBrief ?? undefined,
     shareToken: workspace.shareToken ?? undefined,
     shareUrl: workspace.shareUrl ?? undefined,
   }

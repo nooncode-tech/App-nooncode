@@ -1283,6 +1283,7 @@ export type Database = {
           lead_id: string
           project_id: string | null
           requested_by_profile_id: string
+          seller_brief: string | null
           share_token: string
           share_token_superseded_at: string | null
           status: Database["public"]["Enums"]["prototype_workspace_status"]
@@ -1301,6 +1302,7 @@ export type Database = {
           lead_id: string
           project_id?: string | null
           requested_by_profile_id: string
+          seller_brief?: string | null
           share_token: string
           share_token_superseded_at?: string | null
           status?: Database["public"]["Enums"]["prototype_workspace_status"]
@@ -1319,6 +1321,7 @@ export type Database = {
           lead_id?: string
           project_id?: string | null
           requested_by_profile_id?: string
+          seller_brief?: string | null
           share_token?: string
           share_token_superseded_at?: string | null
           status?: Database["public"]["Enums"]["prototype_workspace_status"]
@@ -2469,6 +2472,7 @@ export type Database = {
           lead_id: string
           project_id: string | null
           requested_by_profile_id: string
+          seller_brief: string | null
           share_token: string
           share_token_superseded_at: string | null
           status: Database["public"]["Enums"]["prototype_workspace_status"]

@@ -460,6 +460,7 @@ export interface PrototypeWorkspace {
   generatedAt?: Date
   createdAt: Date
   updatedAt: Date
+  sellerBrief?: string
   shareToken?: string
   shareUrl?: string
 }

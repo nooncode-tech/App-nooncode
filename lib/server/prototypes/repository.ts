@@ -44,6 +44,7 @@ const prototypeWorkspaceSelect = `
   generated_content,
   demo_url,
   chat_url,
+  seller_brief,
   share_token,
   share_token_superseded_at,
   created_at,
@@ -93,6 +94,26 @@ export async function getPrototypeWorkspaceByLeadId(
   }
 
   return (data ?? null) as PrototypeWorkspaceRow | null
+}
+
+// Lifetime count of workspaces under a lead. Mirrors the Gate B predicate in
+// `request_lead_prototype` (migration 0060): NO status filter — archived and
+// superseded versions count toward the iteration cap (ADR-025 D2). Used to
+// surface "remaining versions" in the UI before a regenerate is attempted.
+export async function countPrototypeWorkspacesByLeadId(
+  client: DatabaseClient,
+  leadId: string
+): Promise<number> {
+  const { count, error } = await client
+    .from('prototype_workspaces')
+    .select('id', { count: 'exact', head: true })
+    .eq('lead_id', leadId)
+
+  if (error) {
+    throw new Error(`Failed to count prototype workspaces for lead: ${error.message}`)
+  }
+
+  return count ?? 0
 }
 
 export async function getPrototypeWorkspaceById(
