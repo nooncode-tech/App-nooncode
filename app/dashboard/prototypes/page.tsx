@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { startTransition, useEffect, useState } from 'react'
-import { Blocks, CircleOff, FolderKanban, Link2, Sparkles, UserRound, Wand2 } from 'lucide-react'
+import { Blocks, CircleOff, Copy, FolderKanban, Link2, Sparkles, UserRound, Wand2 } from 'lucide-react'
 import { useAuth, canAccessDashboardPath, canGeneratePrototypes } from '@/lib/auth-context'
 import type { PrototypeWorkspaceListItem } from '@/lib/types'
 import {
@@ -66,6 +66,20 @@ export default function PrototypesPage() {
   const [generatingId, setGeneratingId] = useState<string | null>(null)
 
   const canGeneratePrototype = user ? canGeneratePrototypes(user.role) : false
+
+  const handleCopyShareUrl = async (url: string) => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        toast.success('Link copiado — pegalo en WhatsApp o email para enviarlo al cliente.')
+        return
+      }
+      // Fallback for environments without the async clipboard API.
+      window.prompt('Copiá manualmente el link para enviarlo al cliente:', url)
+    } catch {
+      window.prompt('Copiá manualmente el link para enviarlo al cliente:', url)
+    }
+  }
 
   const handleGenerate = async (workspaceId: string) => {
     setGeneratingId(workspaceId)
@@ -358,6 +372,17 @@ export default function PrototypesPage() {
                         <Wand2 className="size-4 mr-2" />
                       )}
                       {generatingId === item.id ? 'Generando...' : 'Generar con v0'}
+                    </Button>
+                  ) : null}
+                  {item.shareUrl ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="default"
+                      onClick={() => handleCopyShareUrl(item.shareUrl!)}
+                    >
+                      <Copy className="size-4 mr-2" />
+                      Copiar link para el cliente
                     </Button>
                   ) : null}
                   {canOpenLeads ? (

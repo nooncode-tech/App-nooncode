@@ -583,6 +583,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     authModeRef.current = authMode
   }, [authMode])
 
+  // Tracks the authMode seen by the slice-reset effect on its previous run.
+  // The reset must fire only on an actual mode transition — not on every
+  // `user`/callback identity change — or a late `user` resolution after a list
+  // page already lazy-loaded its slice would wipe that slice, and the page's
+  // one-shot load trigger would not recover until a remount.
+  const prevAuthModeRef = useRef<typeof authMode | null>(null)
+
   useEffect(() => {
     leadActivityByLeadIdRef.current = leadActivityByLeadId
   }, [leadActivityByLeadId])
@@ -808,9 +815,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isActive = true
+    const authModeChanged = prevAuthModeRef.current !== authMode
+    prevAuthModeRef.current = authMode
 
     if (authMode !== 'supabase') {
-      startTransition(() => {
+      if (authModeChanged) startTransition(() => {
         setLeads(mockLeads)
         setLeadsPagination(buildMockLeadsPagination(mockLeads.length))
         setProjects(mockProjects)
@@ -846,7 +855,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // `setLeadsPage(1)` / `refreshProjects()` / `refreshTasks()` on
     // mount. The dashboard home consumes `useDashboardSummary()` which
     // fetches the server-aggregated KPI payload below. See ADR-020 §D8.
-    startTransition(() => {
+    if (authModeChanged) startTransition(() => {
       setLeads([])
       setLeadsPagination(null)
       setIsLeadsLoading(false)

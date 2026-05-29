@@ -461,6 +461,8 @@ export interface PrototypeWorkspace {
   createdAt: Date
   updatedAt: Date
   sellerBrief?: string
+  shareToken?: string
+  shareUrl?: string
 }
 
 export interface PrototypeWorkspaceListItem extends PrototypeWorkspace {

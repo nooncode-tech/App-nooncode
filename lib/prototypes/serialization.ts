@@ -19,6 +19,14 @@ export interface PrototypeWorkspaceWire {
    * prompt by the generate endpoint.
    */
   sellerBrief: string | null
+  shareToken: string | null
+  /**
+   * Full client-facing URL for sharing the prototipo. Composed server-side
+   * by `buildPrototypeShareUrl` only when the workspace is ready/delivery
+   * and the token is not superseded — `null` otherwise so the UI can hide
+   * the "Copiar link" affordance without recomputing the rule client-side.
+   */
+  shareUrl: string | null
 }
 
 export interface PrototypeWorkspaceListItemWire extends PrototypeWorkspaceWire {
@@ -46,6 +54,8 @@ export function deserializePrototypeWorkspace(workspace: PrototypeWorkspaceWire)
     createdAt: new Date(workspace.createdAt),
     updatedAt: new Date(workspace.updatedAt),
     sellerBrief: workspace.sellerBrief ?? undefined,
+    shareToken: workspace.shareToken ?? undefined,
+    shareUrl: workspace.shareUrl ?? undefined,
   }
 }
 

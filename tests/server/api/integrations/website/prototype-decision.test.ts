@@ -252,7 +252,7 @@ test('prototype-decision: reject happy-path persists row + inserts seller notifi
   assert.equal(notif.profile_id, SELLER_ID)
   assert.equal(notif.source_kind, 'prototype_decision_received')
   assert.equal(notif.source_event_id, DECISION_ID)
-  assert.equal(notif.domain, 'leads')
+  assert.equal(notif.domain, 'sales')
   // OQ-3 resolution — uses the new source_kind, not 'lead_activity'.
   assert.ok(
     typeof notif.body === 'string' && (notif.body as string).includes('rechazó'),
@@ -753,7 +753,7 @@ test('AC-9: Maxwell draft failure path inserts escalation notification with "cre
     assert.equal(notif.profile_id, SELLER_ID, 'escalation goes to the seller')
     assert.equal(notif.source_kind, 'prototype_decision_received')
     assert.equal(notif.source_event_id, DECISION_ID)
-    assert.equal(notif.domain, 'leads')
+    assert.equal(notif.domain, 'sales')
     assert.equal(notif.title, 'Cliente aceptó el prototipo (acción manual requerida)')
     assert.ok(
       typeof notif.body === 'string' && (notif.body as string).includes('manualmente'),
@@ -765,7 +765,7 @@ test('AC-9: Maxwell draft failure path inserts escalation notification with "cre
     )
     assert.equal(
       notif.href,
-      `/dashboard/leads/${LEAD_ID}`,
+      `/dashboard/leads?leadId=${LEAD_ID}`,
       'escalation notification deep-links to the lead detail page',
     )
   } finally {
