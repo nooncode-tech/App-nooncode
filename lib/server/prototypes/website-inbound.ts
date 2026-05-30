@@ -43,11 +43,17 @@ export async function ensureWebsiteInboundPrototypeWorkspace(
   const existing = await getPrototypeWorkspaceByLeadId(client, input.leadId)
 
   if (existing) {
-    if (!existing.generated_content) {
+    // `prototypeReference` is a v0 preview URL (vusercontent.net). It belongs
+    // in `demo_url` — the signed-read contract (ADR-024) maps `demo_url` ->
+    // `deployedUrl` (iframe `src`). It must NOT go in `generated_content`
+    // (reserved for v0 source code per migration 0046); the signed-read would
+    // otherwise expose the URL as `generatedHtml` and NoonWeb would render it
+    // as plain text inside an iframe `srcDoc`.
+    if (!existing.demo_url) {
       const { error } = await client
         .from('prototype_workspaces')
         .update({
-          generated_content: prototypeReference,
+          demo_url: prototypeReference,
           generated_at: new Date().toISOString(),
           generation_prompt: input.maxwell.summary ?? null,
           status: 'ready',
@@ -72,7 +78,9 @@ export async function ensureWebsiteInboundPrototypeWorkspace(
       current_stage: 'sales',
       status: 'ready',
       generation_prompt: input.maxwell.summary ?? null,
-      generated_content: prototypeReference,
+      // v0 preview URL -> demo_url (signed-read `deployedUrl`), NOT
+      // generated_content (v0 source code per 0046). See update branch above.
+      demo_url: prototypeReference,
       generated_at: now,
       last_operation_id: randomUUID(),
       share_token: randomUUID(),

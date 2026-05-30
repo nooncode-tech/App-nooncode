@@ -16,7 +16,7 @@ export interface PrototypeSignedReadRow {
     lead_id: string
     created_at: string
     demo_url: string | null
-    generated_content: string | null
+    generated_html: string | null
     share_token_superseded_at: string | null
   }
   lead: {
@@ -240,7 +240,7 @@ export async function getPrototypeWorkspaceByShareToken(
         lead_id,
         created_at,
         demo_url,
-        generated_content,
+        generated_html,
         share_token_superseded_at,
         lead:leads!prototype_workspaces_lead_id_fkey(id, name, company, maxwell_snapshot),
         decisions:prototype_decisions!prototype_decisions_prototype_workspace_id_fkey(decision, notes, decided_at)
@@ -279,7 +279,7 @@ export async function getPrototypeWorkspaceByShareToken(
       lead_id: data.lead_id as string,
       created_at: data.created_at as string,
       demo_url: (data.demo_url ?? null) as string | null,
-      generated_content: (data.generated_content ?? null) as string | null,
+      generated_html: (data.generated_html ?? null) as string | null,
       share_token_superseded_at: (data.share_token_superseded_at ?? null) as string | null,
     },
     lead,

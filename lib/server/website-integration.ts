@@ -2715,8 +2715,13 @@ export async function serveWebsitePrototypeSignedRead(
         projectTypeLabel,
       },
       prototype: {
+        // `deployedUrl` is the v0 preview URL (iframe `src`); `generatedHtml`
+        // is real inline HTML (iframe `srcDoc`) ONLY — sourced from
+        // `generated_html`, never `generated_content` (v0 source code per 0046,
+        // which would render as plain text if exposed as HTML). See handoff
+        // 2026-05-30 prototipo-demo-url-field.
         deployedUrl: row.workspace.demo_url,
-        generatedHtml: row.workspace.generated_content,
+        generatedHtml: row.workspace.generated_html,
       },
       decision: {
         status: decisionStatus,
