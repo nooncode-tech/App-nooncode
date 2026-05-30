@@ -170,6 +170,25 @@ These keep typecheck/build green. When MCP auth returns or the operator runs `np
 
 ---
 
+## Addendum — 2026-05-30: 7th expected orphan + drift re-reconciliation
+
+A full ledger↔filesystem↔object reconciliation on 2026-05-30 (prompted by two unapplied migrations surfacing as production 500s) closed a fresh gap and recorded one new expected orphan.
+
+**Unapplied migrations found and applied OOB via `apply_migration`:**
+
+- `0065_phase_23a_prototype_seller_brief` — column `prototype_workspaces.seller_brief` was missing entirely (no ledger row, no object). Its absence threw `column ... does not exist` on every `getPrototypeWorkspaceByLeadId` call, 500-ing the lead-detail prototype card AND aborting `ensureWebsiteInboundPrototypeWorkspace` (inbound prototype linkage). One inbound lead's workspace was backfilled from the stored payload.
+- `0064_lead_value_on_proposal_approval` — the function/trigger did **not** exist in the DB **even though a ledger row `version='0064'` was present**. This is the same failure mode this ADR's Risk register named ("operator forgets to insert the ledger row" — here inverted: the row existed without the object). **Lesson: a ledger row is not proof the SQL ran. The drift classifier (`diffMigrations`) matches ledger-row names only and is blind to this case — recent/risky migrations must be object-verified (`pg_proc` / `pg_trigger` / `information_schema.columns` / `pg_indexes` / `pg_constraint`), not just ledger-checked.**
+
+**New expected orphan (7th):**
+
+```
+20260526204409 phase_3r5_outbound_webhook_events_alerted_at
+```
+
+The `alerted_at` column on `outbound_webhook_events` was applied 2026-05-26 as its own ledger row, then folded into the single `0062_phase_3r5_outbound_webhook_events.sql` file (the column lives inline at `0062:43`). The applied column has no separate disk file, so its ledger row is a genuine orphan — added to `EXPECTED_ORPHAN_LEDGER_NAMES` (now 7 names) under the same rationale as the original six. No placeholder file is created (per §Rationale "Why orphans stay in the ledger").
+
+Post-reconciliation, all 67 repo migrations are present in prod (0059–0065 object-verified; older confirmed via active features). Two harmless bookkeeping residues remain: a duplicate `lead_value_on_proposal_approval` ledger row (`0064` + the 2026-05-30 timestamp apply), and the new orphan above.
+
 ## References
 
 - `docs/adrs/ADR-006-migration-prefix-convention-and-rename.md` — original collision treatment + Option B2 adoption

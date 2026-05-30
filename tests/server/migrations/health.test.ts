@@ -302,12 +302,15 @@ test('KNOWN_COLLISION_FILES exposes exactly the 8 ADR-006 §B2 filenames', () =>
   assert.equal(KNOWN_COLLISION_FILES.has('0027_phase_3_proposal_lifecycle.sql'), true)
 })
 
-test('EXPECTED_ORPHAN_LEDGER_NAMES exposes exactly the 6 ADR-014 §Orphans names', () => {
-  assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.size, 6)
+test('EXPECTED_ORPHAN_LEDGER_NAMES exposes the 6 ADR-014 §Orphans names + the 2026-05-30 addendum orphan', () => {
+  assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.size, 7)
   assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.has('phase_4b_payment_columns'), true)
   assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.has('phase_5_stripe_connect'), true)
   assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.has('phase_7_client_workspace'), true)
   assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.has('phase_7b_resolve_token_update'), true)
   assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.has('phase_8_lead_whatsapp'), true)
   assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.has('phase_11_lead_auto_followup'), true)
+  // ADR-014 §Addendum 2026-05-30: alerted_at follow-up applied 2026-05-26 as its
+  // own ledger row, folded into 0062_phase_3r5_outbound_webhook_events.sql.
+  assert.equal(EXPECTED_ORPHAN_LEDGER_NAMES.has('phase_3r5_outbound_webhook_events_alerted_at'), true)
 })
