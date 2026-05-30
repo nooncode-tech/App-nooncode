@@ -1277,6 +1277,7 @@ export type Database = {
           demo_url: string | null
           generated_at: string | null
           generated_content: string | null
+          generated_html: string | null
           generation_prompt: string | null
           id: string
           last_operation_id: string | null
@@ -1296,6 +1297,7 @@ export type Database = {
           demo_url?: string | null
           generated_at?: string | null
           generated_content?: string | null
+          generated_html?: string | null
           generation_prompt?: string | null
           id?: string
           last_operation_id?: string | null
@@ -1315,6 +1317,7 @@ export type Database = {
           demo_url?: string | null
           generated_at?: string | null
           generated_content?: string | null
+          generated_html?: string | null
           generation_prompt?: string | null
           id?: string
           last_operation_id?: string | null
@@ -2466,6 +2469,7 @@ export type Database = {
           demo_url: string | null
           generated_at: string | null
           generated_content: string | null
+          generated_html: string | null
           generation_prompt: string | null
           id: string
           last_operation_id: string | null

@@ -60,7 +60,7 @@ function workspaceLookupFixture(opts: {
         lead_id: LEAD_ID,
         created_at: WORKSPACE_CREATED_AT,
         demo_url: 'https://v0.dev/demo/x',
-        generated_content: null,
+        generated_html: null,
         share_token_superseded_at: opts.superseded ? '2026-05-26T09:00:00.000Z' : null,
         lead: null,
         decisions: [],
@@ -442,4 +442,49 @@ test('prototype-signed-read: projectTypeLabel defaults to "Sitio Web" when maxwe
   assert.equal(result.body.data.leadContext.businessName, 'Beta Contact')
   // projectTypeLabel falls back to 'Sitio Web' when snapshot has no project_type.
   assert.equal(result.body.data.leadContext.projectTypeLabel, 'Sitio Web')
+})
+
+// ---------------------------------------------------------------------------
+// Regression — handoff 2026-05-30 prototipo-demo-url-field:
+// `generatedHtml` is sourced from `generated_html` ONLY. A stray URL in
+// `generated_content` (legacy inbound bug) MUST NOT be exposed as HTML.
+// ---------------------------------------------------------------------------
+
+test('prototype-signed-read: generatedHtml comes from generated_html, never generated_content', async () => {
+  const lookup = workspaceLookupFixture({ decision: null })
+  const ws = lookup.data as Record<string, unknown>
+  // The bug shape: demo_url null, the v0 preview URL stranded in
+  // generated_content, generated_html absent.
+  ws.demo_url = null
+  ws.generated_content = 'https://demo-kzmpmz6v5tp32sqgbjnm.vusercontent.net?__v0_token=abc'
+  ws.generated_html = null
+
+  const client = makeMockClient({ workspaceLookup: lookup, versionList: versionListFixture(1) })
+  const result = await serveWebsitePrototypeSignedRead(TOKEN, client)
+
+  assert.equal(result.kind, 'ok')
+  if (result.kind !== 'ok') return
+  // The URL must NOT leak into generatedHtml (it would render as plain text in
+  // an iframe srcDoc). With no demo_url and no real HTML, both are null.
+  assert.equal(result.body.data.prototype.deployedUrl, null)
+  assert.equal(result.body.data.prototype.generatedHtml, null)
+  assert.ok(
+    !JSON.stringify(result.body).includes('vusercontent.net'),
+    'generated_content URL MUST NOT appear anywhere in the signed-read body',
+  )
+})
+
+test('prototype-signed-read: generatedHtml echoes real inline HTML from generated_html', async () => {
+  const lookup = workspaceLookupFixture({ decision: null })
+  const ws = lookup.data as Record<string, unknown>
+  ws.demo_url = null
+  ws.generated_html = '<h1>Hola</h1>'
+
+  const client = makeMockClient({ workspaceLookup: lookup, versionList: versionListFixture(1) })
+  const result = await serveWebsitePrototypeSignedRead(TOKEN, client)
+
+  assert.equal(result.kind, 'ok')
+  if (result.kind !== 'ok') return
+  assert.equal(result.body.data.prototype.deployedUrl, null)
+  assert.equal(result.body.data.prototype.generatedHtml, '<h1>Hola</h1>')
 })
